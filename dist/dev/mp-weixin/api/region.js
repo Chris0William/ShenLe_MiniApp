@@ -1,0 +1,14 @@
+"use strict";
+const api_http = require("./http.js");
+const getRegionTree = () => api_http.get("/api/slRegion/tree");
+const getRegionStats = (id) => api_http.get("/api/slRegion/stats", { id });
+const addRegion = (input) => api_http.post("/api/slRegion/add", input);
+const updateRegion = (input) => api_http.post("/api/slRegion/update", input);
+const deleteRegion = (input) => api_http.post("/api/slRegion/delete", input);
+const saveBoundary = (input) => api_http.post("/api/slRegion/saveBoundary", input);
+exports.addRegion = addRegion;
+exports.deleteRegion = deleteRegion;
+exports.getRegionStats = getRegionStats;
+exports.getRegionTree = getRegionTree;
+exports.saveBoundary = saveBoundary;
+exports.updateRegion = updateRegion;

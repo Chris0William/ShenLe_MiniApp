@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "楼栋管理",
+  "usingComponents": {
+    "sl-empty-state": "../../../components/sl-empty-state/sl-empty-state"
+  }
+}

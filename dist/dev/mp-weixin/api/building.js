@@ -1,0 +1,14 @@
+"use strict";
+const api_http = require("./http.js");
+const getBuildingList = (input) => api_http.get("/api/slBuilding/list", input);
+const getBuildingStats = (communityId) => api_http.get("/api/slBuilding/stats", { communityId });
+const getBuildingDetail = (id) => api_http.get("/api/slBuilding/detail", { id });
+const addBuilding = (input) => api_http.post("/api/slBuilding/add", input);
+const updateBuilding = (input) => api_http.post("/api/slBuilding/update", input);
+const deleteBuilding = (input) => api_http.post("/api/slBuilding/delete", input);
+exports.addBuilding = addBuilding;
+exports.deleteBuilding = deleteBuilding;
+exports.getBuildingDetail = getBuildingDetail;
+exports.getBuildingList = getBuildingList;
+exports.getBuildingStats = getBuildingStats;
+exports.updateBuilding = updateBuilding;

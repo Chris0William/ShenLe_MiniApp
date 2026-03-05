@@ -1,0 +1,84 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^sl-(.*)": "@/components/sl-$1/sl-$1.vue"
+    }
+  },
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/shell/index",
+      "style": { "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/home/index",
+      "style": { "navigationBarTitleText": "找房", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/map/index",
+      "style": { "navigationBarTitleText": "地图找房", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/user/mine/index",
+      "style": { "navigationBarTitleText": "我的" }
+    },
+    {
+      "path": "pages/admin/dashboard/index",
+      "style": { "navigationBarTitleText": "工作台", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/admin/property-list/index",
+      "style": { "navigationBarTitleText": "房源管理", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/admin/sales-control/index",
+      "style": { "navigationBarTitleText": "销控表" }
+    },
+    {
+      "path": "pages/admin/mine/index",
+      "style": { "navigationBarTitleText": "我的" }
+    },
+    {
+      "path": "pages/common/property-detail/index",
+      "style": { "navigationBarTitleText": "房源详情", "navigationStyle": "custom" }
+    },
+    {
+      "path": "pages/common/property-form/index",
+      "style": { "navigationBarTitleText": "发布房源" }
+    },
+    {
+      "path": "pages/common/login/index",
+      "style": { "navigationBarTitleText": "登录" }
+    },
+    {
+      "path": "pages/common/region-manage/index",
+      "style": { "navigationBarTitleText": "区域管理" }
+    },
+    {
+      "path": "pages/common/community-manage/index",
+      "style": { "navigationBarTitleText": "楼盘管理" }
+    },
+    {
+      "path": "pages/common/building-manage/index",
+      "style": { "navigationBarTitleText": "楼栋管理" }
+    },
+    {
+      "path": "pages/common/community-properties/index",
+      "style": { "navigationBarTitleText": "房源列表" }
+    },
+    {
+      "path": "pages/common/tag-manage/index",
+      "style": { "navigationBarTitleText": "标签管理" }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "深乐租",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f5f5"
+  }
+}

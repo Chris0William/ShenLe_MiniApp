@@ -1,0 +1,55 @@
+// 主题色
+$sl-primary: #3B82F6;
+$sl-primary-light: #60A5FA;
+$sl-primary-dark: #2563EB;
+
+// 状态色
+$sl-vacant: #22C55E;      // 空置 - 绿
+$sl-reserved: #F97316;    // 预定 - 橙
+$sl-rented: #9CA3AF;      // 已租 - 灰
+$sl-danger: #EF4444;      // 危险/警告 - 红
+
+// 文字色 (Slate 色系)
+$sl-text-primary: #1E293B;     // slate-800
+$sl-text-secondary: #64748B;   // slate-500
+$sl-text-placeholder: #94A3B8; // slate-400
+$sl-text-price: #EF4444;
+
+// 背景色
+$sl-bg-page: #F8FAFC;         // slate-50
+$sl-bg-card: #FFFFFF;
+$sl-bg-hover: #F1F5F9;        // slate-100
+
+// 边框
+$sl-border-color: #E2E8F0;    // slate-200
+$sl-border-color-light: #F1F5F9; // slate-100
+$sl-border-radius: 16rpx;
+$sl-border-radius-sm: 8rpx;
+$sl-border-radius-lg: 24rpx;
+$sl-border-radius-xl: 32rpx;
+
+// 间距
+$sl-spacing-xs: 8rpx;
+$sl-spacing-sm: 16rpx;
+$sl-spacing-md: 24rpx;
+$sl-spacing-lg: 32rpx;
+$sl-spacing-xl: 48rpx;
+
+// 字号
+$sl-font-xs: 20rpx;
+$sl-font-sm: 24rpx;
+$sl-font-md: 28rpx;
+$sl-font-lg: 32rpx;
+$sl-font-xl: 36rpx;
+$sl-font-xxl: 48rpx;
+
+// 阴影
+$sl-shadow-sm: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
+$sl-shadow-md: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
+$sl-shadow-lg: 0 16rpx 48rpx rgba(0, 0, 0, 0.12);
+
+// TabBar
+$sl-tabbar-height: 100rpx;
+
+// 安全区
+$sl-safe-bottom: env(safe-area-inset-bottom);
