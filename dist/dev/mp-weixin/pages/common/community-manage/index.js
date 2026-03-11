@@ -31,11 +31,22 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
       name: "",
       regionId: "",
       address: "",
+      lng: 0,
+      lat: 0,
       orderNo: 0,
       imageIds: [],
       imageUrls: [],
       coverImageId: ""
     });
+    function autoGetLocation() {
+      common_vendor.index.chooseLocation({
+        success: (res) => {
+          form.value.lng = res.longitude;
+          form.value.lat = res.latitude;
+          form.value.address = res.name || res.address || "";
+        }
+      });
+    }
     const showRegionPicker = common_vendor.ref(false);
     function flattenRegions(nodes) {
       var _a;
@@ -74,8 +85,9 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
     }
     function openAdd() {
       isEdit.value = false;
-      form.value = { id: "", name: "", regionId: "", address: "", orderNo: 0, imageIds: [], imageUrls: [], coverImageId: "" };
+      form.value = { id: "", name: "", regionId: "", address: "", lng: 0, lat: 0, orderNo: 0, imageIds: [], imageUrls: [], coverImageId: "" };
       showForm.value = true;
+      autoGetLocation();
     }
     async function openEdit(item) {
       var _a;
@@ -84,6 +96,8 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
         id: item.id,
         name: item.name,
         regionId: item.regionId,
+        lng: item.lng || 0,
+        lat: item.lat || 0,
         address: item.address || "",
         orderNo: item.orderNo || 0,
         imageIds: [],
@@ -157,6 +171,8 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
             name: form.value.name,
             regionId: form.value.regionId,
             address: form.value.address || void 0,
+            lng: form.value.lng || void 0,
+            lat: form.value.lat || void 0,
             orderNo: form.value.orderNo,
             ...imageData
           });
@@ -166,6 +182,8 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
             name: form.value.name,
             regionId: form.value.regionId,
             address: form.value.address || void 0,
+            lng: form.value.lng || void 0,
+            lat: form.value.lat || void 0,
             orderNo: form.value.orderNo,
             ...imageData
           });
@@ -264,13 +282,17 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
         p: common_vendor.t(form.value.regionId ? getRegionName(form.value.regionId) : "请选择区域"),
         q: !form.value.regionId ? 1 : "",
         r: common_vendor.o(($event) => showRegionPicker.value = true),
-        s: form.value.address,
-        t: common_vendor.o(($event) => form.value.address = $event.detail.value),
-        v: form.value.orderNo,
-        w: common_vendor.o(common_vendor.m(($event) => form.value.orderNo = $event.detail.value, {
+        s: form.value.lng
+      }, form.value.lng ? {} : {}, {
+        t: common_vendor.t(form.value.lng ? "重新选点" : "选择位置"),
+        v: common_vendor.o(autoGetLocation),
+        w: form.value.address,
+        x: common_vendor.o(($event) => form.value.address = $event.detail.value),
+        y: form.value.orderNo,
+        z: common_vendor.o(common_vendor.m(($event) => form.value.orderNo = $event.detail.value, {
           number: true
         })),
-        x: common_vendor.f(form.value.imageUrls, (url, idx, i0) => {
+        A: common_vendor.f(form.value.imageUrls, (url, idx, i0) => {
           return common_vendor.e({
             a: url,
             b: form.value.imageIds[idx] === form.value.coverImageId
@@ -280,19 +302,19 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
             e: common_vendor.o(($event) => setCover(idx), idx)
           });
         }),
-        y: form.value.imageIds.length < 9
+        B: form.value.imageIds.length < 9
       }, form.value.imageIds.length < 9 ? {
-        z: common_vendor.o(onChooseImage)
+        C: common_vendor.o(onChooseImage)
       } : {}, {
-        A: common_vendor.o(($event) => showForm.value = false),
-        B: common_vendor.o(onSubmit),
-        C: common_vendor.o(() => {
+        D: common_vendor.o(($event) => showForm.value = false),
+        E: common_vendor.o(onSubmit),
+        F: common_vendor.o(() => {
         }),
-        D: common_vendor.o(($event) => showForm.value = false)
+        G: common_vendor.o(($event) => showForm.value = false)
       }) : {}, {
-        E: showRegionPicker.value
+        H: showRegionPicker.value
       }, showRegionPicker.value ? {
-        F: common_vendor.f(flattenRegions(regionTree.value), (r, k0, i0) => {
+        I: common_vendor.f(flattenRegions(regionTree.value), (r, k0, i0) => {
           return {
             a: common_vendor.t(r.name),
             b: r.id,
@@ -301,9 +323,9 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
             e: common_vendor.o(($event) => pickRegion(r.id), r.id)
           };
         }),
-        G: common_vendor.o(() => {
+        J: common_vendor.o(() => {
         }),
-        H: common_vendor.o(($event) => showRegionPicker.value = false)
+        K: common_vendor.o(($event) => showRegionPicker.value = false)
       } : {});
     };
   }

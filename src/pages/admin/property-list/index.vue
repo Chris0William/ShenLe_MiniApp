@@ -192,6 +192,7 @@ const page = ref(1)
 const pageSize = 10
 const list = ref<SlCommunityOutput[]>([])
 const loadStatus = ref<'more' | 'loading' | 'noMore'>('more')
+const refreshing = ref(false)
 
 async function loadData(reset = false) {
   if (reset) {
@@ -221,13 +222,14 @@ async function loadData(reset = false) {
     const res = await getCommunityPage(input)
     const newItems = res.items
     list.value = reset ? newItems : [...list.value, ...newItems]
-    console.log(123,loadStatus.value);
-    
+
     loadStatus.value = 'noMore'
     page.value++
     loadCovers(newItems)
   } catch {
     loadStatus.value = 'more'
+  } finally {
+    refreshing.value = false
   }
 }
 
@@ -236,6 +238,7 @@ function onLoadMore() {
 }
 
 function onRefresh() {
+  refreshing.value = true
   loadData(true)
 }
 
@@ -470,7 +473,7 @@ onMounted(() => {
           scroll-y
           class="community-list"
           refresher-enabled
-          :refresher-triggered="false"
+          :refresher-triggered="refreshing"
           @refresherrefresh="onRefresh"
           @scrolltolower="onLoadMore"
         >

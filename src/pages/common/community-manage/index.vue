@@ -34,11 +34,23 @@ const form = ref({
   name: '',
   regionId: '',
   address: '',
+  lng: 0,
+  lat: 0,
   orderNo: 0,
   imageIds: [] as string[],
   imageUrls: [] as string[],
   coverImageId: '',
 })
+
+function autoGetLocation() {
+  uni.chooseLocation({
+    success: (res) => {
+      form.value.lng = res.longitude
+      form.value.lat = res.latitude
+      form.value.address = res.name || res.address || ''
+    },
+  })
+}
 
 // Region picker
 const showRegionPicker = ref(false)
@@ -78,8 +90,9 @@ async function loadRegions() {
 
 function openAdd() {
   isEdit.value = false
-  form.value = { id: '', name: '', regionId: '', address: '', orderNo: 0, imageIds: [], imageUrls: [], coverImageId: '' }
+  form.value = { id: '', name: '', regionId: '', address: '', lng: 0, lat: 0, orderNo: 0, imageIds: [], imageUrls: [], coverImageId: '' }
   showForm.value = true
+  autoGetLocation()
 }
 
 async function openEdit(item: SlCommunityOutput) {
@@ -88,6 +101,8 @@ async function openEdit(item: SlCommunityOutput) {
     id: item.id,
     name: item.name,
     regionId: item.regionId,
+    lng: item.lng || 0, 
+    lat: item.lat ||0,
     address: item.address || '',
     orderNo: item.orderNo || 0,
     imageIds: [],
@@ -160,6 +175,8 @@ async function onSubmit() {
         name: form.value.name,
         regionId: form.value.regionId,
         address: form.value.address || undefined,
+        lng: form.value.lng || undefined,
+        lat: form.value.lat || undefined,
         orderNo: form.value.orderNo,
         ...imageData,
       })
@@ -169,6 +186,8 @@ async function onSubmit() {
         name: form.value.name,
         regionId: form.value.regionId,
         address: form.value.address || undefined,
+        lng: form.value.lng || undefined,
+        lat: form.value.lat || undefined,
         orderNo: form.value.orderNo,
         ...imageData,
       })
@@ -296,8 +315,12 @@ onShow(() => {
           </view>
         </view>
         <view class="form-group">
-          <text class="form-label">地址</text>
-          <input v-model="form.address" class="form-input" placeholder="请输入地址（选填）" />
+          <view class="form-label-row">
+            <text class="form-label">地址</text>
+            <text v-if="form.lng" class="locating-tip located">已定位</text>
+            <text class="locating-tip retap" @tap="autoGetLocation">{{ form.lng ? '重新选点' : '选择位置' }}</text>
+          </view>
+          <input v-model="form.address" class="form-input" placeholder="自动获取或手动填写" />
         </view>
         <view class="form-group">
           <text class="form-label">排序</text>
@@ -536,6 +559,30 @@ onShow(() => {
   font-size: $sl-font-sm;
   color: $sl-text-secondary;
   margin-bottom: $sl-spacing-xs;
+}
+
+.form-label-row {
+  display: flex;
+  align-items: center;
+  gap: $sl-spacing-sm;
+  margin-bottom: $sl-spacing-xs;
+
+  .form-label {
+    margin-bottom: 0;
+  }
+}
+
+.locating-tip {
+  font-size: $sl-font-xs;
+  color: $sl-text-placeholder;
+
+  &.located {
+    color: $sl-vacant;
+  }
+
+  &.retap {
+    color: $sl-primary;
+  }
 }
 
 .form-input {

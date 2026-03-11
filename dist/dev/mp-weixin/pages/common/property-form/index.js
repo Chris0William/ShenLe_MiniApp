@@ -201,8 +201,7 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
     }
     common_vendor.onLoad(async (options) => {
       var _a, _b, _c;
-      await loadCommunities();
-      await loadTags();
+      await Promise.all([loadCommunities(), loadTags()]);
       if (options == null ? void 0 : options.id) {
         isEdit.value = true;
         editId.value = options.id;

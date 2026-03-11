@@ -166,6 +166,7 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
     const page = common_vendor.ref(1);
     const list = common_vendor.ref([]);
     const loadStatus = common_vendor.ref("more");
+    const refreshing = common_vendor.ref(false);
     async function loadData(reset = false) {
       if (reset) {
         page.value = 1;
@@ -191,18 +192,20 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
         const res = await api_community.getCommunityPage(input);
         const newItems = res.items;
         list.value = reset ? newItems : [...list.value, ...newItems];
-        console.log(123, loadStatus.value);
         loadStatus.value = "noMore";
         page.value++;
         loadCovers(newItems);
       } catch {
         loadStatus.value = "more";
+      } finally {
+        refreshing.value = false;
       }
     }
     function onLoadMore() {
       if (loadStatus.value === "more") loadData();
     }
     function onRefresh() {
+      refreshing.value = true;
       loadData(true);
     }
     const coverCache = common_vendor.ref({});
@@ -364,11 +367,12 @@ const _sfc_main = /* @__PURE__ */ common_vendor.defineComponent({
           status: loadStatus.value
         })
       }, {
-        V: common_vendor.o(onRefresh),
-        W: common_vendor.o(onLoadMore),
-        X: !showFilter.value,
-        Y: common_vendor.o(goAddProperty),
-        Z: common_vendor.p({
+        V: refreshing.value,
+        W: common_vendor.o(onRefresh),
+        X: common_vendor.o(onLoadMore),
+        Y: !showFilter.value,
+        Z: common_vendor.o(goAddProperty),
+        aa: common_vendor.p({
           current: 1
         })
       });

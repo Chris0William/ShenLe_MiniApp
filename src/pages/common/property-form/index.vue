@@ -201,8 +201,7 @@ async function onSubmit() {
 }
 
 onLoad(async (options) => {
-  await loadCommunities()
-  await loadTags()
+  await Promise.all([loadCommunities(), loadTags()])
   if (options?.id) {
     isEdit.value = true
     editId.value = options.id

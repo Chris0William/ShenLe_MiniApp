@@ -92,25 +92,25 @@ onMounted(() => {
       <view class="section">
         <text class="section-title">快捷操作</text>
         <view class="quick-card">
-          <view class="quick-item" @tap="goTo('/pages/common/property-form/index')">
+          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/property-form/index')">
             <view class="quick-icon blue">
               <text>+</text>
             </view>
             <text class="quick-label">新增房源</text>
           </view>
-          <view class="quick-item" @tap="goTo('/pages/common/community-manage/index')">
+          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/community-manage/index')">
             <view class="quick-icon orange">
               <text class="icon-text">&#9962;</text>
             </view>
             <text class="quick-label">楼盘管理</text>
           </view>
-          <view class="quick-item" @tap="goTo('/pages/common/region-manage/index')">
+          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/region-manage/index')">
             <view class="quick-icon green">
               <text class="icon-text">&#9906;</text>
             </view>
             <text class="quick-label">区域管理</text>
           </view>
-          <view class="quick-item" @tap="goTo('/pages/common/tag-manage/index')">
+          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/tag-manage/index')">
             <view class="quick-icon purple">
               <text>#</text>
             </view>
@@ -251,6 +251,11 @@ onMounted(() => {
   flex-direction: column;
   align-items: center;
   gap: $sl-spacing-sm;
+}
+
+.quick-item-hover {
+  opacity: 0.6;
+  transform: scale(0.95);
 }
 
 .quick-icon {

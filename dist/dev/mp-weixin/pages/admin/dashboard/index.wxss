@@ -90,6 +90,10 @@
   align-items: center;
   gap: 16rpx;
 }
+.quick-item-hover.data-v-23ab96ab {
+  opacity: 0.6;
+  transform: scale(0.95);
+}
 .quick-icon.data-v-23ab96ab {
   width: 96rpx;
   height: 96rpx;
