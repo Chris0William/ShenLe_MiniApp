@@ -1,1 +1,0 @@
-"use strict";const t=require("./http.js");exports.addTag=a=>t.post("/api/slTag/add",a),exports.deleteTag=a=>t.post("/api/slTag/delete",a),exports.getTagCategoryList=()=>t.get("/api/slTag/categoryList"),exports.getTagList=a=>t.post("/api/slTag/list",a),exports.getTagPage=a=>t.post("/api/slTag/page",a),exports.updateTag=a=>t.post("/api/slTag/update",a);

@@ -1,1 +1,0 @@
-<view class="load-more data-v-b4bb1da7"><text wx:if="{{a}}" class="text data-v-b4bb1da7">加载中...</text><text wx:elif="{{b}}" class="text data-v-b4bb1da7">没有更多了</text><text wx:else class="text data-v-b4bb1da7">上拉加载更多</text></view>

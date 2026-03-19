@@ -1,7 +1,0 @@
-{
-  "navigationBarTitleText": "房源详情",
-  "navigationStyle": "custom",
-  "usingComponents": {
-    "sl-status-badge": "../../../components/sl-status-badge/sl-status-badge"
-  }
-}

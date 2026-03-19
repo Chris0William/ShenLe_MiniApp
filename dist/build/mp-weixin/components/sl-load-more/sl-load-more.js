@@ -1,1 +1,0 @@
-"use strict";const s=require("../../common/vendor.js"),t=s.defineComponent({__name:"sl-load-more",props:{status:{}},setup:t=>(t,e)=>s.e({a:"loading"===t.status},("loading"===t.status||t.status,{}),{b:"noMore"===t.status})}),e=s._export_sfc(t,[["__scopeId","data-v-b7f8da6c"]]);wx.createComponent(e);
