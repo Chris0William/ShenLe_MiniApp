@@ -1,0 +1,1 @@
+<view class="badge data-v-ba66c924" style="{{'color:' + b + ';' + ('background-color:' + c)}}">{{a}}</view>

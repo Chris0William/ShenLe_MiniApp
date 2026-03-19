@@ -1,0 +1,37 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/shell/index",
+    "pages/user/home/index",
+    "pages/user/map/index",
+    "pages/user/mine/index",
+    "pages/admin/dashboard/index",
+    "pages/admin/property-list/index",
+    "pages/admin/sales-control/index",
+    "pages/admin/mine/index",
+    "pages/common/property-detail/index",
+    "pages/common/property-form/index",
+    "pages/common/login/index",
+    "pages/common/region-manage/index",
+    "pages/common/community-manage/index",
+    "pages/common/building-manage/index",
+    "pages/common/community-properties/index",
+    "pages/common/tag-manage/index"
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "深乐租",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f5f5f5"
+  },
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于地图找房功能，获取您的位置以展示附近房源"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation",
+    "chooseLocation"
+  ],
+  "usingComponents": {}
+}

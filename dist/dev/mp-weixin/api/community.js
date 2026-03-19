@@ -1,0 +1,14 @@
+"use strict";
+const api_http = require("./http.js");
+const getCommunityPage = (input) => api_http.get("/api/slCommunity/page", input);
+const getCommunityList = (input) => api_http.get("/api/slCommunity/list", input);
+const getCommunityDetail = (id) => api_http.get("/api/slCommunity/detail", { id });
+const addCommunity = (input) => api_http.post("/api/slCommunity/add", input);
+const updateCommunity = (input) => api_http.post("/api/slCommunity/update", input);
+const deleteCommunity = (input) => api_http.post("/api/slCommunity/delete", input);
+exports.addCommunity = addCommunity;
+exports.deleteCommunity = deleteCommunity;
+exports.getCommunityDetail = getCommunityDetail;
+exports.getCommunityList = getCommunityList;
+exports.getCommunityPage = getCommunityPage;
+exports.updateCommunity = updateCommunity;

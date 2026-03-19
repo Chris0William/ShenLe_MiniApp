@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "我的",
+  "usingComponents": {
+    "sl-custom-tabbar": "../../../components/sl-custom-tabbar/sl-custom-tabbar"
+  }
+}

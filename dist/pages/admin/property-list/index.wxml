@@ -1,0 +1,46 @@
+<view class="page data-v-d0bd3009">
+  <view class="header data-v-d0bd3009" style="{{'padding-top:' + a}}"><text class="header-title data-v-d0bd3009">房源管理</text></view>
+  <view class="search-row data-v-d0bd3009">
+    <view class="search-bar data-v-d0bd3009"><text class="search-icon data-v-d0bd3009">🔍</text><input class="search-input data-v-d0bd3009" placeholder="搜索小区/房号" placeholder-class="search-placeholder" confirm-type="search" bindconfirm="{{b}}" value="{{c}}" bindinput="{{d}}" /></view>
+    <view class="{{['filter-btn', 'data-v-d0bd3009', e && 'active']}}" bindtap="{{f}}"><text class="filter-icon data-v-d0bd3009">☰</text></view>
+  </view>
+  <scroll-view scroll-x class="status-tabs data-v-d0bd3009" show-scrollbar="{{false}}">
+    <view wx:for="{{g}}" wx:for-item="tab" wx:key="c" class="{{['tab', 'data-v-d0bd3009', tab.d && 'active']}}" bindtap="{{tab.e}}"><text class="tab-label data-v-d0bd3009">{{tab.a}}</text><text wx:if="{{h}}" class="tab-count data-v-d0bd3009">{{tab.b}}</text></view>
+  </scroll-view>
+  <scroll-view scroll-y class="list-area data-v-d0bd3009" refresher-enabled refresher-triggered="{{false}}" bindrefresherrefresh="{{m}}" bindscrolltolower="{{n}}">
+    <view wx:if="{{i}}" class="empty-wrap data-v-d0bd3009">
+      <sl-empty-state wx:if="{{j}}" class="data-v-d0bd3009" u-i="d0bd3009-0" bind:__l="__l" u-p="{{j}}" />
+    </view>
+    <view wx:else class="property-list data-v-d0bd3009">
+      <view wx:for="{{k}}" wx:for-item="item" wx:key="m" class="property-card data-v-d0bd3009" bindtap="{{item.n}}">
+        <view class="card-left data-v-d0bd3009">
+          <image class="card-cover data-v-d0bd3009" src="{{item.a}}" mode="aspectFill" />
+          <view class="{{['status-badge', 'data-v-d0bd3009', item.c]}}"><text class="data-v-d0bd3009">{{item.b}}</text></view>
+        </view>
+        <view class="card-right data-v-d0bd3009"><text class="card-title data-v-d0bd3009">{{item.d}}</text><text class="card-desc data-v-d0bd3009">{{item.e}} | {{item.f}}m²</text><text class="card-location data-v-d0bd3009">{{item.g}}{{item.h}}</text>
+          <view class="card-bottom data-v-d0bd3009"><text class="card-price data-v-d0bd3009">¥{{item.i}}<text class="price-unit data-v-d0bd3009">/月</text></text>
+            <view class="card-actions data-v-d0bd3009">
+              <view class="act-btn edit data-v-d0bd3009" catchtap="{{item.j}}"><text class="data-v-d0bd3009">编辑</text></view>
+              <view class="act-btn status data-v-d0bd3009" catchtap="{{item.k}}"><text class="data-v-d0bd3009">状态</text></view>
+              <view class="act-btn del data-v-d0bd3009" catchtap="{{item.l}}"><text class="data-v-d0bd3009">删除</text></view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <sl-load-more wx:if="{{l}}" class="data-v-d0bd3009" u-i="d0bd3009-1" bind:__l="__l" u-p="{{l}}" />
+    </view>
+    <view class="data-v-d0bd3009" style="height:140rpx" />
+  </scroll-view>
+  <view class="fab data-v-d0bd3009" bindtap="{{o}}"><text class="fab-icon data-v-d0bd3009">+</text></view>
+  <view wx:if="{{p}}" class="modal-mask data-v-d0bd3009" bindtap="{{t}}">
+    <view class="modal-content data-v-d0bd3009" catchtap="{{s}}"><text class="modal-title data-v-d0bd3009">修改房源状态</text>
+      <view class="modal-options data-v-d0bd3009">
+        <view wx:for="{{q}}" wx:for-item="opt" wx:key="c" class="modal-option data-v-d0bd3009" bindtap="{{opt.d}}">
+          <view class="opt-dot data-v-d0bd3009" style="{{'background-color:' + opt.a}}" /><text class="data-v-d0bd3009">{{opt.b}}</text>
+        </view>
+      </view>
+      <view class="modal-cancel data-v-d0bd3009" bindtap="{{r}}"><text class="data-v-d0bd3009">取消</text></view>
+    </view>
+  </view>
+  <sl-custom-tabbar wx:if="{{v}}" class="data-v-d0bd3009" u-i="d0bd3009-2" bind:__l="__l" u-p="{{v}}" />
+</view>

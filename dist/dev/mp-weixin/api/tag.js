@@ -1,0 +1,14 @@
+"use strict";
+const api_http = require("./http.js");
+const getTagPage = (input) => api_http.get("/api/slTag/page", input);
+const getTagList = (input) => api_http.get("/api/slTag/list", input);
+const getTagCategoryList = () => api_http.get("/api/slTag/categoryList");
+const addTag = (input) => api_http.post("/api/slTag/add", input);
+const updateTag = (input) => api_http.post("/api/slTag/update", input);
+const deleteTag = (input) => api_http.post("/api/slTag/delete", input);
+exports.addTag = addTag;
+exports.deleteTag = deleteTag;
+exports.getTagCategoryList = getTagCategoryList;
+exports.getTagList = getTagList;
+exports.getTagPage = getTagPage;
+exports.updateTag = updateTag;
