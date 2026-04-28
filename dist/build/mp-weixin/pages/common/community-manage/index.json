@@ -1,7 +1,0 @@
-{
-  "navigationBarTitleText": "楼盘管理",
-  "usingComponents": {
-    "sl-empty-state": "../../../components/sl-empty-state/sl-empty-state",
-    "sl-load-more": "../../../components/sl-load-more/sl-load-more"
-  }
-}

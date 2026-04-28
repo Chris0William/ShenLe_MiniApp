@@ -1,1 +1,0 @@
-"use strict";const e=require("../../common/vendor.js"),t=e.defineComponent({__name:"sl-empty-state",props:{text:{}},setup:t=>(t,o)=>({a:e.t(t.text||"暂无数据")})}),o=e._export_sfc(t,[["__scopeId","data-v-5e1f7ae8"]]);wx.createComponent(o);

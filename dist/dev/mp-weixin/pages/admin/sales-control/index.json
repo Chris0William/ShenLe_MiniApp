@@ -1,7 +1,0 @@
-{
-  "navigationBarTitleText": "销控表",
-  "usingComponents": {
-    "sl-empty-state": "../../../components/sl-empty-state/sl-empty-state",
-    "sl-custom-tabbar": "../../../components/sl-custom-tabbar/sl-custom-tabbar"
-  }
-}

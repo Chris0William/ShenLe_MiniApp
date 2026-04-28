@@ -1,7 +1,0 @@
-{
-  "navigationBarTitleText": "地图找房",
-  "navigationStyle": "custom",
-  "usingComponents": {
-    "sl-custom-tabbar": "../../../components/sl-custom-tabbar/sl-custom-tabbar"
-  }
-}

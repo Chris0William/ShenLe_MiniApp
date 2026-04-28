@@ -1,9 +1,0 @@
-{
-  "navigationBarTitleText": "房源管理",
-  "navigationStyle": "custom",
-  "usingComponents": {
-    "sl-empty-state": "../../../components/sl-empty-state/sl-empty-state",
-    "sl-load-more": "../../../components/sl-load-more/sl-load-more",
-    "sl-custom-tabbar": "../../../components/sl-custom-tabbar/sl-custom-tabbar"
-  }
-}

@@ -1,1 +1,0 @@
-<block wx:if="{{a}}"><view class="tabbar data-v-dd579087"><view wx:for="{{b}}" wx:for-item="tab" wx:key="c" class="{{['tabbar-item', 'data-v-dd579087', tab.d && 'active']}}" bindtap="{{tab.e}}"><text class="tabbar-icon data-v-dd579087">{{tab.a}}</text><text class="tabbar-text data-v-dd579087">{{tab.b}}</text></view></view><view class="tabbar-placeholder data-v-dd579087"/></block>
