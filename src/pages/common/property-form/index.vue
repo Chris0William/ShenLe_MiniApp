@@ -209,6 +209,15 @@ function setCover(index: number) {
   form.coverImageId = String(form.imageIds[index] || '')
 }
 
+function previewImage(index: number) {
+  if (!form.imageUrls.length)
+    return
+  uni.previewImage({
+    current: form.imageUrls[index],
+    urls: form.imageUrls,
+  })
+}
+
 function validateStep(step = currentStep.value) {
   if (step === 0) {
     if (!form.communityId) {
@@ -532,7 +541,7 @@ onLoad(async (query) => {
         <text class="form-card__title">图片与标签</text>
         <view class="image-grid">
           <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
-            <image :src="url" mode="aspectFill" />
+            <image :src="url" mode="aspectFill" @tap="previewImage(index)" />
             <text v-if="idEquals(form.coverImageId, form.imageIds[index])" class="cover-badge">封面</text>
             <view class="image-actions">
               <text @tap="setCover(index)">设封面</text>

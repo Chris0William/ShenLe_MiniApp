@@ -56,7 +56,12 @@ async function loadDetail() {
 }
 
 function callLandlord() {
-  uni.makePhoneCall({ phoneNumber: detail.value?.landlordPhone || '10086' })
+  const phone = detail.value?.landlordPhone
+  if (!phone) {
+    uni.showToast({ title: '暂无房东电话', icon: 'none' })
+    return
+  }
+  uni.makePhoneCall({ phoneNumber: phone })
 }
 
 onLoad((query) => {
@@ -126,7 +131,7 @@ onLoad((query) => {
 
       <view class="section sl-card">
         <text class="section__title">描述</text>
-        <text class="description">{{ detail.description || detail.remark || '暂无描述，后续会接入更完整的房源亮点。' }}</text>
+        <text class="description">{{ detail.description || detail.remark || '暂无描述' }}</text>
       </view>
 
       <view class="bottom-bar sl-safe-bottom">
