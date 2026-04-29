@@ -4,7 +4,7 @@ import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { addBuilding, deleteBuilding, getBuildingDetail, getBuildingList, updateBuilding } from '@/api/building'
 import { getCommunityList } from '@/api/community'
-import { uploadFile } from '@/api/file'
+import { downloadFile, uploadFile } from '@/api/file'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -31,6 +31,7 @@ const communities = ref<SlCommunitySelectOutput[]>([])
 const communityId = ref('')
 const communityNameFromQuery = ref('')
 const list = ref<SlBuildingOutput[]>([])
+const coverMap = ref<Record<string, string>>({})
 const loading = ref(false)
 const formVisible = ref(false)
 const isEdit = ref(false)
@@ -78,8 +79,30 @@ function idEquals(left?: ShenLeId | string | null, right?: ShenLeId | string | n
 }
 
 function coverUrl(item: SlBuildingOutput) {
+  const cached = coverMap.value[String(item.id)]
+  if (cached)
+    return cached
   const url = item.coverImage || item.images?.[0]?.url
   return url ? resolveAssetUrl(url) : ''
+}
+
+async function hydrateCoverImages(items: SlBuildingOutput[]) {
+  const next: Record<string, string> = {}
+  await Promise.all(items.map(async (item) => {
+    const key = String(item.id)
+    if (!item.coverImageId || coverMap.value[key])
+      return
+    try {
+      next[key] = await downloadFile(item.coverImageId)
+    }
+    catch {
+      const url = item.coverImage || item.images?.[0]?.url
+      if (url)
+        next[key] = resolveAssetUrl(url)
+    }
+  }))
+  if (Object.keys(next).length)
+    coverMap.value = { ...coverMap.value, ...next }
 }
 
 async function loadCommunities() {
@@ -91,12 +114,15 @@ async function loadCommunities() {
 async function loadData() {
   if (!communityId.value) {
     list.value = []
+    coverMap.value = {}
     uni.stopPullDownRefresh()
     return
   }
   loading.value = true
   try {
     list.value = await getBuildingList({ communityId: communityId.value })
+    coverMap.value = {}
+    void hydrateCoverImages(list.value)
   }
   finally {
     loading.value = false
@@ -138,6 +164,30 @@ function resetForm(item?: SlBuildingOutput) {
   form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
 }
 
+async function loadFormImages(item: SlBuildingOutput) {
+  const images = item.images || []
+  form.imageIds = images.map(image => image.id)
+  form.imageUrls = await Promise.all(images.map(async (image) => {
+    try {
+      return await downloadFile(image.id)
+    }
+    catch {
+      return resolveAssetUrl(image.url)
+    }
+  }))
+
+  if (!form.imageIds.length && item.coverImageId && item.coverImage) {
+    form.imageIds = [item.coverImageId]
+    try {
+      form.imageUrls = [await downloadFile(item.coverImageId)]
+    }
+    catch {
+      form.imageUrls = [resolveAssetUrl(item.coverImage)]
+    }
+  }
+  form.coverImageId = item.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
+}
+
 function openAdd() {
   if (!communityId.value) {
     uni.showToast({ title: '请先选择楼盘', icon: 'none' })
@@ -153,6 +203,7 @@ async function openEdit(item: SlBuildingOutput) {
   try {
     const detail = await getBuildingDetail(item.id)
     resetForm(detail)
+    await loadFormImages(detail)
   }
   catch {
     formVisible.value = false
@@ -177,7 +228,7 @@ async function chooseImages() {
         for (const tempPath of res.tempFilePaths) {
           const file = await uploadFile(tempPath)
           form.imageIds.push(file.id)
-          form.imageUrls.push(file.url ? resolveAssetUrl(file.url) : tempPath)
+          form.imageUrls.push(tempPath)
           if (!form.coverImageId)
             form.coverImageId = String(file.id)
         }

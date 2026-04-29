@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { SlPropertyListOutput } from '@/types/shenle'
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { downloadFile } from '@/api/file'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 
 const props = defineProps<{
@@ -13,7 +14,29 @@ const emit = defineEmits<{
 }>()
 
 const status = computed(() => getStatusMeta(props.item.status))
-const cover = computed(() => resolveAssetUrl(props.item.coverImage))
+const cover = ref(resolveAssetUrl(props.item.coverImage))
+let coverSeq = 0
+
+watch(
+  () => [props.item.coverImageId, props.item.coverImage],
+  async () => {
+    const seq = ++coverSeq
+    if (!props.item.coverImageId) {
+      cover.value = resolveAssetUrl(props.item.coverImage)
+      return
+    }
+    try {
+      const localPath = await downloadFile(props.item.coverImageId)
+      if (seq === coverSeq)
+        cover.value = localPath
+    }
+    catch {
+      if (seq === coverSeq)
+        cover.value = resolveAssetUrl(props.item.coverImage)
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>

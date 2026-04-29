@@ -2,6 +2,7 @@
 import type { SlPropertyOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import { downloadFile } from '@/api/file'
 import { getPropertyDetail } from '@/api/property'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 
@@ -14,18 +15,40 @@ definePage({
 const id = ref('')
 const detail = ref<SlPropertyOutput | null>(null)
 const loading = ref(true)
+const gallery = ref<string[]>([])
 const status = computed(() => getStatusMeta(detail.value?.status))
-const gallery = computed(() => {
-  const images = detail.value?.images?.map(item => resolveAssetUrl(item.url)).filter(Boolean) || []
-  return images.length ? images : [resolveAssetUrl(detail.value?.coverImage)]
-})
+
+async function loadGallery(nextDetail: SlPropertyOutput) {
+  const images = nextDetail.images || []
+  const urls = await Promise.all(images.map(async (image) => {
+    try {
+      return await downloadFile(image.id)
+    }
+    catch {
+      return resolveAssetUrl(image.url)
+    }
+  }))
+
+  if (!urls.length && nextDetail.coverImageId) {
+    try {
+      urls.push(await downloadFile(nextDetail.coverImageId))
+    }
+    catch {
+      urls.push(resolveAssetUrl(nextDetail.coverImage))
+    }
+  }
+
+  gallery.value = urls.length ? urls : [resolveAssetUrl(nextDetail.coverImage)]
+}
 
 async function loadDetail() {
   if (!id.value)
     return
   loading.value = true
   try {
-    detail.value = await getPropertyDetail(id.value)
+    const nextDetail = await getPropertyDetail(id.value)
+    detail.value = nextDetail
+    await loadGallery(nextDetail)
   }
   finally {
     loading.value = false
@@ -57,7 +80,9 @@ onLoad((query) => {
       <view class="detail-main sl-card">
         <view class="sl-row-between">
           <text class="detail-title">{{ detail.title }}</text>
-          <wd-tag :type="status.tone as any">{{ detail.statusName || status.label }}</wd-tag>
+          <wd-tag :type="status.tone as any">
+            {{ detail.statusName || status.label }}
+          </wd-tag>
         </view>
         <text class="detail-community">{{ detail.communityName }} {{ detail.buildingName || '' }}</text>
         <view class="price-line">
@@ -73,17 +98,29 @@ onLoad((query) => {
 
       <view class="section sl-card">
         <text class="section__title">房源信息</text>
-        <view class="info-row"><text>朝向</text><text>{{ detail.orientation || '待补充' }}</text></view>
-        <view class="info-row"><text>装修</text><text>{{ detail.decoration || '待补充' }}</text></view>
-        <view class="info-row"><text>出租方式</text><text>{{ detail.rentalType || '待补充' }}</text></view>
-        <view class="info-row"><text>押付</text><text>{{ detail.depositRule || '待补充' }}</text></view>
+        <view class="info-row">
+          <text>朝向</text><text>{{ detail.orientation || '待补充' }}</text>
+        </view>
+        <view class="info-row">
+          <text>装修</text><text>{{ detail.decoration || '待补充' }}</text>
+        </view>
+        <view class="info-row">
+          <text>出租方式</text><text>{{ detail.rentalType || '待补充' }}</text>
+        </view>
+        <view class="info-row">
+          <text>押付</text><text>{{ detail.depositRule || '待补充' }}</text>
+        </view>
       </view>
 
       <view v-if="detail.tags?.length || detail.facilities?.length" class="section sl-card">
         <text class="section__title">标签与配套</text>
         <view class="tag-list">
-          <wd-tag v-for="tag in detail.tags" :key="`tag-${String(tag.id)}`" plain>{{ tag.name }}</wd-tag>
-          <wd-tag v-for="tag in detail.facilities" :key="`facility-${String(tag.id)}`" type="success" plain>{{ tag.name }}</wd-tag>
+          <wd-tag v-for="tag in detail.tags" :key="`tag-${String(tag.id)}`" plain>
+            {{ tag.name }}
+          </wd-tag>
+          <wd-tag v-for="tag in detail.facilities" :key="`facility-${String(tag.id)}`" type="success" plain>
+            {{ tag.name }}
+          </wd-tag>
         </view>
       </view>
 

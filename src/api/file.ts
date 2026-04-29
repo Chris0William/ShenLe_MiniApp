@@ -1,6 +1,8 @@
 import type { AdminResult, ImageOutput } from '@/types/shenle'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY } from '@/utils/shenle'
 
+const fileCache = new Map<string, string>()
+
 export function uploadFile(filePath: string): Promise<ImageOutput> {
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync(SHENLE_TOKEN_KEY) as string
@@ -36,4 +38,30 @@ export function uploadFile(filePath: string): Promise<ImageOutput> {
 
 export function getPreviewUrl(fileId: string | number) {
   return `${getApiBaseUrl()}/api/sysFile/Preview/${fileId}`
+}
+
+export function downloadFile(fileId: string | number): Promise<string> {
+  const key = String(fileId)
+  const cached = fileCache.get(key)
+  if (cached)
+    return Promise.resolve(cached)
+
+  return new Promise((resolve, reject) => {
+    const token = uni.getStorageSync(SHENLE_TOKEN_KEY) as string
+    uni.downloadFile({
+      url: getPreviewUrl(key),
+      header: token ? { Authorization: `Bearer ${token}` } : {},
+      success(res) {
+        if (res.statusCode === 200 && res.tempFilePath) {
+          fileCache.set(key, res.tempFilePath)
+          resolve(res.tempFilePath)
+          return
+        }
+        reject(new Error(`下载失败: ${res.statusCode}`))
+      },
+      fail(error) {
+        reject(error)
+      },
+    })
+  })
 }

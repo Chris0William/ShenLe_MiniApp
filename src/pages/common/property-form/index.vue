@@ -4,9 +4,9 @@ import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { getBuildingList } from '@/api/building'
 import { getCommunityList } from '@/api/community'
-import { getPropertyDetail, addProperty, updateProperty } from '@/api/property'
+import { downloadFile, uploadFile } from '@/api/file'
+import { addProperty, getPropertyDetail, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
-import { uploadFile } from '@/api/file'
 import {
   DECORATION_OPTIONS,
   DEPOSIT_RULE_OPTIONS,
@@ -185,7 +185,7 @@ async function chooseImages() {
         for (const tempPath of res.tempFilePaths) {
           const file = await uploadFile(tempPath)
           form.imageIds.push(file.id)
-          form.imageUrls.push(resolveAssetUrl(file.url) || tempPath)
+          form.imageUrls.push(tempPath)
           if (!form.coverImageId)
             form.coverImageId = String(file.id)
         }
@@ -299,7 +299,7 @@ async function submit() {
   }
 }
 
-function fillDetail(detail: SlPropertyOutput) {
+async function fillDetail(detail: SlPropertyOutput) {
   form.communityId = String(detail.communityId || '')
   form.buildingId = String(detail.buildingId || '')
   form.floor = detail.floor === null || detail.floor === undefined ? '' : String(detail.floor)
@@ -325,7 +325,23 @@ function fillDetail(detail: SlPropertyOutput) {
   form.tagIds = detail.tags?.map(item => item.id) || []
   form.facilityIds = detail.facilities?.map(item => item.id) || []
   form.imageIds = detail.images?.map(item => item.id) || []
-  form.imageUrls = detail.images?.map(item => resolveAssetUrl(item.url)) || []
+  form.imageUrls = await Promise.all((detail.images || []).map(async (image) => {
+    try {
+      return await downloadFile(image.id)
+    }
+    catch {
+      return resolveAssetUrl(image.url)
+    }
+  }))
+  if (!form.imageIds.length && detail.coverImageId && detail.coverImage) {
+    form.imageIds = [detail.coverImageId]
+    try {
+      form.imageUrls = [await downloadFile(detail.coverImageId)]
+    }
+    catch {
+      form.imageUrls = [resolveAssetUrl(detail.coverImage)]
+    }
+  }
   form.coverImageId = detail.coverImageId ? String(detail.coverImageId) : String(form.imageIds[0] || '')
 }
 
@@ -337,7 +353,7 @@ onLoad(async (query) => {
       isEdit.value = true
       editId.value = String(query.id)
       const detail = await getPropertyDetail(editId.value)
-      fillDetail(detail)
+      await fillDetail(detail)
       communityPickerIdx.value = Math.max(0, communities.value.findIndex(item => idEquals(item.id, form.communityId)))
       await loadBuildings(form.communityId)
       buildingPickerIdx.value = Math.max(0, buildings.value.findIndex(item => idEquals(item.id, form.buildingId)))
@@ -365,7 +381,9 @@ onLoad(async (query) => {
         <text class="form-hero__title">{{ form.title || '完善房源信息' }}</text>
         <text class="form-hero__desc">按楼盘、房间、价格和图片三步录入，保存后可进入销控表。</text>
       </view>
-      <wd-tag :type="isEdit ? 'warning' : 'success'" plain>{{ isEdit ? '编辑' : '新增' }}</wd-tag>
+      <wd-tag :type="isEdit ? 'warning' : 'success'" plain>
+        {{ isEdit ? '编辑' : '新增' }}
+      </wd-tag>
     </view>
 
     <view class="steps sl-card">
@@ -375,7 +393,9 @@ onLoad(async (query) => {
       </view>
     </view>
 
-    <view v-if="loading" class="loading sl-card">房源加载中...</view>
+    <view v-if="loading" class="loading sl-card">
+      房源加载中...
+    </view>
 
     <scroll-view v-else scroll-y class="form-scroll">
       <view v-if="currentStep === 0" class="form-card sl-card">
@@ -383,13 +403,17 @@ onLoad(async (query) => {
         <view class="form-item">
           <text class="form-label">楼盘 *</text>
           <picker :range="communityNames" :value="communityPickerIdx" @change="onCommunityChange">
-            <view class="picker-value">{{ selectedCommunity?.name || '请选择楼盘' }}</view>
+            <view class="picker-value">
+              {{ selectedCommunity?.name || '请选择楼盘' }}
+            </view>
           </picker>
         </view>
         <view class="form-item">
           <text class="form-label">楼栋 *</text>
           <picker :range="buildingNames" :value="buildingPickerIdx" :disabled="!form.communityId" @change="onBuildingChange">
-            <view class="picker-value" :class="{ disabled: !form.communityId }">{{ selectedBuilding?.name || (form.communityId ? '请选择楼栋' : '请先选择楼盘') }}</view>
+            <view class="picker-value" :class="{ disabled: !form.communityId }">
+              {{ selectedBuilding?.name || (form.communityId ? '请选择楼栋' : '请先选择楼盘') }}
+            </view>
           </picker>
         </view>
         <view class="form-grid">
@@ -451,31 +475,41 @@ onLoad(async (query) => {
         <view class="form-item">
           <text class="form-label">朝向</text>
           <picker :range="ORIENTATION_OPTIONS.map(item => item.label)" :value="form.orientationIdx" @change="(event: any) => form.orientationIdx = Number(event.detail.value)">
-            <view class="picker-value">{{ form.orientationIdx >= 0 ? ORIENTATION_OPTIONS[form.orientationIdx].label : '请选择' }}</view>
+            <view class="picker-value">
+              {{ form.orientationIdx >= 0 ? ORIENTATION_OPTIONS[form.orientationIdx].label : '请选择' }}
+            </view>
           </picker>
         </view>
         <view class="form-item">
           <text class="form-label">装修</text>
           <picker :range="DECORATION_OPTIONS.map(item => item.label)" :value="form.decorationIdx" @change="(event: any) => form.decorationIdx = Number(event.detail.value)">
-            <view class="picker-value">{{ form.decorationIdx >= 0 ? DECORATION_OPTIONS[form.decorationIdx].label : '请选择' }}</view>
+            <view class="picker-value">
+              {{ form.decorationIdx >= 0 ? DECORATION_OPTIONS[form.decorationIdx].label : '请选择' }}
+            </view>
           </picker>
         </view>
         <view class="form-item">
           <text class="form-label">出租方式</text>
           <picker :range="RENTAL_TYPE_OPTIONS.map(item => item.label)" :value="form.rentalTypeIdx" @change="(event: any) => form.rentalTypeIdx = Number(event.detail.value)">
-            <view class="picker-value">{{ form.rentalTypeIdx >= 0 ? RENTAL_TYPE_OPTIONS[form.rentalTypeIdx].label : '请选择' }}</view>
+            <view class="picker-value">
+              {{ form.rentalTypeIdx >= 0 ? RENTAL_TYPE_OPTIONS[form.rentalTypeIdx].label : '请选择' }}
+            </view>
           </picker>
         </view>
         <view class="form-item">
           <text class="form-label">押付方式</text>
           <picker :range="DEPOSIT_RULE_OPTIONS.map(item => item.label)" :value="form.depositRuleIdx" @change="(event: any) => form.depositRuleIdx = Number(event.detail.value)">
-            <view class="picker-value">{{ form.depositRuleIdx >= 0 ? DEPOSIT_RULE_OPTIONS[form.depositRuleIdx].label : '请选择' }}</view>
+            <view class="picker-value">
+              {{ form.depositRuleIdx >= 0 ? DEPOSIT_RULE_OPTIONS[form.depositRuleIdx].label : '请选择' }}
+            </view>
           </picker>
         </view>
         <view class="form-item">
           <text class="form-label">状态</text>
           <view class="status-row">
-            <wd-tag v-for="item in PROPERTY_STATUS_OPTIONS" :key="item.value" :type="form.status === item.value ? item.tone as any : 'default'" @click="form.status = item.value">{{ item.label }}</wd-tag>
+            <wd-tag v-for="item in PROPERTY_STATUS_OPTIONS" :key="item.value" :type="form.status === item.value ? item.tone as any : 'default'" @click="form.status = item.value">
+              {{ item.label }}
+            </wd-tag>
           </view>
         </view>
         <view class="form-grid">
@@ -513,13 +547,17 @@ onLoad(async (query) => {
         <view v-if="houseTags.length" class="tag-section">
           <text class="form-label">房源标签</text>
           <view class="tag-list">
-            <wd-tag v-for="tag in houseTags" :key="String(tag.id)" :type="hasId(form.tagIds, tag.id) ? 'success' : 'default'" @click="toggleId(form.tagIds, tag.id)">{{ tag.name }}</wd-tag>
+            <wd-tag v-for="tag in houseTags" :key="String(tag.id)" :type="hasId(form.tagIds, tag.id) ? 'success' : 'default'" @click="toggleId(form.tagIds, tag.id)">
+              {{ tag.name }}
+            </wd-tag>
           </view>
         </view>
         <view v-if="facilityTags.length" class="tag-section">
           <text class="form-label">配套设施</text>
           <view class="tag-list">
-            <wd-tag v-for="tag in facilityTags" :key="String(tag.id)" :type="hasId(form.facilityIds, tag.id) ? 'success' : 'default'" @click="toggleId(form.facilityIds, tag.id)">{{ tag.name }}</wd-tag>
+            <wd-tag v-for="tag in facilityTags" :key="String(tag.id)" :type="hasId(form.facilityIds, tag.id) ? 'success' : 'default'" @click="toggleId(form.facilityIds, tag.id)">
+              {{ tag.name }}
+            </wd-tag>
           </view>
         </view>
         <view class="form-item">
@@ -530,9 +568,15 @@ onLoad(async (query) => {
     </scroll-view>
 
     <view class="bottom-bar sl-safe-bottom">
-      <wd-button v-if="currentStep > 0" plain type="default" @click="prevStep">上一步</wd-button>
-      <wd-button v-if="currentStep < steps.length - 1" block type="primary" @click="nextStep">下一步</wd-button>
-      <wd-button v-else block type="primary" :loading="submitting" @click="submit">{{ isEdit ? '保存修改' : '发布房源' }}</wd-button>
+      <wd-button v-if="currentStep > 0" plain type="default" @click="prevStep">
+        上一步
+      </wd-button>
+      <wd-button v-if="currentStep < steps.length - 1" block type="primary" @click="nextStep">
+        下一步
+      </wd-button>
+      <wd-button v-else block type="primary" :loading="submitting" @click="submit">
+        {{ isEdit ? '保存修改' : '发布房源' }}
+      </wd-button>
     </view>
   </view>
 </template>

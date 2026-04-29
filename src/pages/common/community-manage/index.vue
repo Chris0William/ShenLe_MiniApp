@@ -3,7 +3,7 @@ import type { AddSlCommunityInput, ShenLeId, SlCommunityOutput, SlRegionTreeOutp
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, updateCommunity } from '@/api/community'
-import { uploadFile } from '@/api/file'
+import { downloadFile, uploadFile } from '@/api/file'
 import { getRegionTree } from '@/api/region'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
@@ -40,6 +40,7 @@ const page = ref(1)
 const pageSize = 12
 const total = ref(0)
 const list = ref<SlCommunityOutput[]>([])
+const coverMap = ref<Record<string, string>>({})
 const keyword = ref('')
 const activeType = ref<number | undefined>()
 const regionTree = ref<SlRegionTreeOutput[]>([])
@@ -107,8 +108,30 @@ function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | nul
 }
 
 function coverUrl(item: SlCommunityOutput) {
+  const cached = coverMap.value[String(item.id)]
+  if (cached)
+    return cached
   const url = item.coverImage || item.images?.[0]?.url
   return url ? resolveAssetUrl(url) : ''
+}
+
+async function hydrateCoverImages(items: SlCommunityOutput[]) {
+  const next: Record<string, string> = {}
+  await Promise.all(items.map(async (item) => {
+    const key = String(item.id)
+    if (!item.coverImageId || coverMap.value[key])
+      return
+    try {
+      next[key] = await downloadFile(item.coverImageId)
+    }
+    catch {
+      const url = item.coverImage || item.images?.[0]?.url
+      if (url)
+        next[key] = resolveAssetUrl(url)
+    }
+  }))
+  if (Object.keys(next).length)
+    coverMap.value = { ...coverMap.value, ...next }
 }
 
 function toNumber(value: string, fallback?: number) {
@@ -140,6 +163,7 @@ async function loadData(reset = false) {
   if (reset) {
     page.value = 1
     list.value = []
+    coverMap.value = {}
     finished.value = false
   }
   if (finished.value)
@@ -158,6 +182,7 @@ async function loadData(reset = false) {
     total.value = res.total
     finished.value = list.value.length >= res.total || res.items.length < pageSize
     page.value += 1
+    void hydrateCoverImages(res.items)
   }
   finally {
     loading.value = false
@@ -197,6 +222,30 @@ function resetForm(item?: SlCommunityOutput) {
   form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
 }
 
+async function loadFormImages(item: SlCommunityOutput) {
+  const images = item.images || []
+  form.imageIds = images.map(image => image.id)
+  form.imageUrls = await Promise.all(images.map(async (image) => {
+    try {
+      return await downloadFile(image.id)
+    }
+    catch {
+      return resolveAssetUrl(image.url)
+    }
+  }))
+
+  if (!form.imageIds.length && item.coverImageId && item.coverImage) {
+    form.imageIds = [item.coverImageId]
+    try {
+      form.imageUrls = [await downloadFile(item.coverImageId)]
+    }
+    catch {
+      form.imageUrls = [resolveAssetUrl(item.coverImage)]
+    }
+  }
+  form.coverImageId = item.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
+}
+
 function openAdd() {
   resetForm()
   formVisible.value = true
@@ -208,6 +257,7 @@ async function openEdit(item: SlCommunityOutput) {
   try {
     const detail = await getCommunityDetail(item.id)
     resetForm(detail)
+    await loadFormImages(detail)
   }
   catch {
     formVisible.value = false
@@ -232,7 +282,7 @@ async function chooseImages() {
         for (const tempPath of res.tempFilePaths) {
           const file = await uploadFile(tempPath)
           form.imageIds.push(file.id)
-          form.imageUrls.push(file.url ? resolveAssetUrl(file.url) : tempPath)
+          form.imageUrls.push(tempPath)
           if (!form.coverImageId)
             form.coverImageId = String(file.id)
         }
