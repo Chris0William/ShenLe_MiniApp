@@ -2,9 +2,10 @@
 import type { AddSlCommunityInput, ShenLeId, SlCommunityOutput, SlRegionTreeOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
-import { addCommunity, deleteCommunity, getCommunityPage, updateCommunity } from '@/api/community'
+import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, updateCommunity } from '@/api/community'
+import { uploadFile } from '@/api/file'
 import { getRegionTree } from '@/api/region'
-import { idToQuery } from '@/utils/shenle'
+import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
   style: {
@@ -30,6 +31,9 @@ interface CommunityForm {
   orderNo: string
   status: number
   remark: string
+  imageIds: ShenLeId[]
+  imageUrls: string[]
+  coverImageId: string
 }
 
 const page = ref(1)
@@ -45,6 +49,7 @@ const finished = ref(false)
 const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
+const uploading = ref(false)
 
 const form = reactive<CommunityForm>({
   id: '',
@@ -57,6 +62,9 @@ const form = reactive<CommunityForm>({
   orderNo: '100',
   status: 0,
   remark: '',
+  imageIds: [],
+  imageUrls: [],
+  coverImageId: '',
 })
 
 const typeOptions = [
@@ -96,6 +104,11 @@ const showing = computed(() => list.value.length)
 
 function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
   return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
+}
+
+function coverUrl(item: SlCommunityOutput) {
+  const url = item.coverImage || item.images?.[0]?.url
+  return url ? resolveAssetUrl(url) : ''
 }
 
 function toNumber(value: string, fallback?: number) {
@@ -175,6 +188,13 @@ function resetForm(item?: SlCommunityOutput) {
   form.orderNo = String(item?.orderNo ?? 100)
   form.status = item?.status ?? 0
   form.remark = item?.remark || ''
+  form.imageIds = item?.images?.map(image => image.id) || []
+  form.imageUrls = item?.images?.map(image => resolveAssetUrl(image.url)) || []
+  if (!form.imageIds.length && item?.coverImageId && item.coverImage) {
+    form.imageIds = [item.coverImageId]
+    form.imageUrls = [resolveAssetUrl(item.coverImage)]
+  }
+  form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
 }
 
 function openAdd() {
@@ -182,9 +202,67 @@ function openAdd() {
   formVisible.value = true
 }
 
-function openEdit(item: SlCommunityOutput) {
+async function openEdit(item: SlCommunityOutput) {
   resetForm(item)
   formVisible.value = true
+  try {
+    const detail = await getCommunityDetail(item.id)
+    resetForm(detail)
+  }
+  catch {
+    formVisible.value = false
+    uni.showToast({ title: '楼盘详情加载失败', icon: 'none' })
+  }
+}
+
+async function chooseImages() {
+  if (uploading.value)
+    return
+  const remain = 9 - form.imageIds.length
+  if (remain <= 0) {
+    uni.showToast({ title: '最多上传 9 张', icon: 'none' })
+    return
+  }
+  uni.chooseImage({
+    count: remain,
+    sizeType: ['compressed'],
+    success: async (res) => {
+      uploading.value = true
+      try {
+        for (const tempPath of res.tempFilePaths) {
+          const file = await uploadFile(tempPath)
+          form.imageIds.push(file.id)
+          form.imageUrls.push(file.url ? resolveAssetUrl(file.url) : tempPath)
+          if (!form.coverImageId)
+            form.coverImageId = String(file.id)
+        }
+      }
+      finally {
+        uploading.value = false
+      }
+    },
+  })
+}
+
+function removeImage(index: number) {
+  const removed = form.imageIds[index]
+  form.imageIds.splice(index, 1)
+  form.imageUrls.splice(index, 1)
+  if (sameId(form.coverImageId, removed))
+    form.coverImageId = String(form.imageIds[0] || '')
+}
+
+function setCover(index: number) {
+  form.coverImageId = String(form.imageIds[index] || '')
+}
+
+function previewImage(index: number) {
+  if (!form.imageUrls.length)
+    return
+  uni.previewImage({
+    current: form.imageUrls[index],
+    urls: form.imageUrls,
+  })
 }
 
 function chooseLocation() {
@@ -210,6 +288,8 @@ function buildPayload(): AddSlCommunityInput {
     orderNo: toNumber(form.orderNo, 100),
     status: form.status,
     remark: form.remark.trim() || undefined,
+    coverImageId: form.coverImageId || undefined,
+    imageIds: form.imageIds,
   }
 }
 
@@ -279,7 +359,7 @@ onReachBottom(() => loadData())
 
     <view class="toolbar sl-card">
       <view class="search-row">
-        <input v-model="keyword" class="search-input" placeholder="搜索楼盘名称" confirm-type="search" @confirm="loadData(true)" />
+        <input v-model="keyword" class="search-input" placeholder="搜索楼盘名称" confirm-type="search" @confirm="loadData(true)">
         <wd-button size="small" type="primary" @click="loadData(true)">
           搜索
         </wd-button>
@@ -295,7 +375,9 @@ onReachBottom(() => loadData())
           {{ item.label }}
         </view>
         <picker mode="selector" :value="filterRegionIndex" :range="regionNames" @change="onFilterRegionChange">
-          <view class="chip chip--picker">{{ regionNames[filterRegionIndex] || '全部区域' }}</view>
+          <view class="chip chip--picker">
+            {{ regionNames[filterRegionIndex] || '全部区域' }}
+          </view>
         </picker>
       </view>
     </view>
@@ -312,37 +394,56 @@ onReachBottom(() => loadData())
 
     <view class="community-list">
       <view v-for="item in list" :key="String(item.id)" class="community-card sl-card">
-        <view class="card-head">
-          <view>
-            <view class="title-line">
-              <text class="card-title">{{ item.name }}</text>
-              <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>{{ statusLabel(item.status) }}</wd-tag>
+        <view class="community-card__main">
+          <image v-if="coverUrl(item)" class="card-cover" :src="coverUrl(item)" mode="aspectFill" />
+          <view class="card-content">
+            <view class="card-head">
+              <view>
+                <view class="title-line">
+                  <text class="card-title">{{ item.name }}</text>
+                  <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>
+                    {{ statusLabel(item.status) }}
+                  </wd-tag>
+                </view>
+                <text class="card-sub">{{ regionName(item.regionId) }} · {{ typeLabel(item.type) }}</text>
+              </view>
+              <view class="metric">
+                <text>{{ item.propertyCount || 0 }}</text>
+                <text>房源</text>
+              </view>
             </view>
-            <text class="card-sub">{{ regionName(item.regionId) }} · {{ typeLabel(item.type) }}</text>
+            <text class="address">{{ item.address || '未维护详细地址' }}</text>
+            <view class="meta-row">
+              <text>{{ item.buildingCount || 0 }} 栋</text>
+              <text>排序 {{ item.orderNo }}</text>
+              <text v-if="item.lng && item.lat">坐标已维护</text>
+              <text v-else>缺少坐标</text>
+            </view>
+            <view class="actions">
+              <wd-button size="small" plain @click="goBuildings(item)">
+                楼栋
+              </wd-button>
+              <wd-button size="small" plain @click="goProperties(item)">
+                房源
+              </wd-button>
+              <wd-button size="small" type="primary" plain @click="openEdit(item)">
+                编辑
+              </wd-button>
+              <wd-button size="small" type="danger" plain @click="confirmDelete(item)">
+                删除
+              </wd-button>
+            </view>
           </view>
-          <view class="metric">
-            <text>{{ item.propertyCount || 0 }}</text>
-            <text>房源</text>
-          </view>
-        </view>
-        <text class="address">{{ item.address || '未维护详细地址' }}</text>
-        <view class="meta-row">
-          <text>{{ item.buildingCount || 0 }} 栋</text>
-          <text>排序 {{ item.orderNo }}</text>
-          <text v-if="item.lng && item.lat">坐标已维护</text>
-          <text v-else>缺少坐标</text>
-        </view>
-        <view class="actions">
-          <wd-button size="small" plain @click="goBuildings(item)">楼栋</wd-button>
-          <wd-button size="small" plain @click="goProperties(item)">房源</wd-button>
-          <wd-button size="small" type="primary" plain @click="openEdit(item)">编辑</wd-button>
-          <wd-button size="small" type="danger" plain @click="confirmDelete(item)">删除</wd-button>
         </view>
       </view>
     </view>
 
-    <view v-if="loading" class="load-tip">加载中...</view>
-    <view v-else-if="finished && list.length" class="load-tip">已经到底了</view>
+    <view v-if="loading" class="load-tip">
+      加载中...
+    </view>
+    <view v-else-if="finished && list.length" class="load-tip">
+      已经到底了
+    </view>
 
     <view class="fab" @tap="openAdd">
       <wd-icon name="add" size="26px" color="#fff" />
@@ -361,13 +462,17 @@ onReachBottom(() => loadData())
         <view class="form-body">
           <view class="form-row">
             <text>楼盘名称</text>
-            <input v-model="form.name" placeholder="如：西田八巷8" />
+            <input v-model="form.name" placeholder="如：西田八巷8">
           </view>
           <view class="form-row">
             <text>楼盘类型</text>
             <view class="segmented">
-              <view :class="{ active: form.type === 1 }" @tap="form.type = 1">小区</view>
-              <view :class="{ active: form.type === 2 }" @tap="form.type = 2">公寓</view>
+              <view :class="{ active: form.type === 1 }" @tap="form.type = 1">
+                小区
+              </view>
+              <view :class="{ active: form.type === 2 }" @tap="form.type = 2">
+                公寓
+              </view>
             </view>
           </view>
           <picker mode="selector" :value="formRegionIndex" :range="formRegionNames" @change="onFormRegionChange">
@@ -378,23 +483,45 @@ onReachBottom(() => loadData())
           </picker>
           <view class="form-row">
             <text>详细地址</text>
-            <input v-model="form.address" placeholder="街道门牌、楼盘位置" />
+            <input v-model="form.address" placeholder="街道门牌、楼盘位置">
           </view>
           <view class="coord-grid">
             <view class="form-row">
               <text>经度</text>
-              <input v-model="form.lng" type="digit" placeholder="lng" />
+              <input v-model="form.lng" type="digit" placeholder="lng">
             </view>
             <view class="form-row">
               <text>纬度</text>
-              <input v-model="form.lat" type="digit" placeholder="lat" />
+              <input v-model="form.lat" type="digit" placeholder="lat">
             </view>
           </view>
-          <wd-button block plain @click="chooseLocation">从地图选择位置</wd-button>
+          <wd-button plain block @click="chooseLocation">
+            从地图选择位置
+          </wd-button>
+          <view class="form-row form-row--images">
+            <view class="image-head">
+              <text>楼盘图片</text>
+              <text>{{ form.imageIds.length }}/9</text>
+            </view>
+            <view class="image-grid">
+              <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
+                <image :src="url" mode="aspectFill" @tap="previewImage(index)" />
+                <text v-if="sameId(form.coverImageId, form.imageIds[index])" class="cover-badge">封面</text>
+                <view class="image-actions">
+                  <text @tap="setCover(index)">设封面</text>
+                  <text @tap="removeImage(index)">删除</text>
+                </view>
+              </view>
+              <view class="image-add" @tap="chooseImages">
+                <wd-icon name="add" size="24px" color="#126b4f" />
+                <text>{{ uploading ? '上传中' : '上传图片' }}</text>
+              </view>
+            </view>
+          </view>
           <view class="coord-grid">
             <view class="form-row">
               <text>排序</text>
-              <input v-model="form.orderNo" type="number" />
+              <input v-model="form.orderNo" type="number">
             </view>
             <view class="form-row">
               <text>状态</text>
@@ -417,8 +544,12 @@ onReachBottom(() => loadData())
         </view>
 
         <view class="sheet-actions">
-          <wd-button block plain type="default" @click="formVisible = false">取消</wd-button>
-          <wd-button block type="primary" :loading="submitting" @click="submitForm">保存</wd-button>
+          <wd-button plain block type="default" @click="formVisible = false">
+            取消
+          </wd-button>
+          <wd-button block type="primary" :loading="submitting" @click="submitForm">
+            保存
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -492,8 +623,27 @@ onReachBottom(() => loadData())
   padding: 24rpx;
 }
 
+.community-card__main {
+  display: flex;
+  gap: 18rpx;
+}
+
+.card-cover {
+  width: 154rpx;
+  height: 154rpx;
+  flex: 0 0 154rpx;
+  border-radius: 20rpx;
+  background: #eef4ed;
+}
+
+.card-content {
+  min-width: 0;
+  flex: 1;
+}
+
 .card-head,
 .title-line,
+.image-head,
 .sheet-head,
 .sheet-actions {
   display: flex;
@@ -501,6 +651,7 @@ onReachBottom(() => loadData())
 }
 
 .card-head,
+.image-head,
 .sheet-head {
   justify-content: space-between;
   gap: 18rpx;
@@ -632,6 +783,81 @@ onReachBottom(() => loadData())
 
 .form-row textarea {
   min-height: 120rpx;
+}
+
+.form-row--images {
+  background: #fffaf0;
+}
+
+.image-head {
+  margin-bottom: 14rpx;
+}
+
+.image-head text:first-child {
+  margin-bottom: 0;
+}
+
+.image-head text:last-child {
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14rpx;
+}
+
+.image-item,
+.image-add {
+  position: relative;
+  height: 178rpx;
+  overflow: hidden;
+  border-radius: 18rpx;
+  background: #f3f7f1;
+}
+
+.image-item image {
+  width: 100%;
+  height: 100%;
+}
+
+.cover-badge {
+  position: absolute;
+  top: 8rpx;
+  left: 8rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: var(--sl-brand);
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.image-actions {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  justify-content: space-around;
+  background: rgb(0 0 0 / 48%);
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.image-actions text {
+  padding: 8rpx 0;
+}
+
+.image-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  color: var(--sl-brand);
+  font-size: 24rpx;
+  font-weight: 800;
 }
 
 .form-row--picker {

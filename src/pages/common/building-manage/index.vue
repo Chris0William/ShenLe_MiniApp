@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import type { AddSlBuildingInput, SlBuildingOutput, SlCommunitySelectOutput } from '@/types/shenle'
+import type { AddSlBuildingInput, ShenLeId, SlBuildingOutput, SlCommunitySelectOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
-import { addBuilding, deleteBuilding, getBuildingList, updateBuilding } from '@/api/building'
+import { addBuilding, deleteBuilding, getBuildingDetail, getBuildingList, updateBuilding } from '@/api/building'
 import { getCommunityList } from '@/api/community'
-import { idToQuery } from '@/utils/shenle'
+import { uploadFile } from '@/api/file'
+import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
   style: {
@@ -21,6 +22,9 @@ interface BuildingForm {
   orderNo: string
   status: number
   remark: string
+  imageIds: ShenLeId[]
+  imageUrls: string[]
+  coverImageId: string
 }
 
 const communities = ref<SlCommunitySelectOutput[]>([])
@@ -31,6 +35,7 @@ const loading = ref(false)
 const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
+const uploading = ref(false)
 
 const form = reactive<BuildingForm>({
   id: '',
@@ -40,6 +45,9 @@ const form = reactive<BuildingForm>({
   orderNo: '100',
   status: 0,
   remark: '',
+  imageIds: [],
+  imageUrls: [],
+  coverImageId: '',
 })
 
 const statusOptions = [
@@ -63,6 +71,15 @@ function toNumber(value: string, fallback?: number) {
 
 function statusLabel(status?: number) {
   return status === 1 ? '禁用' : '正常'
+}
+
+function idEquals(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
+  return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
+}
+
+function coverUrl(item: SlBuildingOutput) {
+  const url = item.coverImage || item.images?.[0]?.url
+  return url ? resolveAssetUrl(url) : ''
 }
 
 async function loadCommunities() {
@@ -112,6 +129,13 @@ function resetForm(item?: SlBuildingOutput) {
   form.orderNo = String(item?.orderNo ?? 100)
   form.status = item?.status ?? 0
   form.remark = item?.remark || ''
+  form.imageIds = item?.images?.map(image => image.id) || []
+  form.imageUrls = item?.images?.map(image => resolveAssetUrl(image.url)) || []
+  if (!form.imageIds.length && item?.coverImageId && item.coverImage) {
+    form.imageIds = [item.coverImageId]
+    form.imageUrls = [resolveAssetUrl(item.coverImage)]
+  }
+  form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
 }
 
 function openAdd() {
@@ -123,9 +147,67 @@ function openAdd() {
   formVisible.value = true
 }
 
-function openEdit(item: SlBuildingOutput) {
+async function openEdit(item: SlBuildingOutput) {
   resetForm(item)
   formVisible.value = true
+  try {
+    const detail = await getBuildingDetail(item.id)
+    resetForm(detail)
+  }
+  catch {
+    formVisible.value = false
+    uni.showToast({ title: '楼栋详情加载失败', icon: 'none' })
+  }
+}
+
+async function chooseImages() {
+  if (uploading.value)
+    return
+  const remain = 9 - form.imageIds.length
+  if (remain <= 0) {
+    uni.showToast({ title: '最多上传 9 张', icon: 'none' })
+    return
+  }
+  uni.chooseImage({
+    count: remain,
+    sizeType: ['compressed'],
+    success: async (res) => {
+      uploading.value = true
+      try {
+        for (const tempPath of res.tempFilePaths) {
+          const file = await uploadFile(tempPath)
+          form.imageIds.push(file.id)
+          form.imageUrls.push(file.url ? resolveAssetUrl(file.url) : tempPath)
+          if (!form.coverImageId)
+            form.coverImageId = String(file.id)
+        }
+      }
+      finally {
+        uploading.value = false
+      }
+    },
+  })
+}
+
+function removeImage(index: number) {
+  const removed = form.imageIds[index]
+  form.imageIds.splice(index, 1)
+  form.imageUrls.splice(index, 1)
+  if (idEquals(form.coverImageId, removed))
+    form.coverImageId = String(form.imageIds[0] || '')
+}
+
+function setCover(index: number) {
+  form.coverImageId = String(form.imageIds[index] || '')
+}
+
+function previewImage(index: number) {
+  if (!form.imageUrls.length)
+    return
+  uni.previewImage({
+    current: form.imageUrls[index],
+    urls: form.imageUrls,
+  })
 }
 
 function buildPayload(): AddSlBuildingInput {
@@ -136,6 +218,8 @@ function buildPayload(): AddSlBuildingInput {
     orderNo: toNumber(form.orderNo, 100),
     status: form.status,
     remark: form.remark.trim() || undefined,
+    coverImageId: form.coverImageId || undefined,
+    imageIds: form.imageIds,
   }
 }
 
@@ -212,7 +296,9 @@ onPullDownRefresh(reloadAll)
           <wd-icon name="arrow-down" size="18px" color="#72817b" />
         </view>
       </picker>
-      <wd-button type="primary" @click="openAdd">新增楼栋</wd-button>
+      <wd-button type="primary" @click="openAdd">
+        新增楼栋
+      </wd-button>
     </view>
 
     <view v-if="!list.length && !loading" class="empty sl-card">
@@ -223,29 +309,44 @@ onPullDownRefresh(reloadAll)
 
     <view class="building-list">
       <view v-for="item in list" :key="String(item.id)" class="building-card sl-card">
-        <view class="card-head">
-          <view>
-            <view class="title-line">
-              <text class="card-title">{{ item.name }}</text>
-              <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>{{ statusLabel(item.status) }}</wd-tag>
+        <view class="building-card__main">
+          <image v-if="coverUrl(item)" class="card-cover" :src="coverUrl(item)" mode="aspectFill" />
+          <view class="card-content">
+            <view class="card-head">
+              <view>
+                <view class="title-line">
+                  <text class="card-title">{{ item.name }}</text>
+                  <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>
+                    {{ statusLabel(item.status) }}
+                  </wd-tag>
+                </view>
+                <text class="card-sub">{{ item.totalFloors || '-' }} 层 · 排序 {{ item.orderNo }}</text>
+              </view>
+              <view class="metric">
+                <text>{{ item.propertyCount || 0 }}</text>
+                <text>房源</text>
+              </view>
             </view>
-            <text class="card-sub">{{ item.totalFloors || '-' }} 层 · 排序 {{ item.orderNo }}</text>
+            <text class="remark">{{ item.remark || '暂无备注' }}</text>
+            <view class="actions">
+              <wd-button size="small" plain @click="goProperties(item)">
+                房源
+              </wd-button>
+              <wd-button size="small" type="primary" plain @click="openEdit(item)">
+                编辑
+              </wd-button>
+              <wd-button size="small" type="danger" plain @click="confirmDelete(item)">
+                删除
+              </wd-button>
+            </view>
           </view>
-          <view class="metric">
-            <text>{{ item.propertyCount || 0 }}</text>
-            <text>房源</text>
-          </view>
-        </view>
-        <text class="remark">{{ item.remark || '暂无备注' }}</text>
-        <view class="actions">
-          <wd-button size="small" plain @click="goProperties(item)">房源</wd-button>
-          <wd-button size="small" type="primary" plain @click="openEdit(item)">编辑</wd-button>
-          <wd-button size="small" type="danger" plain @click="confirmDelete(item)">删除</wd-button>
         </view>
       </view>
     </view>
 
-    <view v-if="loading" class="load-tip">加载中...</view>
+    <view v-if="loading" class="load-tip">
+      加载中...
+    </view>
 
     <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
       <view class="form-sheet">
@@ -266,16 +367,16 @@ onPullDownRefresh(reloadAll)
           </picker>
           <view class="form-row">
             <text>楼栋名称</text>
-            <input v-model="form.name" placeholder="如：A栋 / 1号楼" />
+            <input v-model="form.name" placeholder="如：A栋 / 1号楼">
           </view>
           <view class="grid-2">
             <view class="form-row">
               <text>总楼层</text>
-              <input v-model="form.totalFloors" type="number" />
+              <input v-model="form.totalFloors" type="number">
             </view>
             <view class="form-row">
               <text>排序</text>
-              <input v-model="form.orderNo" type="number" />
+              <input v-model="form.orderNo" type="number">
             </view>
           </view>
           <view class="form-row">
@@ -291,6 +392,26 @@ onPullDownRefresh(reloadAll)
               </view>
             </view>
           </view>
+          <view class="form-row form-row--images">
+            <view class="image-head">
+              <text>楼栋图片</text>
+              <text>{{ form.imageIds.length }}/9</text>
+            </view>
+            <view class="image-grid">
+              <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
+                <image :src="url" mode="aspectFill" @tap="previewImage(index)" />
+                <text v-if="idEquals(form.coverImageId, form.imageIds[index])" class="cover-badge">封面</text>
+                <view class="image-actions">
+                  <text @tap="setCover(index)">设封面</text>
+                  <text @tap="removeImage(index)">删除</text>
+                </view>
+              </view>
+              <view class="image-add" @tap="chooseImages">
+                <wd-icon name="add" size="24px" color="#126b4f" />
+                <text>{{ uploading ? '上传中' : '上传图片' }}</text>
+              </view>
+            </view>
+          </view>
           <view class="form-row form-row--textarea">
             <text>备注</text>
             <textarea v-model="form.remark" placeholder="内部管理备注" />
@@ -298,8 +419,12 @@ onPullDownRefresh(reloadAll)
         </view>
 
         <view class="sheet-actions">
-          <wd-button block plain type="default" @click="formVisible = false">取消</wd-button>
-          <wd-button block type="primary" :loading="submitting" @click="submitForm">保存</wd-button>
+          <wd-button plain block type="default" @click="formVisible = false">
+            取消
+          </wd-button>
+          <wd-button block type="primary" :loading="submitting" @click="submitForm">
+            保存
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -370,6 +495,24 @@ onPullDownRefresh(reloadAll)
 
 .building-card {
   padding: 24rpx;
+}
+
+.building-card__main {
+  display: flex;
+  gap: 18rpx;
+}
+
+.card-cover {
+  width: 154rpx;
+  height: 154rpx;
+  flex: 0 0 154rpx;
+  border-radius: 20rpx;
+  background: #eef4ed;
+}
+
+.card-content {
+  min-width: 0;
+  flex: 1;
 }
 
 .title-line {
@@ -467,6 +610,88 @@ onPullDownRefresh(reloadAll)
 
 .form-row textarea {
   min-height: 120rpx;
+}
+
+.form-row--images {
+  background: #fffaf0;
+}
+
+.image-head,
+.image-grid,
+.image-actions,
+.image-add {
+  display: flex;
+}
+
+.image-head {
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-bottom: 14rpx;
+}
+
+.image-head text:first-child {
+  margin-bottom: 0;
+}
+
+.image-head text:last-child {
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14rpx;
+}
+
+.image-item,
+.image-add {
+  position: relative;
+  height: 178rpx;
+  overflow: hidden;
+  border-radius: 18rpx;
+  background: #f3f7f1;
+}
+
+.image-item image {
+  width: 100%;
+  height: 100%;
+}
+
+.cover-badge {
+  position: absolute;
+  top: 8rpx;
+  left: 8rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: var(--sl-brand);
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.image-actions {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  justify-content: space-around;
+  background: rgb(0 0 0 / 48%);
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.image-actions text {
+  padding: 8rpx 0;
+}
+
+.image-add {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  color: var(--sl-brand);
+  font-size: 24rpx;
+  font-weight: 800;
 }
 
 .form-row--picker {

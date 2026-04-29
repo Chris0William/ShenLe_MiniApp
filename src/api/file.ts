@@ -10,7 +10,15 @@ export function uploadFile(filePath: string): Promise<ImageOutput> {
       name: 'file',
       header: token ? { Authorization: `Bearer ${token}` } : {},
       success(res) {
-        const body = JSON.parse(res.data) as AdminResult<ImageOutput>
+        let body: AdminResult<ImageOutput>
+        try {
+          body = JSON.parse(res.data) as AdminResult<ImageOutput>
+        }
+        catch {
+          uni.showToast({ title: '上传失败', icon: 'none' })
+          reject(new Error('上传响应解析失败'))
+          return
+        }
         if (body.code === 200) {
           resolve(body.result)
           return
