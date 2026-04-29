@@ -5,8 +5,28 @@
  */
 import { tabbarStore } from '@/tabbar/store'
 import { getLastPage, parseUrlToObj } from '@/utils/index'
+import { useShenleAuthStore } from '@/store/auth'
 
 export const FG_LOG_ENABLE = false
+
+const PROTECTED_PATHS = [
+  '/pages/admin/',
+  '/pages/common/building-manage/index',
+  '/pages/common/community-manage/index',
+  '/pages/common/property-form/index',
+  '/pages/common/region-manage/index',
+  '/pages/common/tag-manage/index',
+]
+
+function needsLogin(path: string) {
+  return PROTECTED_PATHS.some(item => path === item || path.startsWith(item))
+}
+
+function toLogin(path: string) {
+  uni.navigateTo({
+    url: `/pages/common/login/index?redirect=${encodeURIComponent(path)}`,
+  })
+}
 
 export const navigateToInterceptor = {
   // 注意，这里的url是 '/' 开头的，如 '/pages/index/index'，跟 'pages.json' 里面的 path 不同
@@ -43,6 +63,12 @@ export const navigateToInterceptor = {
     //   FG_LOG_ENABLE && console.log('路由拦截器 4: plugin:// 路径 ==>', url)
     //   path = url
     // }
+
+    const auth = useShenleAuthStore()
+    if (needsLogin(path) && !auth.isLogin) {
+      toLogin(path)
+      return false
+    }
 
     // 处理直接进入路由非首页时，tabbarIndex 不正确的问题
     tabbarStore.setAutoCurIdx(path)

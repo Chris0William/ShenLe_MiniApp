@@ -1,5 +1,5 @@
 import type { AdminResult } from '@/types/shenle'
-import { getApiBaseUrl, SHENLE_TOKEN_KEY } from '@/utils/shenle'
+import { getApiBaseUrl, SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
 export type RequestMethod = 'GET' | 'POST'
 
@@ -12,10 +12,29 @@ export interface RequestOptions {
   silent?: boolean
 }
 
+let redirectingLogin = false
+
 function cleanQuery(data?: Record<string, unknown>) {
   if (!data)
     return undefined
   return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined && value !== null && value !== ''))
+}
+
+function redirectToLogin() {
+  if (redirectingLogin)
+    return
+  redirectingLogin = true
+  const pages = getCurrentPages()
+  const current = pages[pages.length - 1]
+  const route = current?.route ? `/${current.route}` : '/pages/admin/dashboard/index'
+  uni.navigateTo({
+    url: `/pages/common/login/index?redirect=${encodeURIComponent(route)}`,
+    complete: () => {
+      setTimeout(() => {
+        redirectingLogin = false
+      }, 800)
+    },
+  })
 }
 
 export function request<T>({ url, method = 'GET', data, header, auth = true, silent = false }: RequestOptions): Promise<T> {
@@ -39,8 +58,10 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
 
         if (body?.code === 401 || res.statusCode === 401) {
           uni.removeStorageSync(SHENLE_TOKEN_KEY)
+          uni.removeStorageSync(SHENLE_USER_KEY)
           if (!silent) {
             uni.showToast({ title: '登录已过期', icon: 'none' })
+            redirectToLogin()
           }
           reject(new Error(body?.message || '未授权'))
           return

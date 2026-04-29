@@ -4,6 +4,7 @@ import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
+import { useShenleAuthStore } from '@/store/auth'
 import { idToQuery } from '@/utils/shenle'
 
 definePage({
@@ -23,7 +24,9 @@ const total = ref(0)
 const items = ref<SlPropertyListOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
+const auth = useShenleAuthStore()
 const finished = computed(() => total.value > 0 && items.value.length >= total.value)
+const canManage = computed(() => auth.isLogin)
 
 function buildQuery(): PageSlPropertyInput {
   return {
@@ -93,6 +96,14 @@ function removeItem(item: SlPropertyListOutput) {
   })
 }
 
+function backToMap() {
+  const pages = getCurrentPages()
+  if (pages.length > 1)
+    uni.navigateBack()
+  else
+    uni.switchTab({ url: '/pages/user/map/index' })
+}
+
 onLoad((query) => {
   communityId.value = String(query?.communityId || '')
   communityName.value = decodeURIComponent(String(query?.communityName || ''))
@@ -115,9 +126,9 @@ onReachBottom(() => {
       <view>
         <text class="head-card__eyebrow">Community Stock</text>
         <text class="head-card__title">{{ communityName || '楼盘房源' }}</text>
-        <text class="head-card__desc">查看并维护该楼盘下的所有房间。</text>
+        <text class="head-card__desc">{{ canManage ? '查看并维护该楼盘下的所有房间。' : '查看该楼盘可出租房源，管理操作登录后显示。' }}</text>
       </view>
-      <wd-button size="small" type="primary" icon="add" @click="openForm()">
+      <wd-button v-if="canManage" size="small" type="primary" icon="add" @click="openForm()">
         新增
       </wd-button>
     </view>
@@ -154,8 +165,8 @@ onReachBottom(() => {
     <view class="list">
       <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card">
         <sl-property-card :item="item" compact @tap="openDetail" />
-        <view class="row-actions">
-          <wd-button size="small" type="info" plain @click="openForm(item)">
+        <view v-if="canManage" class="row-actions">
+          <wd-button size="small" type="default" plain @click="openForm(item)">
             编辑
           </wd-button>
           <wd-button
@@ -168,7 +179,7 @@ onReachBottom(() => {
           >
             {{ option.label }}
           </wd-button>
-          <wd-button size="small" type="error" plain @click="removeItem(item)">
+          <wd-button size="small" type="danger" plain @click="removeItem(item)">
             删除
           </wd-button>
         </view>
@@ -181,9 +192,12 @@ onReachBottom(() => {
     <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
       <wd-icon name="home" size="42px" color="#8ea099" />
       <text class="empty__title">暂无房源数据</text>
-      <text class="empty__desc">这个楼盘还没有房源，先新增一套。</text>
-      <wd-button size="small" type="primary" @click="openForm()">
+      <text class="empty__desc">{{ canManage ? '这个楼盘还没有房源，先新增一套。' : '这个楼盘暂时没有可展示房源。' }}</text>
+      <wd-button v-if="canManage" size="small" type="primary" @click="openForm()">
         新增房源
+      </wd-button>
+      <wd-button v-else size="small" plain @click="backToMap">
+        返回地图
       </wd-button>
     </view>
     <view v-else-if="finished" class="loading">
