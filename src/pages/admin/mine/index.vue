@@ -10,11 +10,11 @@ definePage({
 const auth = useShenleAuthStore()
 
 const menus = [
-  { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', url: '/pages/common/community-manage/index' },
-  { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'list', url: '/pages/common/building-manage/index' },
-  { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', url: '/pages/common/region-manage/index' },
-  { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'tag', url: '/pages/common/tag-manage/index' },
-  { title: '销控表', desc: '区域 -> 楼盘 -> 楼栋 -> 房间', icon: 'chart', url: '/pages/admin/sales-control/index' },
+  { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index' },
+  { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index' },
+  { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index' },
+  { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index' },
+  { title: '销控表', desc: '区域 -> 楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index' },
 ]
 
 function go(url: string) {
@@ -44,8 +44,8 @@ async function signOut() {
 
     <view class="menu-list">
       <view v-for="item in menus" :key="item.url" class="menu sl-card" @tap="go(item.url)">
-        <view class="menu-icon">
-          <wd-icon :name="item.icon" size="23px" color="#126b4f" />
+        <view class="menu-icon" :class="`menu-icon--${item.tone}`">
+          <wd-icon :name="item.icon" size="23px" :color="item.tone === 'gold' ? '#b46d08' : '#126b4f'" />
         </view>
         <view class="menu-text">
           <text>{{ item.title }}</text>
@@ -55,7 +55,7 @@ async function signOut() {
       </view>
     </view>
 
-    <wd-button block plain type="danger" custom-class="logout" @click="signOut">
+    <wd-button plain block type="danger" custom-class="logout" @click="signOut">
       退出登录
     </wd-button>
   </view>
@@ -72,9 +72,7 @@ async function signOut() {
   gap: 22rpx;
   margin-top: 18rpx;
   padding: 28rpx;
-  background:
-    radial-gradient(circle at 90% -10%, rgb(228 161 27 / 20%), transparent 220rpx),
-    #fff;
+  background: radial-gradient(circle at 90% -10%, rgb(228 161 27 / 20%), transparent 220rpx), #fff;
 }
 
 .avatar {
@@ -126,6 +124,14 @@ async function signOut() {
   align-items: center;
   justify-content: center;
   border-radius: 20rpx;
+  background: #ecf5ee;
+}
+
+.menu-icon--gold {
+  background: #fff2d7;
+}
+
+.menu-icon--green {
   background: #ecf5ee;
 }
 

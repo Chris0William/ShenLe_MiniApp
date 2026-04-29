@@ -67,7 +67,10 @@ onLoad(loadStats)
 
     <view class="entry-list">
       <view class="entry sl-card" @tap="go('/pages/user/home/index', true)">
-        <view>
+        <view class="entry__icon entry__icon--green">
+          <wd-icon name="home" size="25px" color="#126b4f" />
+        </view>
+        <view class="entry__body">
           <text class="entry__title">用户端找房</text>
           <text class="entry__desc">筛选、房源卡片、详情页先迁移到新契约。</text>
         </view>
@@ -76,7 +79,10 @@ onLoad(loadStats)
         </wd-button>
       </view>
       <view class="entry sl-card" @tap="go('/pages/admin/dashboard/index', true)">
-        <view>
+        <view class="entry__icon entry__icon--gold">
+          <wd-icon name="dashboard" size="25px" color="#b46d08" />
+        </view>
+        <view class="entry__body">
           <text class="entry__title">管理端工作台</text>
           <text class="entry__desc">统计、房源列表、状态流转优先可用。</text>
         </view>
@@ -106,8 +112,31 @@ onLoad(loadStats)
 .entry {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 22rpx;
   padding: 28rpx;
+}
+
+.entry__icon {
+  display: flex;
+  width: 76rpx;
+  height: 76rpx;
+  flex: 0 0 76rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx;
+}
+
+.entry__icon--green {
+  background: linear-gradient(135deg, rgb(18 107 79 / 14%), rgb(18 107 79 / 5%));
+}
+
+.entry__icon--gold {
+  background: linear-gradient(135deg, rgb(228 161 27 / 22%), rgb(228 161 27 / 7%));
+}
+
+.entry__body {
+  min-width: 0;
+  flex: 1;
 }
 
 .entry__title,
@@ -121,7 +150,6 @@ onLoad(loadStats)
 }
 
 .entry__desc {
-  max-width: 430rpx;
   margin-top: 8rpx;
   color: var(--sl-muted);
   font-size: 24rpx;

@@ -18,21 +18,17 @@ function getImageByIndex(index: number, item: CustomTabBarItem) {
 </script>
 
 <template>
-  <view class="flex flex-col items-center justify-center">
+  <view class="tabbar-item">
     <template v-if="item.iconType === 'uiLib'">
-      <!-- TODO: 以下内容请根据选择的UI库自行替换 -->
-      <!-- 如：<wd-icon name="home" /> (https://wot-design-uni.cn/component/icon.html) -->
-      <!-- 如：<uv-icon name="home" /> (https://www.uvui.cn/components/icon.html) -->
-      <!-- 如：<sar-icon name="image" /> (https://sard.wzt.zone/sard-uniapp-docs/components/icon)(sar没有home图标^_^) -->
-      <!-- <wd-icon :name="item.icon" size="20" /> -->
+      <wd-icon :name="item.icon" :size="isBulge ? '80px' : '22px'" />
     </template>
-    <template v-if="item.iconType === 'unocss' || item.iconType === 'iconfont'">
+    <template v-else-if="item.iconType === 'unocss' || item.iconType === 'iconfont'">
       <view :class="[item.icon, isBulge ? 'text-80px' : 'text-20px']" />
     </template>
-    <template v-if="item.iconType === 'image'">
+    <template v-else-if="item.iconType === 'image'">
       <image :src="getImageByIndex(index, item)" mode="scaleToFill" :class="isBulge ? 'h-80px w-80px' : 'h-24px w-24px'" />
     </template>
-    <view v-if="!isBulge" class="mt-2px text-12px">
+    <view v-if="!isBulge" class="tabbar-item__text">
       {{ item.text }}
     </view>
     <!-- 角标显示 -->
@@ -48,3 +44,21 @@ function getImageByIndex(index: number, item: CustomTabBarItem) {
     </view>
   </view>
 </template>
+
+<style scoped lang="scss">
+.tabbar-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+}
+
+.tabbar-item__text {
+  margin-top: 3rpx;
+  font-size: 22rpx;
+  font-weight: 750;
+  line-height: 1;
+}
+</style>

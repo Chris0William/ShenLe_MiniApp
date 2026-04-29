@@ -221,8 +221,10 @@ onReachBottom(() => loadData())
 
     <view class="toolbar sl-card">
       <view class="search-row">
-        <input v-model="keyword" class="search-input" placeholder="搜索标签名称" confirm-type="search" @confirm="loadData(true)" />
-        <wd-button size="small" type="primary" @click="loadData(true)">搜索</wd-button>
+        <input v-model="keyword" class="search-input" placeholder="搜索标签名称" confirm-type="search" @confirm="loadData(true)">
+        <wd-button size="small" type="primary" @click="loadData(true)">
+          搜索
+        </wd-button>
       </view>
       <scroll-view scroll-x class="category-scroll">
         <view class="category-row">
@@ -248,7 +250,7 @@ onReachBottom(() => loadData())
     </view>
 
     <view v-if="!list.length && !loading" class="empty sl-card">
-      <wd-icon name="tag" size="38px" color="#8ea099" />
+      <wd-icon name="discount" size="38px" color="#8ea099" />
       <text>暂无标签数据</text>
     </view>
 
@@ -259,20 +261,30 @@ onReachBottom(() => loadData())
           <view>
             <view class="title-line">
               <text class="tag-name">{{ item.name }}</text>
-              <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>{{ statusLabel(item.status) }}</wd-tag>
+              <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>
+                {{ statusLabel(item.status) }}
+              </wd-tag>
             </view>
             <text class="tag-meta">{{ categoryLabel(item.category) }} · 排序 {{ item.orderNo }}</text>
           </view>
         </view>
         <view class="actions">
-          <wd-button size="small" type="primary" plain @click="openEdit(item)">编辑</wd-button>
-          <wd-button size="small" type="danger" plain @click="confirmDelete(item)">删除</wd-button>
+          <wd-button size="small" type="primary" plain @click="openEdit(item)">
+            编辑
+          </wd-button>
+          <wd-button size="small" type="danger" plain @click="confirmDelete(item)">
+            删除
+          </wd-button>
         </view>
       </view>
     </view>
 
-    <view v-if="loading" class="load-tip">加载中...</view>
-    <view v-else-if="finished && list.length" class="load-tip">已经到底了</view>
+    <view v-if="loading" class="load-tip">
+      加载中...
+    </view>
+    <view v-else-if="finished && list.length" class="load-tip">
+      已经到底了
+    </view>
 
     <view class="fab" @tap="openAdd">
       <wd-icon name="add" size="26px" color="#fff" />
@@ -291,7 +303,7 @@ onReachBottom(() => loadData())
         <view class="form-body">
           <view class="form-row">
             <text>标签名称</text>
-            <input v-model="form.name" placeholder="如：近地铁 / 家私齐全" />
+            <input v-model="form.name" placeholder="如：近地铁 / 家私齐全">
           </view>
           <picker mode="selector" :value="formCategoryIndex" :range="categoryNames" @change="onFormCategoryChange">
             <view class="form-row form-row--picker">
@@ -315,11 +327,11 @@ onReachBottom(() => loadData())
           <view class="grid-2">
             <view class="form-row">
               <text>图标</text>
-              <input v-model="form.icon" placeholder="可选" />
+              <input v-model="form.icon" placeholder="可选">
             </view>
             <view class="form-row">
               <text>排序</text>
-              <input v-model="form.orderNo" type="number" />
+              <input v-model="form.orderNo" type="number">
             </view>
           </view>
           <view class="form-row">
@@ -342,8 +354,12 @@ onReachBottom(() => loadData())
         </view>
 
         <view class="sheet-actions">
-          <wd-button block plain type="default" @click="formVisible = false">取消</wd-button>
-          <wd-button block type="primary" :loading="submitting" @click="submitForm">保存</wd-button>
+          <wd-button plain block type="default" @click="formVisible = false">
+            取消
+          </wd-button>
+          <wd-button block type="primary" :loading="submitting" @click="submitForm">
+            保存
+          </wd-button>
         </view>
       </view>
     </wd-popup>

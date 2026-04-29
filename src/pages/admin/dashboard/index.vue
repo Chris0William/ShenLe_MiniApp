@@ -19,7 +19,6 @@ const stats = ref<SlPropertyGlobalStatsOutput>({ totalCount: 0, vacantCount: 0, 
 const communities = ref<SlCommunityOutput[]>([])
 const loading = ref(false)
 const auth = useShenleAuthStore()
-
 function requireLogin() {
   if (auth.isLogin)
     return true
@@ -76,28 +75,40 @@ onPullDownRefresh(load)
     </view>
 
     <view class="actions sl-card">
-      <view @tap="go('/pages/admin/property-list/index', true)">
-        <wd-icon name="list" size="26px" color="#126b4f" />
+      <view class="action-item" @tap="go('/pages/admin/property-list/index', true)">
+        <view class="action-icon action-icon--green">
+          <wd-icon name="view-list" size="25px" color="#126b4f" />
+        </view>
         <text>房源管理</text>
       </view>
-      <view @tap="go('/pages/admin/sales-control/index')">
-        <wd-icon name="chart" size="26px" color="#126b4f" />
+      <view class="action-item" @tap="go('/pages/admin/sales-control/index')">
+        <view class="action-icon action-icon--gold">
+          <wd-icon name="chart" size="25px" color="#b46d08" />
+        </view>
         <text>销控表</text>
       </view>
-      <view @tap="go('/pages/common/property-form/index')">
-        <wd-icon name="add" size="26px" color="#126b4f" />
+      <view class="action-item" @tap="go('/pages/common/property-form/index')">
+        <view class="action-icon action-icon--green">
+          <wd-icon name="add" size="25px" color="#126b4f" />
+        </view>
         <text>发布房源</text>
       </view>
-      <view @tap="go('/pages/common/community-manage/index')">
-        <wd-icon name="home" size="26px" color="#126b4f" />
+      <view class="action-item" @tap="go('/pages/common/community-manage/index')">
+        <view class="action-icon action-icon--green">
+          <wd-icon name="home" size="25px" color="#126b4f" />
+        </view>
         <text>楼盘管理</text>
       </view>
-      <view @tap="go('/pages/common/region-manage/index')">
-        <wd-icon name="location" size="26px" color="#126b4f" />
+      <view class="action-item" @tap="go('/pages/common/region-manage/index')">
+        <view class="action-icon action-icon--gold">
+          <wd-icon name="location" size="25px" color="#b46d08" />
+        </view>
         <text>区域管理</text>
       </view>
-      <view @tap="go('/pages/common/tag-manage/index')">
-        <wd-icon name="tag" size="26px" color="#126b4f" />
+      <view class="action-item" @tap="go('/pages/common/tag-manage/index')">
+        <view class="action-icon action-icon--green">
+          <wd-icon name="discount" size="25px" color="#126b4f" />
+        </view>
         <text>标签管理</text>
       </view>
     </view>
@@ -139,7 +150,7 @@ onPullDownRefresh(load)
   padding: 24rpx 10rpx;
 }
 
-.actions view {
+.action-item {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -147,6 +158,23 @@ onPullDownRefresh(load)
   color: var(--sl-ink);
   font-size: 24rpx;
   font-weight: 700;
+}
+
+.action-icon {
+  display: flex;
+  width: 76rpx;
+  height: 76rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx;
+}
+
+.action-icon--green {
+  background: linear-gradient(135deg, rgb(18 107 79 / 14%), rgb(18 107 79 / 5%));
+}
+
+.action-icon--gold {
+  background: linear-gradient(135deg, rgb(228 161 27 / 23%), rgb(228 161 27 / 8%));
 }
 
 .community-list {

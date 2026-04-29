@@ -9,6 +9,14 @@ definePage({
 
 const auth = useShenleAuthStore()
 
+const menuList = [
+  { title: '楼盘管理', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index' },
+  { title: '楼栋管理', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index' },
+  { title: '区域管理', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index' },
+  { title: '标签管理', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index' },
+  { title: '销控表', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index' },
+]
+
 function go(url: string) {
   uni.navigateTo({ url })
 }
@@ -30,33 +38,27 @@ async function logout() {
     </view>
 
     <view class="menu sl-card">
-      <view @tap="go('/pages/common/login/index')">
-        <text>{{ auth.isLogin ? '切换账号' : '账号登录' }}</text>
-        <wd-icon name="arrow-right" />
+      <view class="menu-row" @tap="go('/pages/common/login/index')">
+        <view class="menu-row__left">
+          <view class="menu-icon menu-icon--gold">
+            <wd-icon name="user" size="21px" color="#b46d08" />
+          </view>
+          <text>{{ auth.isLogin ? '切换账号' : '微信授权登录' }}</text>
+        </view>
+        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
       </view>
-      <view @tap="go('/pages/common/community-manage/index')">
-        <text>楼盘管理</text>
-        <wd-icon name="arrow-right" />
-      </view>
-      <view @tap="go('/pages/common/building-manage/index')">
-        <text>楼栋管理</text>
-        <wd-icon name="arrow-right" />
-      </view>
-      <view @tap="go('/pages/common/region-manage/index')">
-        <text>区域管理</text>
-        <wd-icon name="arrow-right" />
-      </view>
-      <view @tap="go('/pages/common/tag-manage/index')">
-        <text>标签管理</text>
-        <wd-icon name="arrow-right" />
-      </view>
-      <view @tap="go('/pages/admin/sales-control/index')">
-        <text>销控表</text>
-        <wd-icon name="arrow-right" />
+      <view v-for="item in menuList" :key="item.url" class="menu-row" @tap="go(item.url)">
+        <view class="menu-row__left">
+          <view class="menu-icon" :class="`menu-icon--${item.tone}`">
+            <wd-icon :name="item.icon" size="21px" :color="item.tone === 'gold' ? '#b46d08' : '#126b4f'" />
+          </view>
+          <text>{{ item.title }}</text>
+        </view>
+        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
       </view>
     </view>
 
-    <wd-button v-if="auth.isLogin" block plain type="danger" @click="logout">
+    <wd-button v-if="auth.isLogin" plain block type="danger" @click="logout">
       退出登录
     </wd-button>
   </view>
@@ -102,16 +104,42 @@ async function logout() {
   padding: 4rpx 26rpx;
 }
 
-.menu view {
+.menu-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 28rpx 0;
   border-bottom: 1rpx solid var(--sl-line);
   font-size: 28rpx;
+  font-weight: 720;
 }
 
-.menu view:last-child {
+.menu-row:last-child {
   border-bottom: 0;
+}
+
+.menu-row__left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 18rpx;
+}
+
+.menu-icon {
+  display: flex;
+  width: 66rpx;
+  height: 66rpx;
+  flex: 0 0 66rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
+}
+
+.menu-icon--green {
+  background: #ecf5ee;
+}
+
+.menu-icon--gold {
+  background: #fff2d7;
 }
 </style>
