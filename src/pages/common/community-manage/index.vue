@@ -78,6 +78,7 @@ const statusOptions = [
   { value: 0, label: '正常' },
   { value: 1, label: '禁用' },
 ] as const
+const DEFAULT_MAP_CENTER = { lng: 113.936, lat: 22.769 }
 
 const regionOptions = computed<RegionOption[]>(() => {
   const result: RegionOption[] = []
@@ -102,6 +103,39 @@ const filterRegionIndex = computed(() => {
 })
 const formRegionIndex = computed(() => Math.max(0, regionOptions.value.findIndex(item => sameId(item.id, form.regionId))))
 const showing = computed(() => list.value.length)
+const formCoordinate = computed(() => {
+  const lng = Number(form.lng)
+  const lat = Number(form.lat)
+  if (!Number.isFinite(lng) || !Number.isFinite(lat) || lng === 0 || lat === 0)
+    return null
+  return { lng, lat }
+})
+const formMapCenter = computed(() => formCoordinate.value || DEFAULT_MAP_CENTER)
+const formMapMarkers = computed(() => {
+  const point = formCoordinate.value
+  if (!point)
+    return []
+  return [{
+    id: 1,
+    latitude: point.lat,
+    longitude: point.lng,
+    iconPath: '/static/images/dot-red.png',
+    width: 26,
+    height: 26,
+    callout: {
+      content: form.name || '楼盘位置',
+      display: 'ALWAYS' as const,
+      fontSize: 12,
+      borderRadius: 8,
+      borderWidth: 0,
+      borderColor: '#126b4f',
+      bgColor: '#126b4f',
+      color: '#ffffff',
+      padding: 7,
+      textAlign: 'center' as const,
+    },
+  }]
+})
 
 function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
   return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
@@ -320,9 +354,36 @@ function chooseLocation() {
     latitude: toNumber(form.lat),
     longitude: toNumber(form.lng),
     success(res) {
-      form.lng = String(res.longitude)
-      form.lat = String(res.latitude)
+      setCoordinate(res.longitude, res.latitude)
       form.address = res.address || res.name || form.address
+    },
+  })
+}
+
+function setCoordinate(longitude?: number, latitude?: number) {
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude))
+    return
+  form.lng = Number(longitude).toFixed(6)
+  form.lat = Number(latitude).toFixed(6)
+}
+
+function onFormMapTap(event: any) {
+  const latitude = Number(event.detail?.latitude ?? event.latitude)
+  const longitude = Number(event.detail?.longitude ?? event.longitude)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude))
+    return
+  setCoordinate(longitude, latitude)
+}
+
+function useCurrentLocation() {
+  uni.getLocation({
+    type: 'gcj02',
+    success(res) {
+      setCoordinate(res.longitude, res.latitude)
+      uni.showToast({ title: '已填入当前定位', icon: 'success' })
+    },
+    fail() {
+      uni.showToast({ title: '定位失败，请手动选点', icon: 'none' })
     },
   })
 }
@@ -545,9 +606,34 @@ onReachBottom(() => loadData())
               <input v-model="form.lat" type="digit" placeholder="lat">
             </view>
           </view>
-          <wd-button plain block @click="chooseLocation">
-            从地图选择位置
-          </wd-button>
+          <view class="location-actions">
+            <wd-button plain block @click="chooseLocation">
+              地图搜索选点
+            </wd-button>
+            <wd-button plain block type="primary" @click="useCurrentLocation">
+              当前定位
+            </wd-button>
+          </view>
+          <view class="coord-map-card">
+            <view class="coord-map-card__head">
+              <view>
+                <text>地图预览</text>
+                <text>{{ formCoordinate ? '点击地图微调点位' : '点击地图或使用定位补充坐标' }}</text>
+              </view>
+              <wd-tag :type="formCoordinate ? 'success' : 'warning'" plain>
+                {{ formCoordinate ? '已维护' : '缺坐标' }}
+              </wd-tag>
+            </view>
+            <map
+              class="coord-map"
+              :latitude="formMapCenter.lat"
+              :longitude="formMapCenter.lng"
+              :scale="15"
+              :markers="formMapMarkers"
+              show-location
+              @tap="onFormMapTap"
+            />
+          </view>
           <view class="form-row form-row--images">
             <view class="image-head">
               <text>楼盘图片</text>
@@ -932,6 +1018,53 @@ onReachBottom(() => loadData())
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14rpx;
+}
+
+.location-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-bottom: 18rpx;
+}
+
+.coord-map-card {
+  margin-bottom: 18rpx;
+  padding: 16rpx;
+  border: 1rpx solid rgb(18 107 79 / 10%);
+  border-radius: 22rpx;
+  background: linear-gradient(180deg, #f8fbf4, #fff);
+}
+
+.coord-map-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 14rpx;
+}
+
+.coord-map-card__head text:first-child,
+.coord-map-card__head text:last-child {
+  display: block;
+}
+
+.coord-map-card__head text:first-child {
+  color: var(--sl-ink);
+  font-size: 27rpx;
+  font-weight: 850;
+}
+
+.coord-map-card__head text:last-child {
+  margin-top: 6rpx;
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.coord-map {
+  width: 100%;
+  height: 320rpx;
+  overflow: hidden;
+  border-radius: 18rpx;
 }
 
 .segmented {
