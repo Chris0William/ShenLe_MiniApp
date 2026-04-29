@@ -145,7 +145,9 @@ onReachBottom(() => {
 
     <view v-if="keyword || selectedStatus !== undefined || activeLabels.length" class="active-summary sl-card">
       <view class="active-summary__body">
-        <wd-tag v-if="keyword" plain type="primary">搜索：{{ keyword }}</wd-tag>
+        <wd-tag v-if="keyword" plain type="primary">
+          搜索：{{ keyword }}
+        </wd-tag>
         <wd-tag v-if="selectedStatus !== undefined" plain type="warning">
           状态：{{ PROPERTY_STATUS_OPTIONS.find(item => item.value === selectedStatus)?.label }}
         </wd-tag>

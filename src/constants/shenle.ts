@@ -19,19 +19,21 @@ export const PROPERTY_FILTER_CATEGORIES = [
 
 export const BEDROOM_OPTIONS = [
   { label: '不限', value: undefined },
-  { label: '1室', value: 1 },
-  { label: '2室', value: 2 },
-  { label: '3室', value: 3 },
-  { label: '4室+', value: 4 },
+  { label: '一室', value: 1 },
+  { label: '二室', value: 2 },
+  { label: '三室', value: 3 },
+  { label: '四室', value: 4 },
+  { label: '五室+', value: 5 },
 ] as const
 
 export const PRICE_SEGMENTS = [
   { label: '不限', min: undefined, max: undefined },
-  { label: '1000以下', min: 0, max: 1000 },
-  { label: '1000-1500', min: 1000, max: 1500 },
-  { label: '1500-2000', min: 1500, max: 2000 },
+  { label: '1000以下', min: undefined, max: 1000 },
+  { label: '1000-2000', min: 1000, max: 2000 },
   { label: '2000-3000', min: 2000, max: 3000 },
-  { label: '3000以上', min: 3000, max: undefined },
+  { label: '3000-5000', min: 3000, max: 5000 },
+  { label: '5000-8000', min: 5000, max: 8000 },
+  { label: '8000以上', min: 8000, max: undefined },
 ] as const
 
 export const ORIENTATION_OPTIONS = [
@@ -39,11 +41,11 @@ export const ORIENTATION_OPTIONS = [
   { label: '南', value: 'south' },
   { label: '西', value: 'west' },
   { label: '北', value: 'north' },
+  { label: '南北', value: 'north-south' },
   { label: '东南', value: 'southeast' },
   { label: '东北', value: 'northeast' },
   { label: '西南', value: 'southwest' },
   { label: '西北', value: 'northwest' },
-  { label: '南北通透', value: 'north-south' },
 ] as const
 
 export const DECORATION_OPTIONS = [
@@ -60,6 +62,7 @@ export const RENTAL_TYPE_OPTIONS = [
 ] as const
 
 export const AREA_SEGMENTS = [
+  { label: '不限', min: undefined, max: undefined },
   { label: '30㎡以下', min: undefined, max: 30 },
   { label: '30-50㎡', min: 30, max: 50 },
   { label: '50-80㎡', min: 50, max: 80 },
@@ -69,11 +72,10 @@ export const AREA_SEGMENTS = [
 ] as const
 
 export const DEPOSIT_RULE_OPTIONS = [
-  { label: '押一付一', value: '1-1' },
-  { label: '押一付三', value: '1-3' },
-  { label: '押二付一', value: '2-1' },
-  { label: '押二付三', value: '2-3' },
+  { label: '一付一', value: '1-1' },
+  { label: '一付三', value: '1-3' },
+  { label: '二付一', value: '2-1' },
+  { label: '二付三', value: '2-3' },
   { label: '半年付', value: 'half-year' },
   { label: '年付', value: 'yearly' },
-  { label: '面议', value: 'negotiable' },
 ] as const

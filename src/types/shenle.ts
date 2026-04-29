@@ -60,6 +60,7 @@ export interface PageSlPropertyInput extends BasePageInput {
 
 export interface PropertyFilterState {
   regionId?: ShenLeId
+  regionName?: string
   bedrooms?: number
   minPrice?: number
   maxPrice?: number
@@ -69,6 +70,7 @@ export interface PropertyFilterState {
   minArea?: number
   maxArea?: number
   communityId?: ShenLeId
+  communityName?: string
   depositRule?: string
 }
 

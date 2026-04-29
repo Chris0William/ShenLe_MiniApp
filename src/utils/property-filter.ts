@@ -89,9 +89,9 @@ export function getPropertyFilterLabels(filters: PropertyFilterState, maps: {
 } = {}) {
   const labels: string[] = []
   if (filters.regionId)
-    labels.push(maps.regionName || '已选区域')
+    labels.push(maps.regionName || filters.regionName || '已选区域')
   if (filters.communityId)
-    labels.push(maps.communityName || '已选楼盘')
+    labels.push(maps.communityName || filters.communityName || '已选楼盘')
   if (filters.bedrooms)
     labels.push(optionLabel(BEDROOM_OPTIONS, filters.bedrooms) || `${filters.bedrooms}室`)
   if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {

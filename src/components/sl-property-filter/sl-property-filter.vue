@@ -55,8 +55,8 @@ const filteredCommunities = computed(() => {
   const keyword = communityKeyword.value.trim()
   const data = communityListData.value
   if (!keyword)
-    return data.slice(0, 80)
-  return data.filter(item => item.name.includes(keyword)).slice(0, 80)
+    return data
+  return data.filter(item => item.name.includes(keyword))
 })
 
 watch(() => props.visible, (visible) => {
@@ -96,17 +96,29 @@ function categoryHasValue(key: string) {
   return hasPropertyFilter(temp.value, key)
 }
 
-function setValue(key: keyof PropertyFilterState, value: PropertyFilterState[keyof PropertyFilterState]) {
+function setValue<K extends keyof PropertyFilterState>(key: K, value: PropertyFilterState[K]) {
   const current = temp.value[key]
-  ;(temp.value as Record<string, unknown>)[key] = current === value ? undefined : value
+  temp.value[key] = current === value ? undefined : value
 }
 
-function setRegion(id?: ShenLeId) {
+function setRegion(id?: ShenLeId, name?: string) {
+  if (id === undefined || sameId(temp.value.regionId, id)) {
+    temp.value.regionId = undefined
+    temp.value.regionName = undefined
+    return
+  }
   temp.value.regionId = id
+  temp.value.regionName = name
 }
 
-function setCommunity(id?: ShenLeId) {
+function setCommunity(id?: ShenLeId, name?: string) {
+  if (id === undefined || sameId(temp.value.communityId, id)) {
+    temp.value.communityId = undefined
+    temp.value.communityName = undefined
+    return
+  }
   temp.value.communityId = id
+  temp.value.communityName = name
 }
 
 function isPriceActive(segment: typeof PRICE_SEGMENTS[number]) {
@@ -192,8 +204,8 @@ function onConfirm() {
     <view class="filter-panel">
       <view class="panel-head">
         <view>
-          <text class="panel-head__title">????</text>
-          <text class="panel-head__desc">????????????????</text>
+          <text class="panel-head__title">筛选房源</text>
+          <text class="panel-head__desc">按区域、户型、租金等条件快速定位</text>
         </view>
         <view class="panel-head__close" @tap="emit('close')">
           <wd-icon name="close" size="18px" color="#72817b" />
@@ -217,19 +229,19 @@ function onConfirm() {
         <scroll-view scroll-y class="right-col">
           <view v-if="activeCategory === 'region'" class="option-list">
             <view class="opt-chip" :class="{ active: !temp.regionId }" @tap="setRegion(undefined)">
-              <text>????</text>
+              <text>全部区域</text>
             </view>
             <view
               v-for="item in flatRegions"
               :key="String(item.id)"
               class="opt-chip"
               :class="{ active: sameId(temp.regionId, item.id) }"
-              @tap="setRegion(item.id)"
+              @tap="setRegion(item.id, item.name)"
             >
               <text>{{ item.name }}</text>
             </view>
             <view v-if="!flatRegions.length" class="option-empty">
-              {{ loadingOptions ? '?????...' : '??????' }}
+              {{ loadingOptions ? '加载中...' : '暂无区域' }}
             </view>
           </view>
 
@@ -239,7 +251,7 @@ function onConfirm() {
               :key="item.label"
               class="opt-chip"
               :class="{ active: temp.bedrooms === item.value }"
-              @tap="temp.bedrooms = item.value"
+              @tap="setValue('bedrooms', item.value)"
             >
               <text>{{ item.label }}</text>
             </view>
@@ -258,16 +270,16 @@ function onConfirm() {
               </view>
             </view>
             <view class="custom-range">
-              <input v-model="customMinPrice" class="range-input" type="number" placeholder="??" @blur="applyCustomPrice">
-              <text class="range-sep">?</text>
-              <input v-model="customMaxPrice" class="range-input" type="number" placeholder="??" @blur="applyCustomPrice">
-              <text class="range-unit">?/?</text>
+              <input v-model="customMinPrice" class="range-input" type="number" placeholder="最低" @blur="applyCustomPrice">
+              <text class="range-sep">-</text>
+              <input v-model="customMaxPrice" class="range-input" type="number" placeholder="最高" @blur="applyCustomPrice">
+              <text class="range-unit">元/月</text>
             </view>
           </view>
 
           <view v-if="activeCategory === 'orientation'" class="option-list">
             <view class="opt-chip" :class="{ active: !temp.orientation }" @tap="temp.orientation = undefined">
-              <text>??</text>
+              <text>不限</text>
             </view>
             <view
               v-for="item in ORIENTATION_OPTIONS"
@@ -282,7 +294,7 @@ function onConfirm() {
 
           <view v-if="activeCategory === 'decoration'" class="option-list">
             <view class="opt-chip" :class="{ active: !temp.decoration }" @tap="temp.decoration = undefined">
-              <text>??</text>
+              <text>不限</text>
             </view>
             <view
               v-for="item in DECORATION_OPTIONS"
@@ -297,7 +309,7 @@ function onConfirm() {
 
           <view v-if="activeCategory === 'rentalType'" class="option-list">
             <view class="opt-chip" :class="{ active: !temp.rentalType }" @tap="temp.rentalType = undefined">
-              <text>??</text>
+              <text>不限</text>
             </view>
             <view
               v-for="item in RENTAL_TYPE_OPTIONS"
@@ -311,7 +323,7 @@ function onConfirm() {
           </view>
 
           <view v-if="activeCategory === 'more'" class="more-section">
-            <text class="sub-title">??</text>
+            <text class="sub-title">面积</text>
             <view class="option-list">
               <view
                 v-for="item in AREA_SEGMENTS"
@@ -324,30 +336,30 @@ function onConfirm() {
               </view>
             </view>
 
-            <text class="sub-title">??</text>
+            <text class="sub-title">楼盘</text>
             <view class="community-search">
               <wd-icon name="search" size="16px" color="#8b978f" />
-              <input v-model="communityKeyword" placeholder="????" confirm-type="search">
+              <input v-model="communityKeyword" placeholder="搜索楼盘" confirm-type="search">
             </view>
             <view class="option-list option-list--dense">
               <view class="opt-chip" :class="{ active: !temp.communityId }" @tap="setCommunity(undefined)">
-                <text>????</text>
+                <text>不限楼盘</text>
               </view>
               <view
                 v-for="item in filteredCommunities"
                 :key="String(item.id)"
                 class="opt-chip"
                 :class="{ active: sameId(temp.communityId, item.id) }"
-                @tap="setCommunity(item.id)"
+                @tap="setCommunity(item.id, item.name)"
               >
                 <text>{{ item.name }}</text>
               </view>
             </view>
 
-            <text class="sub-title">??</text>
+            <text class="sub-title">押付方式</text>
             <view class="option-list">
               <view class="opt-chip" :class="{ active: !temp.depositRule }" @tap="temp.depositRule = undefined">
-                <text>??</text>
+                <text>不限</text>
               </view>
               <view
                 v-for="item in DEPOSIT_RULE_OPTIONS"
@@ -364,11 +376,11 @@ function onConfirm() {
       </view>
 
       <view class="panel-footer">
-        <wd-button block size="large" type="info" plain @click="onReset">
-          ??
+        <wd-button size="large" type="info" plain block @click="onReset">
+          重置
         </wd-button>
         <wd-button block size="large" type="primary" @click="onConfirm">
-          ??{{ activeCount > 0 ? `(${activeCount})` : '' }}
+          确定{{ activeCount > 0 ? `(${activeCount})` : '' }}
         </wd-button>
       </view>
     </view>
@@ -380,9 +392,7 @@ function onConfirm() {
   display: flex;
   height: 78vh;
   flex-direction: column;
-  background:
-    radial-gradient(circle at 92% 0, rgb(228 161 27 / 18%), transparent 220rpx),
-    #f7faf4;
+  background: radial-gradient(circle at 92% 0, rgb(228 161 27 / 18%), transparent 220rpx), #f7faf4;
 }
 
 .panel-head {
