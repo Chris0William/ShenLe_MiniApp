@@ -2,7 +2,7 @@
 import type { PageSlPropertyInput, PropertyFilterState, SlPropertyListOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { getPropertyPage, updatePropertyStatus } from '@/api/property'
+import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { buildPropertyFilterQuery, countPropertyFilters, getPropertyFilterLabels } from '@/utils/property-filter'
 import { idToQuery } from '@/utils/shenle'
@@ -98,8 +98,24 @@ function openDetail(item: SlPropertyListOutput) {
   uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(item.id)}` })
 }
 
-function openForm() {
-  uni.navigateTo({ url: '/pages/common/property-form/index' })
+function openForm(item?: SlPropertyListOutput) {
+  const query = item ? `?id=${idToQuery(item.id)}` : ''
+  uni.navigateTo({ url: `/pages/common/property-form/index${query}` })
+}
+
+function removeItem(item: SlPropertyListOutput) {
+  uni.showModal({
+    title: '删除房源',
+    content: `确定删除「${item.title}」？删除后将从列表和销控中移除。`,
+    confirmColor: '#c94832',
+    success: async (res) => {
+      if (!res.confirm)
+        return
+      await deleteProperty({ id: item.id })
+      uni.showToast({ title: '删除成功', icon: 'success' })
+      await load(true)
+    },
+  })
 }
 
 onLoad(() => load(true))
@@ -155,7 +171,9 @@ onReachBottom(() => {
 
     <view v-if="activeCount || keyword" class="active-summary sl-card">
       <view class="active-summary__body">
-        <wd-tag v-if="keyword" plain type="primary">搜索：{{ keyword }}</wd-tag>
+        <wd-tag v-if="keyword" plain type="primary">
+          搜索：{{ keyword }}
+        </wd-tag>
         <wd-tag v-if="status !== undefined" plain type="warning">
           状态：{{ PROPERTY_STATUS_OPTIONS.find(item => item.value === status)?.label }}
         </wd-tag>
@@ -177,6 +195,14 @@ onReachBottom(() => {
     <view class="list">
       <view v-for="item in items" :key="String(item.id)" class="admin-card sl-card">
         <sl-property-card :item="item" compact @tap="openDetail" />
+        <view class="manage-actions">
+          <wd-button size="small" type="primary" plain @click="openForm(item)">
+            编辑
+          </wd-button>
+          <wd-button size="small" type="danger" plain @click="removeItem(item)">
+            删除
+          </wd-button>
+        </view>
         <view class="status-actions">
           <wd-button
             v-for="option in PROPERTY_STATUS_OPTIONS"
@@ -200,7 +226,7 @@ onReachBottom(() => {
       <wd-icon name="home" size="42px" color="#8ea099" />
       <text class="empty__title">暂无房源数据</text>
       <text class="empty__desc">换个筛选条件，或先新增一套房源。</text>
-      <wd-button size="small" type="primary" @click="clearAllFilters">
+      <wd-button size="small" type="primary" @click="openForm()">
         新增房源
       </wd-button>
     </view>
@@ -371,10 +397,18 @@ onReachBottom(() => {
   box-shadow: none;
 }
 
+.manage-actions,
 .status-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12rpx;
+}
+
+.manage-actions {
+  padding: 0 18rpx 12rpx;
+}
+
+.status-actions {
   padding: 0 18rpx 18rpx;
 }
 
