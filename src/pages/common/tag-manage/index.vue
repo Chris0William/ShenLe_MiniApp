@@ -1,537 +1,597 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import { useAppStore } from '@/stores/app'
-import {
-  getTagPage,
-  getTagCategoryList,
-  addTag,
-  updateTag,
-  deleteTag,
-} from '@/api/tag'
-import type { SlTagOutput, SlTagCategoryOutput } from '@/types/tag'
+import type { AddSlTagInput, SlTagCategoryOutput, SlTagOutput } from '@/types/shenle'
+import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { computed, reactive, ref } from 'vue'
+import { addTag, deleteTag, getTagCategoryList, getTagPage, updateTag } from '@/api/tag'
 
-const appStore = useAppStore()
-
-// Categories
-const categories = ref<SlTagCategoryOutput[]>([])
-const activeCategory = ref('')
-
-// List
-const list = ref<SlTagOutput[]>([])
-const pg = ref(1)
-const pageSize = 20
-const loadStatus = ref<'more' | 'loading' | 'noMore'>('more')
-
-const filteredList = computed(() => {
-  if (!activeCategory.value) return list.value
-  return list.value.filter(t => t.category === activeCategory.value)
+definePage({
+  style: {
+    navigationBarTitleText: '标签管理',
+    enablePullDownRefresh: true,
+  },
 })
 
-// Form
-const showForm = ref(false)
+interface TagForm {
+  id: string
+  name: string
+  category: string
+  color: string
+  icon: string
+  orderNo: string
+  status: number
+  remark: string
+}
+
+const fallbackCategories: SlTagCategoryOutput[] = [
+  { value: 'house', label: '房源标签' },
+  { value: 'facility', label: '配套设施' },
+  { value: 'feature', label: '房源特色' },
+]
+const colorOptions = ['#126b4f', '#e4a11b', '#2f80ed', '#c94832', '#7c3aed', '#0f9f86', '#6b7280']
+const statusOptions = [
+  { value: 0, label: '正常' },
+  { value: 1, label: '禁用' },
+] as const
+
+const categories = ref<SlTagCategoryOutput[]>(fallbackCategories)
+const activeCategory = ref('')
+const keyword = ref('')
+const list = ref<SlTagOutput[]>([])
+const page = ref(1)
+const pageSize = 20
+const total = ref(0)
+const loading = ref(false)
+const finished = ref(false)
+const formVisible = ref(false)
 const isEdit = ref(false)
-const form = ref({
+const submitting = ref(false)
+
+const form = reactive<TagForm>({
   id: '',
   name: '',
   category: '',
-  color: '#1890ff',
+  color: '#126b4f',
   icon: '',
-  orderNo: 0,
+  orderNo: '100',
+  status: 0,
   remark: '',
 })
 
-const TAG_COLORS = [
-  '#1890ff', '#52c41a', '#faad14', '#ff4d4f', '#722ed1',
-  '#13c2c2', '#eb2f96', '#fa8c16', '#a0d911', '#2f54eb',
-]
+const categoryNames = computed(() => categories.value.map(item => item.label))
+const formCategoryIndex = computed(() => Math.max(0, categories.value.findIndex(item => item.value === form.category)))
+const grouped = computed(() => categories.value.map(category => ({
+  ...category,
+  count: list.value.filter(item => item.category === category.value).length,
+})))
+
+function toNumber(value: string, fallback?: number) {
+  if (value === '')
+    return fallback
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function categoryLabel(value: string) {
+  return categories.value.find(item => item.value === value)?.label || value
+}
+
+function statusLabel(status?: number) {
+  return status === 1 ? '禁用' : '正常'
+}
 
 async function loadCategories() {
   try {
-    categories.value = await getTagCategoryList()
-  } catch {}
+    const res = await getTagCategoryList()
+    categories.value = res.length ? res : fallbackCategories
+  }
+  catch {
+    categories.value = fallbackCategories
+  }
 }
 
 async function loadData(reset = false) {
-  if (reset) { pg.value = 1; list.value = [] }
-  if (loadStatus.value === 'loading') return
-  loadStatus.value = 'loading'
+  if (loading.value)
+    return
+  if (reset) {
+    page.value = 1
+    list.value = []
+    finished.value = false
+  }
+  if (finished.value)
+    return
+
+  loading.value = true
   try {
     const res = await getTagPage({
-      page: pg.value,
+      page: page.value,
       pageSize,
+      name: keyword.value.trim() || undefined,
+      category: activeCategory.value || undefined,
     })
     list.value = reset ? res.items : [...list.value, ...res.items]
-    loadStatus.value = res.items.length < pageSize ? 'noMore' : 'more'
-    pg.value++
-  } catch {
-    loadStatus.value = 'more'
+    total.value = res.total
+    finished.value = list.value.length >= res.total || res.items.length < pageSize
+    page.value += 1
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
   }
 }
 
-function switchCategory(cat: string) {
-  activeCategory.value = cat === activeCategory.value ? '' : cat
+function switchCategory(value: string) {
+  activeCategory.value = activeCategory.value === value ? '' : value
+  loadData(true)
+}
+
+function onFormCategoryChange(event: any) {
+  const idx = Number(event.detail.value)
+  form.category = categories.value[idx]?.value || ''
+}
+
+function resetForm(item?: SlTagOutput) {
+  isEdit.value = !!item
+  form.id = item ? String(item.id) : ''
+  form.name = item?.name || ''
+  form.category = item?.category || activeCategory.value || categories.value[0]?.value || ''
+  form.color = item?.color || '#126b4f'
+  form.icon = item?.icon || ''
+  form.orderNo = String(item?.orderNo ?? 100)
+  form.status = item?.status ?? 0
+  form.remark = item?.remark || ''
 }
 
 function openAdd() {
-  isEdit.value = false
-  form.value = {
-    id: '',
-    name: '',
-    category: activeCategory.value || (categories.value[0]?.category ?? ''),
-    color: '#1890ff',
-    icon: '',
-    orderNo: 0,
-    remark: '',
-  }
-  showForm.value = true
+  resetForm()
+  formVisible.value = true
 }
 
 function openEdit(item: SlTagOutput) {
-  isEdit.value = true
-  form.value = {
-    id: item.id,
-    name: item.name,
-    category: item.category,
-    color: item.color || '#1890ff',
-    icon: item.icon || '',
-    orderNo: item.orderNo || 0,
-    remark: item.remark || '',
-  }
-  showForm.value = true
+  resetForm(item)
+  formVisible.value = true
 }
 
-async function onSubmit() {
-  if (!form.value.name.trim()) {
+function buildPayload(): AddSlTagInput {
+  return {
+    name: form.name.trim(),
+    category: form.category,
+    color: form.color || undefined,
+    icon: form.icon.trim() || undefined,
+    orderNo: toNumber(form.orderNo, 100),
+    status: form.status,
+    remark: form.remark.trim() || undefined,
+  }
+}
+
+async function submitForm() {
+  if (!form.name.trim()) {
     uni.showToast({ title: '请输入标签名称', icon: 'none' })
     return
   }
-  if (!form.value.category) {
-    uni.showToast({ title: '请选择分类', icon: 'none' })
+  if (!form.category) {
+    uni.showToast({ title: '请选择标签分类', icon: 'none' })
     return
   }
+
+  submitting.value = true
   try {
-    if (isEdit.value) {
-      await updateTag({
-        id: form.value.id,
-        name: form.value.name,
-        category: form.value.category,
-        color: form.value.color || undefined,
-        icon: form.value.icon || undefined,
-        orderNo: form.value.orderNo,
-        remark: form.value.remark || undefined,
-      })
-      uni.showToast({ title: '更新成功', icon: 'success' })
-    } else {
-      await addTag({
-        name: form.value.name,
-        category: form.value.category,
-        color: form.value.color || undefined,
-        icon: form.value.icon || undefined,
-        orderNo: form.value.orderNo,
-        remark: form.value.remark || undefined,
-      })
-      uni.showToast({ title: '新增成功', icon: 'success' })
-    }
-    showForm.value = false
-    loadData(true)
-  } catch {}
+    const payload = buildPayload()
+    if (isEdit.value)
+      await updateTag({ ...payload, id: form.id })
+    else
+      await addTag(payload)
+    uni.showToast({ title: isEdit.value ? '更新成功' : '新增成功', icon: 'success' })
+    formVisible.value = false
+    await loadData(true)
+  }
+  finally {
+    submitting.value = false
+  }
 }
 
-function onDelete(item: SlTagOutput) {
+function confirmDelete(item: SlTagOutput) {
   uni.showModal({
-    title: '确认删除',
-    content: `确定删除标签「${item.name}」？`,
+    title: '删除标签',
+    content: `确定删除「${item.name}」？已被房源使用时后端会拦截。`,
     success: async (res) => {
-      if (!res.confirm) return
-      try {
-        await deleteTag({ id: item.id })
-        uni.showToast({ title: '删除成功', icon: 'success' })
-        loadData(true)
-      } catch {}
+      if (!res.confirm)
+        return
+      await deleteTag(item.id)
+      uni.showToast({ title: '删除成功', icon: 'success' })
+      await loadData(true)
     },
   })
 }
 
-function getCategoryName(cat: string): string {
-  return categories.value.find(c => c.category === cat)?.categoryName || cat
-}
-
-function onLoadMore() {
-  if (loadStatus.value === 'more') loadData()
-}
-
-onShow(() => {
-  loadCategories()
-  loadData(true)
+onLoad(async () => {
+  await loadCategories()
+  await loadData(true)
 })
+onPullDownRefresh(() => loadData(true))
+onReachBottom(() => loadData())
 </script>
 
 <template>
-  <view class="page">
-    <view class="page-header" :style="{ paddingTop: appStore.headerPaddingStyle(12) }">
-      <text class="page-title">标签管理</text>
+  <view class="sl-page tag-page">
+    <view class="sl-hero">
+      <text class="sl-eyebrow">House Vocabulary</text>
+      <text class="sl-title">标签管理</text>
+      <text class="sl-subtitle">管理房源标签、配套设施和特色卖点，表单与筛选都会复用这些字典。</text>
     </view>
 
-    <!-- Category tabs -->
-    <scroll-view scroll-x class="tab-scroll">
-      <view class="tab-bar">
-        <view
-          class="tab-item"
-          :class="{ active: !activeCategory }"
-          @tap="switchCategory('')"
-        >
-          全部
-        </view>
-        <view
-          v-for="c in categories"
-          :key="c.category"
-          class="tab-item"
-          :class="{ active: activeCategory === c.category }"
-          @tap="switchCategory(c.category)"
-        >
-          {{ c.categoryName }}
-        </view>
+    <view class="toolbar sl-card">
+      <view class="search-row">
+        <input v-model="keyword" class="search-input" placeholder="搜索标签名称" confirm-type="search" @confirm="loadData(true)" />
+        <wd-button size="small" type="primary" @click="loadData(true)">搜索</wd-button>
       </view>
-    </scroll-view>
-
-    <!-- Tag list -->
-    <scroll-view scroll-y class="list-area" @scrolltolower="onLoadMore">
-      <view v-if="filteredList.length === 0 && loadStatus !== 'loading'" class="empty-wrap">
-        <sl-empty-state text="暂无标签数据" />
-      </view>
-      <view v-for="item in filteredList" :key="item.id" class="tag-card">
-        <view class="tag-left">
-          <view class="tag-color" :style="{ backgroundColor: item.color || '#1890ff' }" />
-          <view class="tag-info">
-            <text class="tag-name">{{ item.name }}</text>
-            <text class="tag-cat">{{ getCategoryName(item.category) }}</text>
+      <scroll-view scroll-x class="category-scroll">
+        <view class="category-row">
+          <view class="chip" :class="{ active: !activeCategory }" @tap="switchCategory('')">
+            全部
+          </view>
+          <view
+            v-for="item in grouped"
+            :key="item.value"
+            class="chip"
+            :class="{ active: activeCategory === item.value }"
+            @tap="switchCategory(item.value)"
+          >
+            {{ item.label }} {{ item.count ? item.count : '' }}
           </view>
         </view>
-        <view class="tag-actions">
-          <text class="act-btn edit" @tap="openEdit(item)">编辑</text>
-          <text class="act-btn del" @tap="onDelete(item)">删除</text>
-        </view>
-      </view>
-      <sl-load-more v-if="filteredList.length > 0" :status="loadStatus" />
-    </scroll-view>
-
-    <!-- FAB -->
-    <view class="fab" @tap="openAdd">
-      <text class="fab-icon">+</text>
+      </scroll-view>
     </view>
 
-    <!-- Form Modal -->
-    <view v-if="showForm" class="modal-mask" @tap="showForm = false">
-      <view class="modal-panel" @tap.stop>
-        <text class="modal-title">{{ isEdit ? '编辑标签' : '新增标签' }}</text>
-        <view class="form-group">
-          <text class="form-label">名称</text>
-          <input v-model="form.name" class="form-input" placeholder="请输入标签名称" />
+    <view class="sl-section-head">
+      <text class="sl-section-title">标签列表</text>
+      <text class="sl-section-extra">{{ list.length }}/{{ total }}</text>
+    </view>
+
+    <view v-if="!list.length && !loading" class="empty sl-card">
+      <wd-icon name="tag" size="38px" color="#8ea099" />
+      <text>暂无标签数据</text>
+    </view>
+
+    <view class="tag-list">
+      <view v-for="item in list" :key="String(item.id)" class="tag-card sl-card">
+        <view class="tag-left">
+          <view class="tag-color" :style="{ background: item.color || '#126b4f' }" />
+          <view>
+            <view class="title-line">
+              <text class="tag-name">{{ item.name }}</text>
+              <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>{{ statusLabel(item.status) }}</wd-tag>
+            </view>
+            <text class="tag-meta">{{ categoryLabel(item.category) }} · 排序 {{ item.orderNo }}</text>
+          </view>
         </view>
-        <view class="form-group">
-          <text class="form-label">分类</text>
-          <view class="cat-options">
-            <view
-              v-for="c in categories"
-              :key="c.category"
-              class="cat-chip"
-              :class="{ active: form.category === c.category }"
-              @tap="form.category = c.category"
-            >
-              {{ c.categoryName }}
+        <view class="actions">
+          <wd-button size="small" type="primary" plain @click="openEdit(item)">编辑</wd-button>
+          <wd-button size="small" type="danger" plain @click="confirmDelete(item)">删除</wd-button>
+        </view>
+      </view>
+    </view>
+
+    <view v-if="loading" class="load-tip">加载中...</view>
+    <view v-else-if="finished && list.length" class="load-tip">已经到底了</view>
+
+    <view class="fab" @tap="openAdd">
+      <wd-icon name="add" size="26px" color="#fff" />
+    </view>
+
+    <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
+      <view class="form-sheet">
+        <view class="sheet-head">
+          <view>
+            <text class="sheet-title">{{ isEdit ? '编辑标签' : '新增标签' }}</text>
+            <text class="sheet-sub">标签用于房源展示、筛选和亮点描述。</text>
+          </view>
+          <wd-icon name="close" size="22px" color="#72817b" @click="formVisible = false" />
+        </view>
+
+        <view class="form-body">
+          <view class="form-row">
+            <text>标签名称</text>
+            <input v-model="form.name" placeholder="如：近地铁 / 家私齐全" />
+          </view>
+          <picker mode="selector" :value="formCategoryIndex" :range="categoryNames" @change="onFormCategoryChange">
+            <view class="form-row form-row--picker">
+              <text>分类</text>
+              <text>{{ categoryLabel(form.category) || '请选择' }}</text>
+            </view>
+          </picker>
+          <view class="form-row">
+            <text>颜色</text>
+            <view class="color-row">
+              <view
+                v-for="color in colorOptions"
+                :key="color"
+                class="color-dot"
+                :class="{ active: form.color === color }"
+                :style="{ background: color }"
+                @tap="form.color = color"
+              />
             </view>
           </view>
-        </view>
-        <view class="form-group">
-          <text class="form-label">颜色</text>
-          <view class="color-options">
-            <view
-              v-for="c in TAG_COLORS"
-              :key="c"
-              class="color-dot"
-              :class="{ active: form.color === c }"
-              :style="{ backgroundColor: c }"
-              @tap="form.color = c"
-            />
+          <view class="grid-2">
+            <view class="form-row">
+              <text>图标</text>
+              <input v-model="form.icon" placeholder="可选" />
+            </view>
+            <view class="form-row">
+              <text>排序</text>
+              <input v-model="form.orderNo" type="number" />
+            </view>
+          </view>
+          <view class="form-row">
+            <text>状态</text>
+            <view class="segmented">
+              <view
+                v-for="item in statusOptions"
+                :key="item.value"
+                :class="{ active: form.status === item.value }"
+                @tap="form.status = item.value"
+              >
+                {{ item.label }}
+              </view>
+            </view>
+          </view>
+          <view class="form-row form-row--textarea">
+            <text>备注</text>
+            <textarea v-model="form.remark" placeholder="内部管理备注" />
           </view>
         </view>
-        <view class="form-group">
-          <text class="form-label">排序</text>
-          <input v-model.number="form.orderNo" class="form-input" type="number" placeholder="0" />
-        </view>
-        <view class="form-group">
-          <text class="form-label">备注</text>
-          <input v-model="form.remark" class="form-input" placeholder="选填" />
-        </view>
-        <view class="form-actions">
-          <view class="form-btn cancel" @tap="showForm = false">取消</view>
-          <view class="form-btn confirm" @tap="onSubmit">确定</view>
+
+        <view class="sheet-actions">
+          <wd-button block plain type="default" @click="formVisible = false">取消</wd-button>
+          <wd-button block type="primary" :loading="submitting" @click="submitForm">保存</wd-button>
         </view>
       </view>
-    </view>
+    </wd-popup>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
+<style scoped lang="scss">
+.tag-page {
+  padding-bottom: calc(150rpx + env(safe-area-inset-bottom));
+}
+
+.toolbar {
+  margin-top: 22rpx;
+  padding: 22rpx;
+}
+
+.search-row {
   display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background-color: $sl-bg-page;
+  align-items: center;
+  gap: 14rpx;
 }
 
-.page-header {
-  padding: $sl-spacing-md $sl-spacing-lg;
-  // padding-top 由 :style 动态设置
-  background-color: $sl-bg-card;
+.search-input {
+  flex: 1;
+  height: 72rpx;
+  box-sizing: border-box;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #f2f6f0;
+  font-size: 26rpx;
 }
 
-.page-title {
-  font-size: $sl-font-xl;
-  font-weight: 700;
-  color: $sl-text-primary;
-}
-
-.tab-scroll {
-  background-color: $sl-bg-card;
-  border-bottom: 1rpx solid $sl-border-color;
-  flex-shrink: 0;
+.category-scroll {
+  margin-top: 18rpx;
   white-space: nowrap;
 }
 
-.tab-bar {
+.category-row {
   display: inline-flex;
-  gap: $sl-spacing-sm;
-  padding: $sl-spacing-sm $sl-spacing-md;
+  gap: 12rpx;
 }
 
-.tab-item {
-  display: inline-block;
-  padding: $sl-spacing-xs $sl-spacing-md;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  background-color: $sl-bg-page;
-  border-radius: 30rpx;
-  flex-shrink: 0;
-
-  &.active {
-    color: $sl-primary;
-    background-color: rgba(24, 144, 255, 0.1);
-    font-weight: 600;
-  }
+.chip {
+  padding: 12rpx 22rpx;
+  border: 1rpx solid rgb(18 107 79 / 10%);
+  border-radius: 999rpx;
+  background: #f7faf4;
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 
-.list-area {
-  flex: 1;
-  padding: $sl-spacing-sm;
-  padding-bottom: 200rpx;
+.chip.active {
+  background: var(--sl-brand);
+  color: #fff;
 }
 
-.empty-wrap {
-  padding: $sl-spacing-xl;
+.tag-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
 }
 
 .tag-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: $sl-spacing-md;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  margin-bottom: $sl-spacing-sm;
+  gap: 18rpx;
+  padding: 24rpx;
+}
+
+.tag-left,
+.title-line,
+.actions,
+.sheet-head,
+.sheet-actions,
+.color-row {
+  display: flex;
+  align-items: center;
 }
 
 .tag-left {
-  display: flex;
-  align-items: center;
-  gap: $sl-spacing-md;
+  min-width: 0;
+  flex: 1;
+  gap: 18rpx;
 }
 
 .tag-color {
-  width: 40rpx;
-  height: 40rpx;
-  border-radius: 8rpx;
-  flex-shrink: 0;
+  width: 54rpx;
+  height: 54rpx;
+  flex: 0 0 54rpx;
+  border: 6rpx solid #fff;
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 18rpx rgb(18 107 79 / 14%);
 }
 
-.tag-info {
+.title-line {
+  gap: 10rpx;
+}
+
+.tag-name,
+.sheet-title {
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.tag-meta,
+.sheet-sub,
+.load-tip {
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.tag-meta,
+.sheet-sub {
+  display: block;
+  margin-top: 8rpx;
+}
+
+.actions {
+  gap: 10rpx;
+}
+
+.empty {
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  align-items: center;
+  gap: 14rpx;
+  padding: 70rpx 20rpx;
+  color: var(--sl-muted);
 }
 
-.tag-name {
-  font-size: $sl-font-md;
-  font-weight: 600;
-  color: $sl-text-primary;
-}
-
-.tag-cat {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-}
-
-.tag-actions {
-  display: flex;
-  gap: $sl-spacing-sm;
-}
-
-.act-btn {
-  font-size: $sl-font-xs;
-  padding: $sl-spacing-xs $sl-spacing-sm;
-  border-radius: 6rpx;
-
-  &.edit {
-    color: #faad14;
-    background-color: rgba(250, 173, 20, 0.1);
-  }
-
-  &.del {
-    color: $sl-danger;
-    background-color: rgba(255, 77, 79, 0.1);
-  }
+.load-tip {
+  padding: 26rpx 0;
+  text-align: center;
 }
 
 .fab {
   position: fixed;
-  right: $sl-spacing-lg;
-  bottom: calc(#{$sl-spacing-xl} + #{$sl-safe-bottom});
+  right: 34rpx;
+  bottom: calc(92rpx + env(safe-area-inset-bottom));
+  z-index: 8;
+  display: flex;
   width: 96rpx;
   height: 96rpx;
-  border-radius: 50%;
-  background-color: $sl-primary;
-  display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(59, 130, 246, 0.4);
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, var(--sl-brand), #24815f);
+  box-shadow: 0 18rpx 38rpx rgb(18 107 79 / 28%);
 }
 
-.fab-icon {
-  font-size: 48rpx;
-  color: #ffffff;
-  font-weight: 300;
+.form-sheet {
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  background: #fff;
 }
 
-// Modal
-.modal-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
+.sheet-head {
+  justify-content: space-between;
+  gap: 18rpx;
 }
 
-.modal-panel {
-  width: 85%;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  padding: $sl-spacing-lg;
+.form-body {
+  max-height: 62vh;
+  margin-top: 22rpx;
+  overflow-y: auto;
 }
 
-.modal-title {
+.form-row {
+  margin-bottom: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f6f9f4;
+}
+
+.form-row text:first-child {
   display: block;
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-  margin-bottom: $sl-spacing-md;
-  text-align: center;
+  margin-bottom: 10rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
 }
 
-.form-group {
-  margin-bottom: $sl-spacing-md;
-}
-
-.form-label {
-  display: block;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-xs;
-}
-
-.form-input {
+.form-row input,
+.form-row textarea {
   width: 100%;
-  height: 80rpx;
-  padding: 0 $sl-spacing-md;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  box-sizing: border-box;
+  color: var(--sl-ink);
+  font-size: 28rpx;
 }
 
-.cat-options {
+.form-row textarea {
+  min-height: 120rpx;
+}
+
+.form-row--picker {
   display: flex;
-  flex-wrap: wrap;
-  gap: $sl-spacing-sm;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.cat-chip {
-  padding: $sl-spacing-xs $sl-spacing-md;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  background-color: $sl-bg-page;
-  border-radius: 30rpx;
-
-  &.active {
-    color: $sl-primary;
-    background-color: rgba(24, 144, 255, 0.1);
-    font-weight: 600;
-  }
+.form-row--picker text:first-child {
+  margin-bottom: 0;
 }
 
-.color-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $sl-spacing-md;
+.form-row--picker text:last-child {
+  color: var(--sl-ink);
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+}
+
+.color-row {
+  gap: 16rpx;
 }
 
 .color-dot {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  position: relative;
-
-  &.active::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 20rpx;
-    height: 20rpx;
-    border-radius: 50%;
-    background-color: #ffffff;
-  }
+  width: 52rpx;
+  height: 52rpx;
+  border: 6rpx solid #fff;
+  border-radius: 999rpx;
+  box-shadow: 0 8rpx 18rpx rgb(18 107 79 / 14%);
 }
 
-.form-actions {
-  display: flex;
-  gap: $sl-spacing-sm;
-  margin-top: $sl-spacing-lg;
+.color-dot.active {
+  outline: 4rpx solid rgb(18 107 79 / 24%);
 }
 
-.form-btn {
-  flex: 1;
-  text-align: center;
-  padding: $sl-spacing-sm;
-  border-radius: $sl-border-radius;
-  font-size: $sl-font-md;
-  font-weight: 600;
+.segmented {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: #eaf2e8;
+}
 
-  &.cancel {
-    background-color: $sl-bg-page;
-    color: $sl-text-secondary;
-  }
+.segmented view {
+  padding: 12rpx 24rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
 
-  &.confirm {
-    background-color: $sl-primary;
-    color: #ffffff;
-  }
+.segmented .active {
+  background: var(--sl-brand);
+  color: #fff;
+}
+
+.sheet-actions {
+  gap: 16rpx;
+  margin-top: 24rpx;
 }
 </style>

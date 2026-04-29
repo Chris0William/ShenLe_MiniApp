@@ -1,33 +1,20 @@
-import { get, post } from './http'
-import type { BaseIdInput } from '@/types/common'
-import type {
-  ListSlBuildingInput,
-  AddSlBuildingInput,
-  UpdateSlBuildingInput,
-  SlBuildingOutput,
-  SlBuildingStatsOutput,
-} from '@/types/building'
+import { get, post } from './request'
+import type { AddSlBuildingInput, ListSlBuildingInput, ShenLeId, SlBuildingOutput, SlBuildingStatsOutput, UpdateSlBuildingInput } from '@/types/shenle'
 
-/** 获取楼栋列表 */
-export const getBuildingList = (input: ListSlBuildingInput) =>
-  get<SlBuildingOutput[]>('/api/slBuilding/list', input)
-
-/** 获取楼栋统计 */
-export const getBuildingStats = (communityId?: string) =>
+export const getBuildingStats = (communityId?: ShenLeId) =>
   get<SlBuildingStatsOutput[]>('/api/slBuilding/stats', { communityId })
 
-/** 获取楼栋详情 */
-export const getBuildingDetail = (id: string) =>
+export const getBuildingList = (input: ListSlBuildingInput) =>
+  get<SlBuildingOutput[]>('/api/slBuilding/list', input as unknown as Record<string, unknown>)
+
+export const getBuildingDetail = (id: ShenLeId) =>
   get<SlBuildingOutput>('/api/slBuilding/detail', { id })
 
-/** 新增楼栋 */
 export const addBuilding = (input: AddSlBuildingInput) =>
-  post<string>('/api/slBuilding/add', input)
+  post<ShenLeId>('/api/slBuilding/add', input as unknown as Record<string, unknown>)
 
-/** 更新楼栋 */
 export const updateBuilding = (input: UpdateSlBuildingInput) =>
-  post<void>('/api/slBuilding/update', input)
+  post<void>('/api/slBuilding/update', input as unknown as Record<string, unknown>)
 
-/** 删除楼栋 */
-export const deleteBuilding = (input: BaseIdInput) =>
-  post<void>('/api/slBuilding/delete', input)
+export const deleteBuilding = (id: ShenLeId) =>
+  post<void>('/api/slBuilding/delete', { id })

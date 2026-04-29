@@ -1,600 +1,518 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { onLoad, onShow } from '@dcloudio/uni-app'
-import { useAppStore } from '@/stores/app'
-import { getBuildingList, getBuildingDetail, addBuilding, updateBuilding, deleteBuilding } from '@/api/building'
+import type { AddSlBuildingInput, SlBuildingOutput, SlCommunitySelectOutput } from '@/types/shenle'
+import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { computed, reactive, ref } from 'vue'
+import { addBuilding, deleteBuilding, getBuildingList, updateBuilding } from '@/api/building'
 import { getCommunityList } from '@/api/community'
-import { uploadFile, downloadFile } from '@/api/file'
-import type { SlBuildingOutput } from '@/types/building'
-import type { SlCommunitySelectOutput } from '@/types/community'
+import { idToQuery } from '@/utils/shenle'
 
-const appStore = useAppStore()
-const communityId = ref('')
-const communityName = ref('')
-const list = ref<SlBuildingOutput[]>([])
-const communities = ref<SlCommunitySelectOutput[]>([])
-
-// Form
-const showForm = ref(false)
-const isEdit = ref(false)
-const form = ref({
-  id: '',
-  name: '',
-  communityId: '',
-  totalFloors: 1,
-  unitsPerFloor: 1,
-  orderNo: 0,
-  imageIds: [] as string[],
-  imageUrls: [] as string[],
-  coverImageId: '',
+definePage({
+  style: {
+    navigationBarTitleText: '楼栋管理',
+    enablePullDownRefresh: true,
+  },
 })
 
-async function loadData() {
-  try {
-    list.value = await getBuildingList({
-      communityId: communityId.value || undefined,
-    })
-  } catch {}
+interface BuildingForm {
+  id: string
+  communityId: string
+  name: string
+  totalFloors: string
+  orderNo: string
+  status: number
+  remark: string
+}
+
+const communities = ref<SlCommunitySelectOutput[]>([])
+const communityId = ref('')
+const communityNameFromQuery = ref('')
+const list = ref<SlBuildingOutput[]>([])
+const loading = ref(false)
+const formVisible = ref(false)
+const isEdit = ref(false)
+const submitting = ref(false)
+
+const form = reactive<BuildingForm>({
+  id: '',
+  communityId: '',
+  name: '',
+  totalFloors: '1',
+  orderNo: '100',
+  status: 0,
+  remark: '',
+})
+
+const statusOptions = [
+  { value: 0, label: '正常' },
+  { value: 1, label: '禁用' },
+] as const
+
+const communityNames = computed(() => communities.value.map(item => item.name))
+const selectedCommunity = computed(() => communities.value.find(item => String(item.id) === String(communityId.value)))
+const communityPickerIndex = computed(() => Math.max(0, communities.value.findIndex(item => String(item.id) === String(communityId.value))))
+const formCommunityIndex = computed(() => Math.max(0, communities.value.findIndex(item => String(item.id) === String(form.communityId))))
+const headerTitle = computed(() => selectedCommunity.value?.name || communityNameFromQuery.value || '请选择楼盘')
+const totalRooms = computed(() => list.value.reduce((sum, item) => sum + (item.propertyCount || 0), 0))
+
+function toNumber(value: string, fallback?: number) {
+  if (value === '')
+    return fallback
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function statusLabel(status?: number) {
+  return status === 1 ? '禁用' : '正常'
 }
 
 async function loadCommunities() {
+  communities.value = await getCommunityList({})
+  if (!communityId.value && communities.value.length)
+    communityId.value = String(communities.value[0].id)
+}
+
+async function loadData() {
+  if (!communityId.value) {
+    list.value = []
+    uni.stopPullDownRefresh()
+    return
+  }
+  loading.value = true
   try {
-    communities.value = await getCommunityList({})
-    if (communityId.value) {
-      const c = communities.value.find(c => c.id === communityId.value)
-      if (c) communityName.value = c.name
-    }
-  } catch {}
+    list.value = await getBuildingList({ communityId: communityId.value })
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
+  }
+}
+
+async function reloadAll() {
+  await loadCommunities()
+  await loadData()
+}
+
+function onCommunityChange(event: any) {
+  const idx = Number(event.detail.value)
+  communityId.value = String(communities.value[idx]?.id || '')
+  loadData()
+}
+
+function onFormCommunityChange(event: any) {
+  const idx = Number(event.detail.value)
+  form.communityId = String(communities.value[idx]?.id || '')
+}
+
+function resetForm(item?: SlBuildingOutput) {
+  isEdit.value = !!item
+  form.id = item ? String(item.id) : ''
+  form.communityId = item ? String(item.communityId) : communityId.value
+  form.name = item?.name || ''
+  form.totalFloors = String(item?.totalFloors ?? 1)
+  form.orderNo = String(item?.orderNo ?? 100)
+  form.status = item?.status ?? 0
+  form.remark = item?.remark || ''
 }
 
 function openAdd() {
-  isEdit.value = false
-  form.value = {
-    id: '',
-    name: '',
-    communityId: communityId.value,
-    totalFloors: 1,
-    unitsPerFloor: 1,
-    orderNo: 0,
-    imageIds: [],
-    imageUrls: [],
-    coverImageId: '',
-  }
-  showForm.value = true
-}
-
-async function openEdit(item: SlBuildingOutput) {
-  isEdit.value = true
-  form.value = {
-    id: item.id,
-    name: item.name,
-    communityId: item.communityId,
-    totalFloors: item.totalFloors || 1,
-    unitsPerFloor: item.unitsPerFloor || 1,
-    orderNo: item.orderNo || 0,
-    imageIds: [],
-    imageUrls: [],
-    coverImageId: '',
-  }
-  // 加载详情中的图片（需要带 token 下载到本地临时路径）
-  try {
-    const detail = await getBuildingDetail(String(item.id))
-    if (detail.images?.length) {
-      const ids = detail.images.map(i => String(i.id))
-      const urls: string[] = []
-      for (const id of ids) {
-        try { urls.push(await downloadFile(id)) } catch { urls.push('') }
-      }
-      form.value.imageIds = ids
-      form.value.imageUrls = urls
-    }
-    if (detail.coverImageId) form.value.coverImageId = String(detail.coverImageId)
-  } catch {}
-  showForm.value = true
-}
-
-async function onChooseImage() {
-  uni.chooseImage({
-    count: 9 - form.value.imageIds.length,
-    success: async (res) => {
-      for (const path of res.tempFilePaths) {
-        try {
-          const file = await uploadFile(path)
-          form.value.imageIds.push(file.id)
-          form.value.imageUrls.push(path) // 直接用本地临时路径
-          if (!form.value.coverImageId) form.value.coverImageId = file.id
-        } catch {}
-      }
-    },
-  })
-}
-
-function removeImage(idx: number) {
-  const removedId = form.value.imageIds[idx]
-  form.value.imageIds.splice(idx, 1)
-  form.value.imageUrls.splice(idx, 1)
-  if (form.value.coverImageId === removedId) {
-    form.value.coverImageId = form.value.imageIds[0] || ''
-  }
-}
-
-function setCover(idx: number) {
-  form.value.coverImageId = form.value.imageIds[idx]
-}
-
-async function onSubmit() {
-  if (!form.value.name.trim()) {
-    uni.showToast({ title: '请输入楼栋名称', icon: 'none' })
+  if (!communityId.value) {
+    uni.showToast({ title: '请先选择楼盘', icon: 'none' })
     return
   }
-  if (!form.value.communityId) {
+  resetForm()
+  formVisible.value = true
+}
+
+function openEdit(item: SlBuildingOutput) {
+  resetForm(item)
+  formVisible.value = true
+}
+
+function buildPayload(): AddSlBuildingInput {
+  return {
+    communityId: form.communityId,
+    name: form.name.trim(),
+    totalFloors: toNumber(form.totalFloors, 1),
+    orderNo: toNumber(form.orderNo, 100),
+    status: form.status,
+    remark: form.remark.trim() || undefined,
+  }
+}
+
+async function submitForm() {
+  if (!form.communityId) {
     uni.showToast({ title: '请选择所属楼盘', icon: 'none' })
     return
   }
+  if (!form.name.trim()) {
+    uni.showToast({ title: '请输入楼栋名称', icon: 'none' })
+    return
+  }
+
+  submitting.value = true
   try {
-    const imageData = {
-      coverImageId: form.value.coverImageId ? Number(form.value.coverImageId) : undefined,
-      imageIds: form.value.imageIds.map(Number),
-    }
-    if (isEdit.value) {
-      await updateBuilding({
-        id: form.value.id,
-        name: form.value.name,
-        communityId: form.value.communityId,
-        totalFloors: form.value.totalFloors,
-        orderNo: form.value.orderNo,
-        ...imageData,
-      })
-      uni.showToast({ title: '更新成功', icon: 'success' })
-    } else {
-      await addBuilding({
-        name: form.value.name,
-        communityId: form.value.communityId,
-        totalFloors: form.value.totalFloors,
-        orderNo: form.value.orderNo,
-        ...imageData,
-      })
-      uni.showToast({ title: '新增成功', icon: 'success' })
-    }
-    showForm.value = false
-    loadData()
-  } catch {}
+    const payload = buildPayload()
+    if (isEdit.value)
+      await updateBuilding({ ...payload, id: form.id })
+    else
+      await addBuilding(payload)
+    uni.showToast({ title: isEdit.value ? '更新成功' : '新增成功', icon: 'success' })
+    formVisible.value = false
+    communityId.value = String(payload.communityId)
+    await loadData()
+  }
+  finally {
+    submitting.value = false
+  }
 }
 
-function onDelete(item: SlBuildingOutput) {
+function confirmDelete(item: SlBuildingOutput) {
   uni.showModal({
-    title: '确认删除',
-    content: `确定删除楼栋「${item.name}」？`,
+    title: '删除楼栋',
+    content: `确定删除「${item.name}」？有房源时后端会拦截。`,
     success: async (res) => {
-      if (!res.confirm) return
-      try {
-        await deleteBuilding({ id: item.id })
-        uni.showToast({ title: '删除成功', icon: 'success' })
-        loadData()
-      } catch {}
+      if (!res.confirm)
+        return
+      await deleteBuilding(item.id)
+      uni.showToast({ title: '删除成功', icon: 'success' })
+      await loadData()
     },
   })
 }
 
-// Community picker
-const showPicker = ref(false)
-function pickCommunity(id: string) {
-  form.value.communityId = id
-  showPicker.value = false
-}
-function getCommunityName(id: string): string {
-  return communities.value.find(c => c.id === id)?.name || '未选择'
+function goProperties(item: SlBuildingOutput) {
+  uni.navigateTo({
+    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.communityId)}&communityName=${encodeURIComponent(headerTitle.value)}`,
+  })
 }
 
-onLoad((options) => {
-  if (options?.communityId) communityId.value = options.communityId
+onLoad(async (query) => {
+  communityId.value = String(query?.communityId || '')
+  communityNameFromQuery.value = String(query?.communityName || '')
+  await reloadAll()
 })
-
-onShow(() => {
-  loadCommunities()
-  loadData()
-})
+onPullDownRefresh(reloadAll)
 </script>
 
 <template>
-  <view class="page">
-    <view class="page-header" :style="{ paddingTop: appStore.headerPaddingStyle(12) }">
-      <text class="page-title">楼栋管理</text>
-      <text v-if="communityName" class="page-sub">{{ communityName }}</text>
+  <view class="sl-page building-page">
+    <view class="sl-hero">
+      <text class="sl-eyebrow">Building Stack</text>
+      <text class="sl-title">楼栋管理</text>
+      <text class="sl-subtitle">{{ headerTitle }} · 共 {{ list.length }} 栋，{{ totalRooms }} 套房源</text>
     </view>
 
-    <scroll-view scroll-y class="list-area">
-      <view v-if="list.length === 0" class="empty-wrap">
-        <sl-empty-state text="暂无楼栋数据" />
-      </view>
-      <view v-for="item in list" :key="item.id" class="card">
-        <view class="card-top">
-          <text class="card-name">{{ item.name }}</text>
-          <text class="card-sub">{{ item.communityName }}</text>
+    <view class="selector sl-card">
+      <picker mode="selector" :value="communityPickerIndex" :range="communityNames" @change="onCommunityChange">
+        <view class="selector-main">
+          <view>
+            <text>当前楼盘</text>
+            <text>{{ headerTitle }}</text>
+          </view>
+          <wd-icon name="arrow-down" size="18px" color="#72817b" />
         </view>
-        <view class="card-meta">
-          <text>{{ item.totalFloors }}层</text>
-          <text> · </text>
-          <text>每层{{ item.unitsPerFloor }}户</text>
-          <text> · </text>
-          <text>{{ item.propertyCount || 0 }}套房源</text>
-        </view>
-        <view class="card-actions">
-          <text class="act-btn edit" @tap="openEdit(item)">编辑</text>
-          <text class="act-btn del" @tap="onDelete(item)">删除</text>
-        </view>
-      </view>
-    </scroll-view>
-
-    <view class="fab" @tap="openAdd">
-      <text class="fab-icon">+</text>
+      </picker>
+      <wd-button type="primary" @click="openAdd">新增楼栋</wd-button>
     </view>
 
-    <!-- Form Modal -->
-    <view v-if="showForm" class="modal-mask" @tap="showForm = false">
-      <view class="modal-panel" @tap.stop>
-        <text class="modal-title">{{ isEdit ? '编辑楼栋' : '新增楼栋' }}</text>
-        <view class="form-group">
-          <text class="form-label">名称</text>
-          <input v-model="form.name" class="form-input" placeholder="如：1栋、A座" />
-        </view>
-        <view v-if="!communityId" class="form-group">
-          <text class="form-label">所属楼盘</text>
-          <view class="form-input picker" @tap="showPicker = true">
-            <text :class="{ ph: !form.communityId }">
-              {{ form.communityId ? getCommunityName(form.communityId) : '请选择楼盘' }}
-            </text>
+    <view v-if="!list.length && !loading" class="empty sl-card">
+      <wd-icon name="home" size="38px" color="#8ea099" />
+      <text>暂无楼栋数据</text>
+      <text>先新增楼栋，再到房源表单里挂接房间。</text>
+    </view>
+
+    <view class="building-list">
+      <view v-for="item in list" :key="String(item.id)" class="building-card sl-card">
+        <view class="card-head">
+          <view>
+            <view class="title-line">
+              <text class="card-title">{{ item.name }}</text>
+              <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>{{ statusLabel(item.status) }}</wd-tag>
+            </view>
+            <text class="card-sub">{{ item.totalFloors || '-' }} 层 · 排序 {{ item.orderNo }}</text>
+          </view>
+          <view class="metric">
+            <text>{{ item.propertyCount || 0 }}</text>
+            <text>房源</text>
           </view>
         </view>
-        <view class="form-group">
-          <text class="form-label">总层数</text>
-          <input v-model.number="form.totalFloors" class="form-input" type="number" placeholder="1" />
+        <text class="remark">{{ item.remark || '暂无备注' }}</text>
+        <view class="actions">
+          <wd-button size="small" plain @click="goProperties(item)">房源</wd-button>
+          <wd-button size="small" type="primary" plain @click="openEdit(item)">编辑</wd-button>
+          <wd-button size="small" type="danger" plain @click="confirmDelete(item)">删除</wd-button>
         </view>
-        <view class="form-group">
-          <text class="form-label">每层户数</text>
-          <input v-model.number="form.unitsPerFloor" class="form-input" type="number" placeholder="1" />
+      </view>
+    </view>
+
+    <view v-if="loading" class="load-tip">加载中...</view>
+
+    <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
+      <view class="form-sheet">
+        <view class="sheet-head">
+          <view>
+            <text class="sheet-title">{{ isEdit ? '编辑楼栋' : '新增楼栋' }}</text>
+            <text class="sheet-sub">楼层数会影响销控表的楼层网格。</text>
+          </view>
+          <wd-icon name="close" size="22px" color="#72817b" @click="formVisible = false" />
         </view>
-        <view class="form-group">
-          <text class="form-label">排序</text>
-          <input v-model.number="form.orderNo" class="form-input" type="number" placeholder="0" />
-        </view>
-        <view class="form-group">
-          <text class="form-label">图片（点击设为封面）</text>
-          <view class="image-grid">
-            <view
-              v-for="(url, idx) in form.imageUrls"
-              :key="idx"
-              class="image-item"
-              @tap="setCover(idx)"
-            >
-              <image :src="url" mode="aspectFill" class="image-thumb" />
-              <view v-if="form.imageIds[idx] === form.coverImageId" class="cover-badge">
-                <text>封面</text>
-              </view>
-              <view class="image-delete" @tap.stop="removeImage(idx)">
-                <text>×</text>
+
+        <view class="form-body">
+          <picker mode="selector" :value="formCommunityIndex" :range="communityNames" @change="onFormCommunityChange">
+            <view class="form-row form-row--picker">
+              <text>所属楼盘</text>
+              <text>{{ communities[formCommunityIndex]?.name || '请选择' }}</text>
+            </view>
+          </picker>
+          <view class="form-row">
+            <text>楼栋名称</text>
+            <input v-model="form.name" placeholder="如：A栋 / 1号楼" />
+          </view>
+          <view class="grid-2">
+            <view class="form-row">
+              <text>总楼层</text>
+              <input v-model="form.totalFloors" type="number" />
+            </view>
+            <view class="form-row">
+              <text>排序</text>
+              <input v-model="form.orderNo" type="number" />
+            </view>
+          </view>
+          <view class="form-row">
+            <text>状态</text>
+            <view class="segmented">
+              <view
+                v-for="item in statusOptions"
+                :key="item.value"
+                :class="{ active: form.status === item.value }"
+                @tap="form.status = item.value"
+              >
+                {{ item.label }}
               </view>
             </view>
-            <view v-if="form.imageIds.length < 9" class="image-add" @tap="onChooseImage">
-              <text class="add-icon">+</text>
-              <text class="add-text">添加</text>
-            </view>
+          </view>
+          <view class="form-row form-row--textarea">
+            <text>备注</text>
+            <textarea v-model="form.remark" placeholder="内部管理备注" />
           </view>
         </view>
-        <view class="form-actions">
-          <view class="form-btn cancel" @tap="showForm = false">取消</view>
-          <view class="form-btn confirm" @tap="onSubmit">确定</view>
-        </view>
-      </view>
-    </view>
 
-    <!-- Community picker -->
-    <view v-if="showPicker" class="modal-mask" @tap="showPicker = false">
-      <view class="picker-panel" @tap.stop>
-        <text class="modal-title">选择楼盘</text>
-        <scroll-view scroll-y class="picker-list">
-          <view
-            v-for="c in communities"
-            :key="c.id"
-            class="picker-item"
-            :class="{ selected: form.communityId === c.id }"
-            @tap="pickCommunity(c.id)"
-          >
-            {{ c.name }}
-          </view>
-        </scroll-view>
+        <view class="sheet-actions">
+          <wd-button block plain type="default" @click="formVisible = false">取消</wd-button>
+          <wd-button block type="primary" :loading="submitting" @click="submitForm">保存</wd-button>
+        </view>
       </view>
-    </view>
+    </wd-popup>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
-  min-height: 100vh;
-  background-color: $sl-bg-page;
+<style scoped lang="scss">
+.building-page {
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
 }
 
-.page-header {
-  padding: $sl-spacing-md $sl-spacing-lg;
-  // padding-top 由 :style 动态设置
-  background-color: $sl-bg-card;
-  border-bottom: 1rpx solid $sl-border-color;
-}
-
-.page-title {
-  font-size: $sl-font-xl;
-  font-weight: 700;
-  color: $sl-text-primary;
-}
-
-.page-sub {
-  display: block;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-top: $sl-spacing-xs;
-}
-
-.list-area {
-  padding: $sl-spacing-sm;
-  padding-bottom: 200rpx;
-}
-
-.empty-wrap {
-  padding: $sl-spacing-xl;
-}
-
-.card {
-  padding: $sl-spacing-md;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  margin-bottom: $sl-spacing-sm;
-}
-
-.card-top {
+.selector {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: $sl-spacing-xs;
+  gap: 18rpx;
+  margin-top: 22rpx;
+  padding: 22rpx;
 }
 
-.card-name {
-  font-size: $sl-font-md;
-  font-weight: 600;
-  color: $sl-text-primary;
-}
-
-.card-sub {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-}
-
-.card-meta {
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-sm;
-}
-
-.card-actions {
-  display: flex;
-  gap: $sl-spacing-sm;
-  justify-content: flex-end;
-}
-
-.act-btn {
-  font-size: $sl-font-xs;
-  padding: $sl-spacing-xs $sl-spacing-sm;
-  border-radius: 6rpx;
-
-  &.edit {
-    color: #faad14;
-    background-color: rgba(250, 173, 20, 0.1);
-  }
-
-  &.del {
-    color: $sl-danger;
-    background-color: rgba(255, 77, 79, 0.1);
-  }
-}
-
-.fab {
-  position: fixed;
-  right: $sl-spacing-lg;
-  bottom: calc(#{$sl-spacing-xl} + #{$sl-safe-bottom});
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: 50%;
-  background-color: $sl-primary;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(59, 130, 246, 0.4);
-}
-
-.fab-icon {
-  font-size: 48rpx;
-  color: #ffffff;
-  font-weight: 300;
-}
-
-.modal-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-}
-
-.modal-panel {
-  width: 85%;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  padding: $sl-spacing-lg;
-}
-
-.modal-title {
-  display: block;
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-  margin-bottom: $sl-spacing-md;
-  text-align: center;
-}
-
-.form-group {
-  margin-bottom: $sl-spacing-md;
-}
-
-.form-label {
-  display: block;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-xs;
-}
-
-.form-input {
-  width: 100%;
-  height: 80rpx;
-  padding: 0 $sl-spacing-md;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  box-sizing: border-box;
-
-  &.picker {
-    display: flex;
-    align-items: center;
-  }
-
-  .ph {
-    color: $sl-text-placeholder;
-  }
-}
-
-.form-actions {
-  display: flex;
-  gap: $sl-spacing-sm;
-  margin-top: $sl-spacing-lg;
-}
-
-.form-btn {
+.selector picker {
+  min-width: 0;
   flex: 1;
-  text-align: center;
-  padding: $sl-spacing-sm;
-  border-radius: $sl-border-radius;
-  font-size: $sl-font-md;
-  font-weight: 600;
-
-  &.cancel {
-    background-color: $sl-bg-page;
-    color: $sl-text-secondary;
-  }
-
-  &.confirm {
-    background-color: $sl-primary;
-    color: #ffffff;
-  }
 }
 
-// Images
-.image-grid {
+.selector-main,
+.card-head,
+.title-line,
+.sheet-head,
+.sheet-actions {
+  display: flex;
+  align-items: center;
+}
+
+.selector-main,
+.card-head,
+.sheet-head {
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.selector-main text:first-child,
+.sheet-sub,
+.card-sub,
+.remark,
+.load-tip {
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.selector-main text {
+  display: block;
+}
+
+.selector-main text:last-child {
+  margin-top: 8rpx;
+  color: var(--sl-ink);
+  font-size: 30rpx;
+  font-weight: 850;
+}
+
+.building-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  margin-top: 24rpx;
+}
+
+.building-card {
+  padding: 24rpx;
+}
+
+.title-line {
+  gap: 10rpx;
+}
+
+.card-title,
+.sheet-title {
+  font-size: 32rpx;
+  font-weight: 850;
+}
+
+.card-sub,
+.remark {
+  display: block;
+  margin-top: 10rpx;
+}
+
+.metric {
+  min-width: 88rpx;
+  text-align: right;
+}
+
+.metric text:first-child {
+  display: block;
+  color: var(--sl-brand);
+  font-size: 38rpx;
+  font-weight: 900;
+}
+
+.metric text:last-child {
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.actions {
   display: flex;
   flex-wrap: wrap;
-  gap: $sl-spacing-xs;
+  gap: 12rpx;
+  margin-top: 20rpx;
 }
 
-.image-item {
-  width: 140rpx;
-  height: 140rpx;
-  position: relative;
-  border-radius: $sl-border-radius-sm;
-  overflow: hidden;
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 24rpx;
+  padding: 70rpx 20rpx;
+  color: var(--sl-muted);
+  text-align: center;
 }
 
-.image-thumb {
+.load-tip {
+  padding: 26rpx 0;
+  text-align: center;
+}
+
+.form-sheet {
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+.sheet-sub {
+  display: block;
+  margin-top: 8rpx;
+}
+
+.form-body {
+  max-height: 62vh;
+  margin-top: 22rpx;
+  overflow-y: auto;
+}
+
+.form-row {
+  margin-bottom: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f6f9f4;
+}
+
+.form-row text:first-child {
+  display: block;
+  margin-bottom: 10rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+.form-row input,
+.form-row textarea {
   width: 100%;
-  height: 100%;
+  color: var(--sl-ink);
+  font-size: 28rpx;
 }
 
-.cover-badge {
-  position: absolute;
-  left: 0;
-  top: 0;
-  background-color: $sl-primary;
-  color: #ffffff;
-  font-size: 20rpx;
-  padding: 2rpx 10rpx;
-  border-radius: 0 0 $sl-border-radius-sm 0;
+.form-row textarea {
+  min-height: 120rpx;
 }
 
-.image-delete {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 36rpx;
-  height: 36rpx;
+.form-row--picker {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
-  color: #ffffff;
-  font-size: $sl-font-sm;
-  border-radius: 0 0 0 $sl-border-radius-sm;
+  justify-content: space-between;
 }
 
-.image-add {
-  width: 140rpx;
-  height: 140rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4rpx;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-  border: 2rpx dashed $sl-border-color;
+.form-row--picker text:first-child {
+  margin-bottom: 0;
 }
 
-.add-icon {
-  font-size: 40rpx;
-  color: $sl-text-placeholder;
-  line-height: 1;
+.form-row--picker text:last-child {
+  max-width: 440rpx;
+  overflow: hidden;
+  color: var(--sl-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.add-text {
-  font-size: 20rpx;
-  color: $sl-text-placeholder;
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
 }
 
-.picker-panel {
-  width: 85%;
-  max-height: 70vh;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  padding: $sl-spacing-lg;
-  display: flex;
-  flex-direction: column;
+.segmented {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: #eaf2e8;
 }
 
-.picker-list {
-  flex: 1;
-  max-height: 500rpx;
+.segmented view {
+  padding: 12rpx 24rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 
-.picker-item {
-  padding: $sl-spacing-md;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  border-bottom: 1rpx solid $sl-border-color;
+.segmented .active {
+  background: var(--sl-brand);
+  color: #fff;
+}
 
-  &.selected {
-    color: $sl-primary;
-    font-weight: 600;
-  }
+.sheet-actions {
+  gap: 16rpx;
+  margin-top: 24rpx;
 }
 </style>

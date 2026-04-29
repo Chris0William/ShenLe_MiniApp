@@ -1,7 +1,7 @@
 {
   "miniprogramRoot": "dist/dev/mp-weixin/",
   "appid": "wxb3b545efe13da99b",
-  "projectname": "shenle-miniapp",
+  "projectname": "shenle-miniapp-next",
   "setting": {
     "urlCheck": false,
     "es6": true,

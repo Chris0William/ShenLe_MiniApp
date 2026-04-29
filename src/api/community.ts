@@ -1,39 +1,23 @@
-import { get, post } from './http'
-import type { PagedList, BaseIdInput } from '@/types/common'
-import type {
-  PageSlCommunityInput,
-  ListSlCommunityInput,
-  AddSlCommunityInput,
-  UpdateSlCommunityInput,
-  SlCommunityOutput,
-  SlCommunitySelectOutput,
-  SlCommunityStatsOutput,
-} from '@/types/community'
+import { get, post } from './request'
+import type { AddSlCommunityInput, ListSlCommunityInput, PageSlCommunityInput, PagedList, ShenLeId, SlCommunityOutput, SlCommunitySelectOutput, SlCommunityStatsOutput, UpdateSlCommunityInput } from '@/types/shenle'
 
-/** 获取楼盘分页列表 */
 export const getCommunityPage = (input: PageSlCommunityInput) =>
-  get<PagedList<SlCommunityOutput>>('/api/slCommunity/page', input)
+  get<PagedList<SlCommunityOutput>>('/api/slCommunity/page', input as unknown as Record<string, unknown>)
 
-/** 获取楼盘下拉列表 */
-export const getCommunityList = (input: ListSlCommunityInput) =>
-  get<SlCommunitySelectOutput[]>('/api/slCommunity/list', input)
+export const getCommunityList = (input: ListSlCommunityInput = {}) =>
+  get<SlCommunitySelectOutput[]>('/api/slCommunity/list', input as unknown as Record<string, unknown>)
 
-/** 获取楼盘统计 */
 export const getCommunityStats = () =>
-  post<SlCommunityStatsOutput[]>('/api/slCommunity/stats')
+  get<SlCommunityStatsOutput[]>('/api/slCommunity/stats')
 
-/** 获取楼盘详情 */
-export const getCommunityDetail = (id: string) =>
+export const getCommunityDetail = (id: ShenLeId) =>
   get<SlCommunityOutput>('/api/slCommunity/detail', { id })
 
-/** 新增楼盘 */
 export const addCommunity = (input: AddSlCommunityInput) =>
-  post<string>('/api/slCommunity/add', input)
+  post<ShenLeId>('/api/slCommunity/add', input as unknown as Record<string, unknown>)
 
-/** 更新楼盘 */
 export const updateCommunity = (input: UpdateSlCommunityInput) =>
-  post<void>('/api/slCommunity/update', input)
+  post<void>('/api/slCommunity/update', input as unknown as Record<string, unknown>)
 
-/** 删除楼盘 */
-export const deleteCommunity = (input: BaseIdInput) =>
-  post<void>('/api/slCommunity/delete', input)
+export const deleteCommunity = (id: ShenLeId) =>
+  post<void>('/api/slCommunity/delete', { id })

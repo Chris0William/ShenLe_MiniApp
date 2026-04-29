@@ -1,730 +1,683 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
-import { useAppStore } from '@/stores/app'
-import {
-  getCommunityPage,
-  getCommunityDetail,
-  addCommunity,
-  updateCommunity,
-  deleteCommunity,
-} from '@/api/community'
+import type { AddSlCommunityInput, ShenLeId, SlCommunityOutput, SlRegionTreeOutput } from '@/types/shenle'
+import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { computed, reactive, ref } from 'vue'
+import { addCommunity, deleteCommunity, getCommunityPage, updateCommunity } from '@/api/community'
 import { getRegionTree } from '@/api/region'
-import { uploadFile, downloadFile } from '@/api/file'
-import type { SlCommunityOutput } from '@/types/community'
-import type { SlRegionTreeOutput } from '@/types/region'
+import { idToQuery } from '@/utils/shenle'
 
-const appStore = useAppStore()
-
-// List
-const list = ref<SlCommunityOutput[]>([])
-const pg = ref(1)
-const pageSize = 10
-const loadStatus = ref<'more' | 'loading' | 'noMore'>('more')
-
-// Filter
-const regionTree = ref<SlRegionTreeOutput[]>([])
-const filterRegionId = ref('')
-
-// Form
-const showForm = ref(false)
-const isEdit = ref(false)
-const form = ref({
-  id: '',
-  name: '',
-  regionId: '',
-  address: '',
-  lng: 0,
-  lat: 0,
-  orderNo: 0,
-  imageIds: [] as string[],
-  imageUrls: [] as string[],
-  coverImageId: '',
+definePage({
+  style: {
+    navigationBarTitleText: '楼盘管理',
+    enablePullDownRefresh: true,
+  },
 })
 
-function autoGetLocation() {
-  uni.chooseLocation({
-    success: (res) => {
-      form.value.lng = res.longitude
-      form.value.lat = res.latitude
-      form.value.address = res.name || res.address || ''
-    },
-  })
+interface RegionOption {
+  id: ShenLeId
+  name: string
+  level: number
 }
 
-// Region picker
-const showRegionPicker = ref(false)
+interface CommunityForm {
+  id: string
+  name: string
+  type: number
+  regionId: string
+  address: string
+  lng: string
+  lat: string
+  orderNo: string
+  status: number
+  remark: string
+}
 
-function flattenRegions(nodes: SlRegionTreeOutput[]): { id: string; name: string; level: number }[] {
-  const result: { id: string; name: string; level: number }[] = []
-  for (const n of nodes) {
-    result.push({ id: n.id, name: n.name, level: n.level })
-    if (n.children?.length) result.push(...flattenRegions(n.children))
+const page = ref(1)
+const pageSize = 12
+const total = ref(0)
+const list = ref<SlCommunityOutput[]>([])
+const keyword = ref('')
+const activeType = ref<number | undefined>()
+const regionTree = ref<SlRegionTreeOutput[]>([])
+const filterRegionId = ref('')
+const loading = ref(false)
+const finished = ref(false)
+const formVisible = ref(false)
+const isEdit = ref(false)
+const submitting = ref(false)
+
+const form = reactive<CommunityForm>({
+  id: '',
+  name: '',
+  type: 1,
+  regionId: '',
+  address: '',
+  lng: '',
+  lat: '',
+  orderNo: '100',
+  status: 0,
+  remark: '',
+})
+
+const typeOptions = [
+  { value: undefined, label: '全部' },
+  { value: 1, label: '小区' },
+  { value: 2, label: '公寓' },
+] as const
+
+const statusOptions = [
+  { value: 0, label: '正常' },
+  { value: 1, label: '禁用' },
+] as const
+
+const regionOptions = computed<RegionOption[]>(() => {
+  const result: RegionOption[] = []
+  function walk(nodes: SlRegionTreeOutput[], depth = 0) {
+    for (const node of nodes) {
+      result.push({ id: node.id, name: `${'　'.repeat(depth)}${node.name}`, level: node.level })
+      if (node.children?.length)
+        walk(node.children, depth + 1)
+    }
   }
+  walk(regionTree.value)
   return result
+})
+
+const regionNames = computed(() => ['全部区域', ...regionOptions.value.map(item => item.name)])
+const formRegionNames = computed(() => regionOptions.value.map(item => item.name))
+const filterRegionIndex = computed(() => {
+  if (!filterRegionId.value)
+    return 0
+  const idx = regionOptions.value.findIndex(item => sameId(item.id, filterRegionId.value))
+  return idx >= 0 ? idx + 1 : 0
+})
+const formRegionIndex = computed(() => Math.max(0, regionOptions.value.findIndex(item => sameId(item.id, form.regionId))))
+const showing = computed(() => list.value.length)
+
+function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
+  return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
 }
 
-async function loadData(reset = false) {
-  if (reset) { pg.value = 1; list.value = [] }
-  if (loadStatus.value === 'loading') return
-  loadStatus.value = 'loading'
-  try {
-    const res = await getCommunityPage({
-      page: pg.value,
-      pageSize,
-      regionId: filterRegionId.value || undefined,
-    })
-    list.value = reset ? res.items : [...list.value, ...res.items]
-    loadStatus.value = res.items.length < pageSize ? 'noMore' : 'more'
-    pg.value++
-  } catch {
-    loadStatus.value = 'more'
-  }
+function toNumber(value: string, fallback?: number) {
+  if (value === '')
+    return fallback
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function regionName(id?: ShenLeId | null) {
+  return regionOptions.value.find(item => sameId(item.id, id))?.name.trim() || '未分区'
+}
+
+function typeLabel(type?: number) {
+  return type === 2 ? '公寓' : '小区'
+}
+
+function statusLabel(status?: number) {
+  return status === 1 ? '禁用' : '正常'
 }
 
 async function loadRegions() {
+  regionTree.value = await getRegionTree()
+}
+
+async function loadData(reset = false) {
+  if (loading.value)
+    return
+  if (reset) {
+    page.value = 1
+    list.value = []
+    finished.value = false
+  }
+  if (finished.value)
+    return
+
+  loading.value = true
   try {
-    regionTree.value = await getRegionTree()
-  } catch {}
+    const res = await getCommunityPage({
+      page: page.value,
+      pageSize,
+      name: keyword.value.trim() || undefined,
+      type: activeType.value,
+      regionId: filterRegionId.value || undefined,
+    })
+    list.value = reset ? res.items : [...list.value, ...res.items]
+    total.value = res.total
+    finished.value = list.value.length >= res.total || res.items.length < pageSize
+    page.value += 1
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
+  }
+}
+
+function onFilterRegionChange(event: any) {
+  const idx = Number(event.detail.value)
+  filterRegionId.value = idx <= 0 ? '' : String(regionOptions.value[idx - 1]?.id || '')
+  loadData(true)
+}
+
+function onFormRegionChange(event: any) {
+  const idx = Number(event.detail.value)
+  form.regionId = String(regionOptions.value[idx]?.id || '')
+}
+
+function resetForm(item?: SlCommunityOutput) {
+  isEdit.value = !!item
+  form.id = item ? String(item.id) : ''
+  form.name = item?.name || ''
+  form.type = item?.type || 1
+  form.regionId = item?.regionId ? String(item.regionId) : ''
+  form.address = item?.address || ''
+  form.lng = item?.lng === null || item?.lng === undefined ? '' : String(item.lng)
+  form.lat = item?.lat === null || item?.lat === undefined ? '' : String(item.lat)
+  form.orderNo = String(item?.orderNo ?? 100)
+  form.status = item?.status ?? 0
+  form.remark = item?.remark || ''
 }
 
 function openAdd() {
-  isEdit.value = false
-  form.value = { id: '', name: '', regionId: '', address: '', lng: 0, lat: 0, orderNo: 0, imageIds: [], imageUrls: [], coverImageId: '' }
-  showForm.value = true
-  autoGetLocation()
+  resetForm()
+  formVisible.value = true
 }
 
-async function openEdit(item: SlCommunityOutput) {
-  isEdit.value = true
-  form.value = {
-    id: item.id,
-    name: item.name,
-    regionId: item.regionId,
-    lng: item.lng || 0, 
-    lat: item.lat ||0,
-    address: item.address || '',
-    orderNo: item.orderNo || 0,
-    imageIds: [],
-    imageUrls: [],
-    coverImageId: '',
-  }
-  // 加载详情中的图片（需要带 token 下载到本地临时路径）
-  try {
-    const detail = await getCommunityDetail(String(item.id))
-    if (detail.images?.length) {
-      const ids = detail.images.map(i => String(i.id))
-      const urls: string[] = []
-      for (const id of ids) {
-        try { urls.push(await downloadFile(id)) } catch { urls.push('') }
-      }
-      form.value.imageIds = ids
-      form.value.imageUrls = urls
-    }
-    if (detail.coverImageId) form.value.coverImageId = String(detail.coverImageId)
-  } catch {}
-  showForm.value = true
+function openEdit(item: SlCommunityOutput) {
+  resetForm(item)
+  formVisible.value = true
 }
 
-async function onChooseImage() {
-  uni.chooseImage({
-    count: 9 - form.value.imageIds.length,
-    success: async (res) => {
-      for (const path of res.tempFilePaths) {
-        try {
-          const file = await uploadFile(path)
-          form.value.imageIds.push(file.id)
-          form.value.imageUrls.push(path) // 直接用本地临时路径
-          if (!form.value.coverImageId) form.value.coverImageId = file.id
-        } catch {}
-      }
+function chooseLocation() {
+  uni.chooseLocation({
+    latitude: toNumber(form.lat),
+    longitude: toNumber(form.lng),
+    success(res) {
+      form.lng = String(res.longitude)
+      form.lat = String(res.latitude)
+      form.address = res.address || res.name || form.address
     },
   })
 }
 
-function removeImage(idx: number) {
-  const removedId = form.value.imageIds[idx]
-  form.value.imageIds.splice(idx, 1)
-  form.value.imageUrls.splice(idx, 1)
-  if (form.value.coverImageId === removedId) {
-    form.value.coverImageId = form.value.imageIds[0] || ''
+function buildPayload(): AddSlCommunityInput {
+  return {
+    name: form.name.trim(),
+    type: form.type,
+    regionId: form.regionId || undefined,
+    address: form.address.trim() || undefined,
+    lng: toNumber(form.lng),
+    lat: toNumber(form.lat),
+    orderNo: toNumber(form.orderNo, 100),
+    status: form.status,
+    remark: form.remark.trim() || undefined,
   }
 }
 
-function setCover(idx: number) {
-  form.value.coverImageId = form.value.imageIds[idx]
-}
-
-async function onSubmit() {
-  if (!form.value.name.trim()) {
+async function submitForm() {
+  if (!form.name.trim()) {
     uni.showToast({ title: '请输入楼盘名称', icon: 'none' })
     return
   }
-  if (!form.value.regionId) {
+  if (!form.regionId) {
     uni.showToast({ title: '请选择所属区域', icon: 'none' })
     return
   }
+
+  submitting.value = true
   try {
-    const imageData = {
-      coverImageId: form.value.coverImageId ? Number(form.value.coverImageId) : undefined,
-      imageIds: form.value.imageIds.map(Number),
-    }
-    if (isEdit.value) {
-      await updateCommunity({
-        id: form.value.id,
-        name: form.value.name,
-        regionId: form.value.regionId,
-        address: form.value.address || undefined,
-        lng: form.value.lng || undefined,
-        lat: form.value.lat || undefined,
-        orderNo: form.value.orderNo,
-        ...imageData,
-      })
-      uni.showToast({ title: '更新成功', icon: 'success' })
-    } else {
-      await addCommunity({
-        name: form.value.name,
-        regionId: form.value.regionId,
-        address: form.value.address || undefined,
-        lng: form.value.lng || undefined,
-        lat: form.value.lat || undefined,
-        orderNo: form.value.orderNo,
-        ...imageData,
-      })
-      uni.showToast({ title: '新增成功', icon: 'success' })
-    }
-    showForm.value = false
-    loadData(true)
-  } catch {}
+    const payload = buildPayload()
+    if (isEdit.value)
+      await updateCommunity({ ...payload, id: form.id })
+    else
+      await addCommunity(payload)
+    uni.showToast({ title: isEdit.value ? '更新成功' : '新增成功', icon: 'success' })
+    formVisible.value = false
+    await loadData(true)
+  }
+  finally {
+    submitting.value = false
+  }
 }
 
-function onDelete(item: SlCommunityOutput) {
+function confirmDelete(item: SlCommunityOutput) {
   uni.showModal({
-    title: '确认删除',
-    content: `确定删除楼盘「${item.name}」？`,
+    title: '删除楼盘',
+    content: `确定删除「${item.name}」？有楼栋或房源时后端会拦截。`,
     success: async (res) => {
-      if (!res.confirm) return
-      try {
-        await deleteCommunity({ id: item.id })
-        uni.showToast({ title: '删除成功', icon: 'success' })
-        loadData(true)
-      } catch {}
+      if (!res.confirm)
+        return
+      await deleteCommunity(item.id)
+      uni.showToast({ title: '删除成功', icon: 'success' })
+      await loadData(true)
     },
   })
 }
 
-function pickRegion(id: string) {
-  form.value.regionId = id
-  showRegionPicker.value = false
+function goBuildings(item: SlCommunityOutput) {
+  uni.navigateTo({ url: `/pages/common/building-manage/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}` })
 }
 
-function getRegionName(id: string): string {
-  const flat = flattenRegions(regionTree.value)
-  return flat.find(r => r.id === id)?.name || '未选择'
+function goProperties(item: SlCommunityOutput) {
+  uni.navigateTo({ url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}` })
 }
 
-function filterByRegion(id: string) {
-  filterRegionId.value = id === filterRegionId.value ? '' : id
-  loadData(true)
-}
-
-function onLoadMore() {
-  if (loadStatus.value === 'more') loadData()
-}
-
-function goBuildingManage(communityId: string) {
-  uni.navigateTo({ url: `/pages/common/building-manage/index?communityId=${communityId}` })
-}
-
-onShow(() => {
-  loadRegions()
-  loadData(true)
+onLoad(async () => {
+  await loadRegions()
+  await loadData(true)
 })
+onPullDownRefresh(() => loadData(true))
+onReachBottom(() => loadData())
 </script>
 
 <template>
-  <view class="page">
-    <view class="page-header" :style="{ paddingTop: appStore.headerPaddingStyle(12) }">
-      <text class="page-title">楼盘管理</text>
+  <view class="sl-page manage-page">
+    <view class="sl-hero manage-hero">
+      <text class="sl-eyebrow">Estate Library</text>
+      <text class="sl-title">楼盘管理</text>
+      <text class="sl-subtitle">维护区域、地址、坐标与楼栋入口，地图找房会直接使用这里的坐标。</text>
     </view>
 
-    <!-- Region filter chips -->
-    <scroll-view scroll-x class="filter-scroll">
-      <view class="filter-chips">
+    <view class="toolbar sl-card">
+      <view class="search-row">
+        <input v-model="keyword" class="search-input" placeholder="搜索楼盘名称" confirm-type="search" @confirm="loadData(true)" />
+        <wd-button size="small" type="primary" @click="loadData(true)">
+          搜索
+        </wd-button>
+      </view>
+      <view class="chip-row">
         <view
+          v-for="item in typeOptions"
+          :key="String(item.value)"
           class="chip"
-          :class="{ active: !filterRegionId }"
-          @tap="filterByRegion('')"
+          :class="{ active: activeType === item.value }"
+          @tap="activeType = item.value; loadData(true)"
         >
-          全部
+          {{ item.label }}
         </view>
-        <view
-          v-for="r in flattenRegions(regionTree)"
-          :key="r.id"
-          class="chip"
-          :class="{ active: filterRegionId === r.id }"
-          @tap="filterByRegion(r.id)"
-        >
-          {{ r.name }}
-        </view>
+        <picker mode="selector" :value="filterRegionIndex" :range="regionNames" @change="onFilterRegionChange">
+          <view class="chip chip--picker">{{ regionNames[filterRegionIndex] || '全部区域' }}</view>
+        </picker>
       </view>
-    </scroll-view>
+    </view>
 
-    <!-- List -->
-    <scroll-view scroll-y class="list-area" @scrolltolower="onLoadMore">
-      <view v-if="list.length === 0 && loadStatus !== 'loading'" class="empty-wrap">
-        <sl-empty-state text="暂无楼盘数据" />
-      </view>
-      <view v-for="item in list" :key="item.id" class="card">
-        <view class="card-top">
-          <text class="card-name">{{ item.name }}</text>
-          <text class="card-region">{{ item.regionName }}</text>
-        </view>
-        <view v-if="item.address" class="card-addr">{{ item.address }}</view>
-        <view class="card-meta">
-          <text>{{ item.buildingCount || 0 }}栋</text>
-        </view>
-        <view class="card-actions">
-          <text class="act-btn" @tap="goBuildingManage(item.id)">楼栋</text>
-          <text class="act-btn edit" @tap="openEdit(item)">编辑</text>
-          <text class="act-btn del" @tap="onDelete(item)">删除</text>
-        </view>
-      </view>
-      <sl-load-more v-if="list.length > 0" :status="loadStatus" />
-    </scroll-view>
+    <view class="sl-section-head">
+      <text class="sl-section-title">楼盘列表</text>
+      <text class="sl-section-extra">{{ showing }}/{{ total }}</text>
+    </view>
 
-    <!-- FAB -->
+    <view v-if="!list.length && !loading" class="empty sl-card">
+      <wd-icon name="home" size="38px" color="#8ea099" />
+      <text>暂无楼盘数据</text>
+    </view>
+
+    <view class="community-list">
+      <view v-for="item in list" :key="String(item.id)" class="community-card sl-card">
+        <view class="card-head">
+          <view>
+            <view class="title-line">
+              <text class="card-title">{{ item.name }}</text>
+              <wd-tag :type="item.status === 0 ? 'success' : 'default'" plain>{{ statusLabel(item.status) }}</wd-tag>
+            </view>
+            <text class="card-sub">{{ regionName(item.regionId) }} · {{ typeLabel(item.type) }}</text>
+          </view>
+          <view class="metric">
+            <text>{{ item.propertyCount || 0 }}</text>
+            <text>房源</text>
+          </view>
+        </view>
+        <text class="address">{{ item.address || '未维护详细地址' }}</text>
+        <view class="meta-row">
+          <text>{{ item.buildingCount || 0 }} 栋</text>
+          <text>排序 {{ item.orderNo }}</text>
+          <text v-if="item.lng && item.lat">坐标已维护</text>
+          <text v-else>缺少坐标</text>
+        </view>
+        <view class="actions">
+          <wd-button size="small" plain @click="goBuildings(item)">楼栋</wd-button>
+          <wd-button size="small" plain @click="goProperties(item)">房源</wd-button>
+          <wd-button size="small" type="primary" plain @click="openEdit(item)">编辑</wd-button>
+          <wd-button size="small" type="danger" plain @click="confirmDelete(item)">删除</wd-button>
+        </view>
+      </view>
+    </view>
+
+    <view v-if="loading" class="load-tip">加载中...</view>
+    <view v-else-if="finished && list.length" class="load-tip">已经到底了</view>
+
     <view class="fab" @tap="openAdd">
-      <text class="fab-icon">+</text>
+      <wd-icon name="add" size="26px" color="#fff" />
     </view>
 
-    <!-- Form Modal -->
-    <view v-if="showForm" class="modal-mask" @tap="showForm = false">
-      <view class="modal-panel" @tap.stop>
-        <text class="modal-title">{{ isEdit ? '编辑楼盘' : '新增楼盘' }}</text>
-        <view class="form-group">
-          <text class="form-label">名称</text>
-          <input v-model="form.name" class="form-input" placeholder="请输入楼盘名称" />
-        </view>
-        <view class="form-group">
-          <text class="form-label">所属区域</text>
-          <view class="form-input picker" @tap="showRegionPicker = true">
-            <text :class="{ placeholder: !form.regionId }">
-              {{ form.regionId ? getRegionName(form.regionId) : '请选择区域' }}
-            </text>
+    <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
+      <view class="form-sheet">
+        <view class="sheet-head">
+          <view>
+            <text class="sheet-title">{{ isEdit ? '编辑楼盘' : '新增楼盘' }}</text>
+            <text class="sheet-sub">坐标会用于地图找房和附近排序</text>
           </view>
+          <wd-icon name="close" size="22px" color="#72817b" @click="formVisible = false" />
         </view>
-        <view class="form-group">
-          <view class="form-label-row">
-            <text class="form-label">地址</text>
-            <text v-if="form.lng" class="locating-tip located">已定位</text>
-            <text class="locating-tip retap" @tap="autoGetLocation">{{ form.lng ? '重新选点' : '选择位置' }}</text>
-          </view>
-          <input v-model="form.address" class="form-input" placeholder="自动获取或手动填写" />
-        </view>
-        <view class="form-group">
-          <text class="form-label">排序</text>
-          <input v-model.number="form.orderNo" class="form-input" type="number" placeholder="0" />
-        </view>
-        <view class="form-group">
-          <text class="form-label">图片（点击设为封面）</text>
-          <view class="image-grid">
-            <view
-              v-for="(url, idx) in form.imageUrls"
-              :key="idx"
-              class="image-item"
-              @tap="setCover(idx)"
-            >
-              <image :src="url" mode="aspectFill" class="image-thumb" />
-              <view v-if="form.imageIds[idx] === form.coverImageId" class="cover-badge">
-                <text>封面</text>
-              </view>
-              <view class="image-delete" @tap.stop="removeImage(idx)">
-                <text>×</text>
-              </view>
-            </view>
-            <view v-if="form.imageIds.length < 9" class="image-add" @tap="onChooseImage">
-              <text class="add-icon">+</text>
-              <text class="add-text">添加</text>
-            </view>
-          </view>
-        </view>
-        <view class="form-actions">
-          <view class="form-btn cancel" @tap="showForm = false">取消</view>
-          <view class="form-btn confirm" @tap="onSubmit">确定</view>
-        </view>
-      </view>
-    </view>
 
-    <!-- Region picker popup -->
-    <view v-if="showRegionPicker" class="modal-mask" @tap="showRegionPicker = false">
-      <view class="picker-panel" @tap.stop>
-        <text class="modal-title">选择区域</text>
-        <scroll-view scroll-y class="picker-list">
-          <view
-            v-for="r in flattenRegions(regionTree)"
-            :key="r.id"
-            class="picker-item"
-            :class="{ selected: form.regionId === r.id }"
-            :style="{ paddingLeft: (r.level * 20 + 16) + 'rpx' }"
-            @tap="pickRegion(r.id)"
-          >
-            {{ r.name }}
+        <view class="form-body">
+          <view class="form-row">
+            <text>楼盘名称</text>
+            <input v-model="form.name" placeholder="如：西田八巷8" />
           </view>
-        </scroll-view>
+          <view class="form-row">
+            <text>楼盘类型</text>
+            <view class="segmented">
+              <view :class="{ active: form.type === 1 }" @tap="form.type = 1">小区</view>
+              <view :class="{ active: form.type === 2 }" @tap="form.type = 2">公寓</view>
+            </view>
+          </view>
+          <picker mode="selector" :value="formRegionIndex" :range="formRegionNames" @change="onFormRegionChange">
+            <view class="form-row form-row--picker">
+              <text>所属区域</text>
+              <text>{{ form.regionId ? regionName(form.regionId) : '请选择' }}</text>
+            </view>
+          </picker>
+          <view class="form-row">
+            <text>详细地址</text>
+            <input v-model="form.address" placeholder="街道门牌、楼盘位置" />
+          </view>
+          <view class="coord-grid">
+            <view class="form-row">
+              <text>经度</text>
+              <input v-model="form.lng" type="digit" placeholder="lng" />
+            </view>
+            <view class="form-row">
+              <text>纬度</text>
+              <input v-model="form.lat" type="digit" placeholder="lat" />
+            </view>
+          </view>
+          <wd-button block plain @click="chooseLocation">从地图选择位置</wd-button>
+          <view class="coord-grid">
+            <view class="form-row">
+              <text>排序</text>
+              <input v-model="form.orderNo" type="number" />
+            </view>
+            <view class="form-row">
+              <text>状态</text>
+              <view class="segmented">
+                <view
+                  v-for="item in statusOptions"
+                  :key="item.value"
+                  :class="{ active: form.status === item.value }"
+                  @tap="form.status = item.value"
+                >
+                  {{ item.label }}
+                </view>
+              </view>
+            </view>
+          </view>
+          <view class="form-row form-row--textarea">
+            <text>备注</text>
+            <textarea v-model="form.remark" placeholder="内部管理备注" />
+          </view>
+        </view>
+
+        <view class="sheet-actions">
+          <wd-button block plain type="default" @click="formVisible = false">取消</wd-button>
+          <wd-button block type="primary" :loading="submitting" @click="submitForm">保存</wd-button>
+        </view>
       </view>
-    </view>
+    </wd-popup>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
+<style scoped lang="scss">
+.manage-page {
+  padding-bottom: calc(150rpx + env(safe-area-inset-bottom));
+}
+
+.manage-hero {
+  margin-top: 10rpx;
+}
+
+.toolbar {
+  margin-top: 22rpx;
+  padding: 22rpx;
+}
+
+.search-row {
   display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  background-color: $sl-bg-page;
+  align-items: center;
+  gap: 14rpx;
 }
 
-.page-header {
-  padding: $sl-spacing-md $sl-spacing-lg;
-  // padding-top 由 :style 动态设置
-  background-color: $sl-bg-card;
+.search-input {
+  flex: 1;
+  height: 72rpx;
+  box-sizing: border-box;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #f2f6f0;
+  font-size: 26rpx;
 }
 
-.page-title {
-  font-size: $sl-font-xl;
-  font-weight: 700;
-  color: $sl-text-primary;
+.chip-row,
+.meta-row,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
-.filter-scroll {
-  background-color: $sl-bg-card;
-  border-bottom: 1rpx solid $sl-border-color;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.filter-chips {
-  display: inline-flex;
-  gap: $sl-spacing-sm;
-  padding: $sl-spacing-sm $sl-spacing-md;
+.chip-row {
+  margin-top: 18rpx;
 }
 
 .chip {
-  display: inline-block;
-  padding: $sl-spacing-xs $sl-spacing-md;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  background-color: $sl-bg-page;
-  border-radius: 30rpx;
-  flex-shrink: 0;
-
-  &.active {
-    color: $sl-primary;
-    background-color: rgba(24, 144, 255, 0.1);
-    font-weight: 600;
-  }
+  padding: 12rpx 22rpx;
+  border: 1rpx solid rgb(18 107 79 / 10%);
+  border-radius: 999rpx;
+  background: #f7faf4;
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 
-.list-area {
-  flex: 1;
-  padding: $sl-spacing-sm;
-  padding-bottom: 200rpx;
+.chip.active,
+.chip--picker {
+  background: var(--sl-brand);
+  color: #fff;
 }
 
-.empty-wrap {
-  padding: $sl-spacing-xl;
+.community-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
 }
 
-.card {
-  padding: $sl-spacing-md;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  margin-bottom: $sl-spacing-sm;
+.community-card {
+  padding: 24rpx;
 }
 
-.card-top {
+.card-head,
+.title-line,
+.sheet-head,
+.sheet-actions {
   display: flex;
   align-items: center;
+}
+
+.card-head,
+.sheet-head {
   justify-content: space-between;
-  margin-bottom: $sl-spacing-xs;
+  gap: 18rpx;
 }
 
-.card-name {
-  font-size: $sl-font-md;
-  font-weight: 600;
-  color: $sl-text-primary;
+.title-line {
+  gap: 10rpx;
 }
 
-.card-region {
-  font-size: $sl-font-xs;
-  color: $sl-primary;
-  background-color: rgba(24, 144, 255, 0.1);
-  padding: 2rpx 12rpx;
-  border-radius: 6rpx;
+.card-title,
+.sheet-title {
+  font-size: 32rpx;
+  font-weight: 850;
 }
 
-.card-addr {
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-xs;
+.card-sub,
+.address,
+.sheet-sub,
+.load-tip {
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 
-.card-meta {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-sm;
+.card-sub,
+.address {
+  display: block;
+  margin-top: 10rpx;
 }
 
-.card-actions {
+.metric {
+  min-width: 92rpx;
+  text-align: right;
+}
+
+.metric text:first-child {
+  display: block;
+  color: var(--sl-brand);
+  font-size: 36rpx;
+  font-weight: 900;
+}
+
+.metric text:last-child {
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.meta-row {
+  margin-top: 16rpx;
+}
+
+.meta-row text {
+  padding: 7rpx 14rpx;
+  border-radius: 999rpx;
+  background: #f2f6f0;
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.actions {
+  margin-top: 20rpx;
+}
+
+.empty {
   display: flex;
-  gap: $sl-spacing-sm;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: center;
+  gap: 14rpx;
+  padding: 70rpx 20rpx;
+  color: var(--sl-muted);
 }
 
-.act-btn {
-  font-size: $sl-font-xs;
-  padding: $sl-spacing-xs $sl-spacing-sm;
-  border-radius: 6rpx;
-  color: $sl-primary;
-  background-color: rgba(24, 144, 255, 0.1);
-
-  &.edit {
-    color: #faad14;
-    background-color: rgba(250, 173, 20, 0.1);
-  }
-
-  &.del {
-    color: $sl-danger;
-    background-color: rgba(255, 77, 79, 0.1);
-  }
+.load-tip {
+  padding: 26rpx 0;
+  text-align: center;
 }
 
 .fab {
   position: fixed;
-  right: $sl-spacing-lg;
-  bottom: calc(#{$sl-spacing-xl} + #{$sl-safe-bottom});
+  right: 34rpx;
+  bottom: calc(92rpx + env(safe-area-inset-bottom));
+  z-index: 8;
+  display: flex;
   width: 96rpx;
   height: 96rpx;
-  border-radius: 50%;
-  background-color: $sl-primary;
-  display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4rpx 12rpx rgba(59, 130, 246, 0.4);
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, var(--sl-brand), #24815f);
+  box-shadow: 0 18rpx 38rpx rgb(18 107 79 / 28%);
 }
 
-.fab-icon {
-  font-size: 48rpx;
-  color: #ffffff;
-  font-weight: 300;
+.form-sheet {
+  max-height: 86vh;
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  background: #fff;
 }
 
-// Modal shared
-.modal-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-}
-
-.modal-panel {
-  width: 85%;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  padding: $sl-spacing-lg;
-}
-
-.modal-title {
+.sheet-sub {
   display: block;
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-  margin-bottom: $sl-spacing-md;
-  text-align: center;
+  margin-top: 8rpx;
 }
 
-.form-group {
-  margin-bottom: $sl-spacing-md;
+.form-body {
+  max-height: 62vh;
+  margin-top: 22rpx;
+  overflow-y: auto;
 }
 
-.form-label {
+.form-row {
+  margin-bottom: 18rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f6f9f4;
+}
+
+.form-row text:first-child {
   display: block;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-xs;
+  margin-bottom: 10rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
 }
 
-.form-label-row {
-  display: flex;
-  align-items: center;
-  gap: $sl-spacing-sm;
-  margin-bottom: $sl-spacing-xs;
-
-  .form-label {
-    margin-bottom: 0;
-  }
-}
-
-.locating-tip {
-  font-size: $sl-font-xs;
-  color: $sl-text-placeholder;
-
-  &.located {
-    color: $sl-vacant;
-  }
-
-  &.retap {
-    color: $sl-primary;
-  }
-}
-
-.form-input {
+.form-row input,
+.form-row textarea {
   width: 100%;
-  height: 80rpx;
-  padding: 0 $sl-spacing-md;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  box-sizing: border-box;
-
-  &.picker {
-    display: flex;
-    align-items: center;
-  }
-
-  .placeholder {
-    color: $sl-text-placeholder;
-  }
+  color: var(--sl-ink);
+  font-size: 28rpx;
 }
 
-.form-actions {
+.form-row textarea {
+  min-height: 120rpx;
+}
+
+.form-row--picker {
   display: flex;
-  gap: $sl-spacing-sm;
-  margin-top: $sl-spacing-lg;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.form-btn {
-  flex: 1;
-  text-align: center;
-  padding: $sl-spacing-sm;
-  border-radius: $sl-border-radius;
-  font-size: $sl-font-md;
-  font-weight: 600;
-
-  &.cancel {
-    background-color: $sl-bg-page;
-    color: $sl-text-secondary;
-  }
-
-  &.confirm {
-    background-color: $sl-primary;
-    color: #ffffff;
-  }
+.form-row--picker text:first-child {
+  margin-bottom: 0;
 }
 
-// Images
-.image-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $sl-spacing-xs;
-}
-
-.image-item {
-  width: 140rpx;
-  height: 140rpx;
-  position: relative;
-  border-radius: $sl-border-radius-sm;
+.form-row--picker text:last-child {
+  max-width: 440rpx;
   overflow: hidden;
+  color: var(--sl-ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.image-thumb {
-  width: 100%;
-  height: 100%;
+.coord-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
 }
 
-.cover-badge {
-  position: absolute;
-  left: 0;
-  top: 0;
-  background-color: $sl-primary;
-  color: #ffffff;
-  font-size: 20rpx;
-  padding: 2rpx 10rpx;
-  border-radius: 0 0 $sl-border-radius-sm 0;
+.segmented {
+  display: inline-flex;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: #eaf2e8;
 }
 
-.image-delete {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 36rpx;
-  height: 36rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
-  color: #ffffff;
-  font-size: $sl-font-sm;
-  border-radius: 0 0 0 $sl-border-radius-sm;
+.segmented view {
+  padding: 12rpx 24rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 
-.image-add {
-  width: 140rpx;
-  height: 140rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4rpx;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-  border: 2rpx dashed $sl-border-color;
+.segmented .active {
+  background: var(--sl-brand);
+  color: #fff;
 }
 
-.add-icon {
-  font-size: 40rpx;
-  color: $sl-text-placeholder;
-  line-height: 1;
-}
-
-.add-text {
-  font-size: 20rpx;
-  color: $sl-text-placeholder;
-}
-
-// Picker
-.picker-panel {
-  width: 85%;
-  max-height: 70vh;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  padding: $sl-spacing-lg;
-  display: flex;
-  flex-direction: column;
-}
-
-.picker-list {
-  flex: 1;
-  max-height: 500rpx;
-}
-
-.picker-item {
-  padding: $sl-spacing-md;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  border-bottom: 1rpx solid $sl-border-color;
-
-  &.selected {
-    color: $sl-primary;
-    font-weight: 600;
-  }
+.sheet-actions {
+  gap: 16rpx;
+  margin-top: 24rpx;
 }
 </style>

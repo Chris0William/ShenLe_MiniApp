@@ -1,141 +1,114 @@
 <script setup lang="ts">
-import type { SlPropertyListOutput } from '@/types/property'
-import { BASE_URL } from '@/api/http'
+import type { SlPropertyListOutput } from '@/types/shenle'
+import { computed } from 'vue'
+import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 
-defineProps<{
-  property: SlPropertyListOutput
-  showActions?: boolean
+const props = defineProps<{
+  item: SlPropertyListOutput
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
-  tap: [id: number]
+  tap: [item: SlPropertyListOutput]
 }>()
 
-function formatPrice(price: number | null | undefined): string {
-  if (price == null || price === 0) return '¥面议'
-  return `¥${price.toLocaleString()}/月`
-}
-
-function coverSrc(url?: string): string {
-  if (!url) return '/static/images/placeholder.png'
-  if (url.startsWith('http')) return url
-  return `${BASE_URL}/${url}`
-}
-
-function isVideo(url?: string): boolean {
-  if (!url) return false
-  const ext = url.split('.').pop()?.toLowerCase() || ''
-  return ['mp4', 'mov', 'avi', 'webm', '3gp'].includes(ext)
-}
+const status = computed(() => getStatusMeta(props.item.status))
+const cover = computed(() => resolveAssetUrl(props.item.coverImage))
 </script>
 
 <template>
-  <view class="card" @tap="emit('tap', property.id)">
-    <view class="cover-wrap">
-      <image
-        class="card-cover"
-        :src="isVideo(property.coverImage) ? '/static/images/placeholder.png' : coverSrc(property.coverImage)"
-        mode="aspectFill"
-      />
-      <view v-if="isVideo(property.coverImage)" class="play-badge">
-        <text class="play-icon">&#x25B6;</text>
+  <view class="property sl-card" :class="{ 'property--compact': compact }" @tap="emit('tap', item)">
+    <image class="property__cover" :src="cover" mode="aspectFill" />
+    <view class="property__body">
+      <view class="sl-row-between">
+        <text class="property__title">{{ item.title }}</text>
+        <wd-tag :type="status.tone as any" custom-class="property__tag">
+          {{ item.statusName || status.label }}
+        </wd-tag>
       </view>
-    </view>
-    <view class="card-body">
-      <view class="card-title">{{ property.title }}</view>
-      <view class="card-info">
-        <text v-if="property.communityName">{{ property.communityName }}</text>
-        <text v-if="property.floorInfo"> · {{ property.floorInfo }}</text>
+      <text class="property__community">{{ item.communityName || '深乐租房源' }}</text>
+      <view class="property__meta">
+        <text class="property__meta-item">{{ item.houseType }}</text>
+        <text class="property__meta-item">{{ formatArea(item.area) }}</text>
+        <text class="property__meta-item">{{ item.floorInfo || '楼层待补充' }}</text>
       </view>
-      <view class="card-meta">
-        <text>{{ property.area ?? '-' }}㎡</text>
-        <text> · </text>
-        <text>{{ property.houseType }}</text>
-      </view>
-      <view class="card-bottom">
-        <text class="card-price">{{ formatPrice(property.rentPrice) }}</text>
-        <sl-status-badge :status="property.status" />
+      <view class="sl-row-between">
+        <text class="property__price">¥{{ formatMoney(item.rentPrice) }}/月</text>
+        <text class="property__cta">查看详情</text>
       </view>
     </view>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.card {
+<style scoped lang="scss">
+.property {
   display: flex;
-  gap: $sl-spacing-sm;
-  padding: $sl-spacing-md;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  margin-bottom: $sl-spacing-sm;
+  gap: 22rpx;
+  padding: 18rpx;
 }
 
-.cover-wrap {
-  position: relative;
-  width: 220rpx;
-  height: 166rpx;
-  flex-shrink: 0;
+.property__cover {
+  width: 188rpx;
+  height: 178rpx;
+  flex: 0 0 188rpx;
+  border-radius: 18rpx;
+  background: #edf2eb;
 }
 
-.card-cover {
-  width: 100%;
-  height: 100%;
-  border-radius: $sl-border-radius-sm;
-  background-color: #f0f0f0;
-}
-
-.play-badge {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 60rpx;
-  height: 60rpx;
-  border-radius: 50%;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.play-icon {
-  font-size: 24rpx;
-  color: #ffffff;
-  margin-left: 4rpx;
-}
-
-.card-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 6rpx;
+.property__body {
   min-width: 0;
+  flex: 1;
 }
 
-.card-title {
-  font-size: $sl-font-md;
-  font-weight: 600;
-  color: $sl-text-primary;
+.property__title {
+  max-width: 310rpx;
   overflow: hidden;
+  font-size: 30rpx;
+  font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.card-info, .card-meta {
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
+.property__community {
+  display: block;
+  margin-top: 10rpx;
+  overflow: hidden;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.card-bottom {
+.property__meta {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: auto;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin: 16rpx 0;
+  color: #58655f;
+  font-size: 23rpx;
 }
 
-.card-price {
-  font-size: $sl-font-lg;
+.property__meta-item {
+  padding: 6rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f1f5ef;
+}
+
+.property__price {
+  color: #c26916;
+  font-size: 32rpx;
+  font-weight: 850;
+}
+
+.property__cta {
+  color: var(--sl-brand);
+  font-size: 24rpx;
   font-weight: 700;
-  color: $sl-text-price;
+}
+
+.property--compact .property__cover {
+  width: 142rpx;
+  height: 138rpx;
+  flex-basis: 142rpx;
 }
 </style>

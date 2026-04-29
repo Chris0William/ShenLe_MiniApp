@@ -1,333 +1,197 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useAppStore } from '@/stores/app'
-import { useUserStore } from '@/stores/user'
+import type { SlCommunityOutput, SlPropertyGlobalStatsOutput } from '@/types/shenle'
+import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { ref } from 'vue'
+import { getCommunityPage } from '@/api/community'
 import { getPropertyGlobalStats } from '@/api/property'
-import type { SlPropertyGlobalStatsOutput } from '@/types/property'
+import { useShenleAuthStore } from '@/store/auth'
+import { formatMoney } from '@/utils/shenle'
 
-const appStore = useAppStore()
-const userStore = useUserStore()
-
-const stats = ref<SlPropertyGlobalStatsOutput>({
-  totalCount: 0,
-  vacantCount: 0,
-  reservedCount: 0,
-  rentedCount: 0,
-  monthlyIncome: 0,
+definePage({
+  style: {
+    navigationStyle: 'custom',
+    navigationBarTitleText: '工作台',
+    enablePullDownRefresh: true,
+  },
 })
 
-const occupancyPercent = computed(() => {
-  if (stats.value.totalCount === 0) return 0
-  return Math.round((stats.value.rentedCount / stats.value.totalCount) * 100)
-})
+const stats = ref<SlPropertyGlobalStatsOutput>({ totalCount: 0, vacantCount: 0, reservedCount: 0, rentedCount: 0, monthlyIncome: 0 })
+const communities = ref<SlCommunityOutput[]>([])
+const loading = ref(false)
+const auth = useShenleAuthStore()
 
-const todayStr = computed(() => {
-  const d = new Date()
-  const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六']
-  return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${weekdays[d.getDay()]}`
-})
+function requireLogin() {
+  if (auth.isLogin)
+    return true
+  uni.navigateTo({ url: `/pages/common/login/index?redirect=${encodeURIComponent('/pages/admin/dashboard/index')}` })
+  return false
+}
 
-const activityItems = computed(() => {
-  const items: { title: string; desc: string; time: string }[] = []
-  const s = stats.value
-  if (s.vacantCount > 0)
-    items.push({ title: '空置待租', desc: `${s.vacantCount} 套房源等待出租`, time: '今天' })
-  if (s.rentedCount > 0)
-    items.push({ title: '已租房源', desc: `已出租 ${s.rentedCount} 套房源`, time: '今天' })
-  if (s.reservedCount > 0)
-    items.push({ title: '预定中', desc: `${s.reservedCount} 套房源已预定`, time: '今天' })
-  if (s.monthlyIncome > 0)
-    items.push({ title: '月租金收入', desc: `本月收入 ¥${s.monthlyIncome.toLocaleString()}`, time: '本月' })
-  if (items.length === 0)
-    items.push({ title: '暂无动态', desc: '添加房源后将显示最新动态', time: '' })
-  return items
-})
-
-async function loadStats() {
+async function load() {
+  if (!requireLogin())
+    return
+  loading.value = true
   try {
-    stats.value = await getPropertyGlobalStats()
-  } catch {}
+    const [globalStats, communityPage] = await Promise.all([
+      getPropertyGlobalStats(),
+      getCommunityPage({ page: 1, pageSize: 6 }),
+    ])
+    stats.value = globalStats
+    communities.value = communityPage.items
+  }
+  catch {
+    if (!auth.isLogin)
+      requireLogin()
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
+  }
 }
 
-function goTo(url: string) {
-  uni.navigateTo({ url })
+function go(url: string, tab = false) {
+  if (tab)
+    uni.switchTab({ url })
+  else
+    uni.navigateTo({ url })
 }
 
-onMounted(() => {
-  loadStats()
-})
+onLoad(load)
+onPullDownRefresh(load)
 </script>
 
 <template>
-  <view class="page">
-    <!-- Header -->
-    <view class="header" :style="{ paddingTop: appStore.headerPaddingStyle(0) }">
-      <text class="greeting">你好，{{ userStore.nickName || '管理员' }}</text>
-      <text class="date">{{ todayStr }}</text>
+  <view class="sl-page">
+    <view class="sl-hero dashboard-hero">
+      <text class="sl-eyebrow">Admin Console</text>
+      <text class="sl-title">今日房源状态</text>
+      <text class="sl-subtitle">先把统计、房源列表和销控链路迁入新骨架。</text>
     </view>
 
-    <!-- Scrollable body -->
-    <scroll-view scroll-y class="scroll-body" :show-scrollbar="false">
-      <!-- Stats Grid 2×2 -->
-      <view class="stats-grid">
-        <view class="stat-card primary">
-          <text class="stat-label">总房源数</text>
-          <text class="stat-num">{{ stats.totalCount }}</text>
+    <view class="metrics sl-grid-2">
+      <sl-metric-card label="房源总数" :value="stats.totalCount" />
+      <sl-metric-card label="预计月租" :value="`¥${formatMoney(stats.monthlyIncome)}`" tone="gold" />
+      <sl-metric-card label="空置" :value="stats.vacantCount" />
+      <sl-metric-card label="预定/已租" :value="`${stats.reservedCount}/${stats.rentedCount}`" tone="ink" />
+    </view>
+
+    <view class="actions sl-card">
+      <view @tap="go('/pages/admin/property-list/index', true)">
+        <wd-icon name="list" size="26px" color="#126b4f" />
+        <text>房源管理</text>
+      </view>
+      <view @tap="go('/pages/admin/sales-control/index')">
+        <wd-icon name="chart" size="26px" color="#126b4f" />
+        <text>销控表</text>
+      </view>
+      <view @tap="go('/pages/common/property-form/index')">
+        <wd-icon name="add" size="26px" color="#126b4f" />
+        <text>发布房源</text>
+      </view>
+      <view @tap="go('/pages/common/community-manage/index')">
+        <wd-icon name="home" size="26px" color="#126b4f" />
+        <text>楼盘管理</text>
+      </view>
+      <view @tap="go('/pages/common/region-manage/index')">
+        <wd-icon name="location" size="26px" color="#126b4f" />
+        <text>区域管理</text>
+      </view>
+      <view @tap="go('/pages/common/tag-manage/index')">
+        <wd-icon name="tag" size="26px" color="#126b4f" />
+        <text>标签管理</text>
+      </view>
+    </view>
+
+    <view class="sl-section-head">
+      <text class="sl-section-title">楼盘概览</text>
+      <text class="sl-section-extra">{{ loading ? '刷新中' : 'Top 6' }}</text>
+    </view>
+
+    <view class="community-list">
+      <view v-for="item in communities" :key="String(item.id)" class="community sl-card">
+        <view>
+          <text class="community__name">{{ item.name }}</text>
+          <text class="community__meta">{{ item.buildingCount }} 栋 · {{ item.propertyCount }} 套</text>
         </view>
-        <view class="stat-card">
-          <text class="stat-label">空置房源</text>
-          <text class="stat-num">{{ stats.vacantCount }}</text>
-        </view>
-        <view class="stat-card">
-          <text class="stat-label">已租房源</text>
-          <text class="stat-num">{{ stats.rentedCount }}</text>
-        </view>
-        <view class="stat-card">
-          <text class="stat-label">出租率</text>
-          <text class="stat-num">{{ occupancyPercent }}%</text>
+        <view class="community__numbers">
+          <text>{{ item.propertyCount }}</text>
+          <text>房源</text>
         </view>
       </view>
-
-      <!-- Quick Actions -->
-      <view class="section">
-        <text class="section-title">快捷操作</text>
-        <view class="quick-card">
-          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/property-form/index')">
-            <view class="quick-icon blue">
-              <text>+</text>
-            </view>
-            <text class="quick-label">新增房源</text>
-          </view>
-          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/community-manage/index')">
-            <view class="quick-icon orange">
-              <text class="icon-text">&#9962;</text>
-            </view>
-            <text class="quick-label">楼盘管理</text>
-          </view>
-          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/region-manage/index')">
-            <view class="quick-icon green">
-              <text class="icon-text">&#9906;</text>
-            </view>
-            <text class="quick-label">区域管理</text>
-          </view>
-          <view class="quick-item" hover-class="quick-item-hover" hover-stay-time="150" @tap="goTo('/pages/common/tag-manage/index')">
-            <view class="quick-icon purple">
-              <text>#</text>
-            </view>
-            <text class="quick-label">标签管理</text>
-          </view>
-        </view>
-      </view>
-
-      <!-- Activity Feed -->
-      <view class="section">
-        <text class="section-title">最近动态</text>
-        <view class="activity-card">
-          <view
-            v-for="(item, idx) in activityItems"
-            :key="idx"
-            class="activity-item"
-            :class="{ last: idx === activityItems.length - 1 }"
-          >
-            <view class="activity-info">
-              <text class="activity-title">{{ item.title }}</text>
-              <text class="activity-desc">{{ item.desc }}</text>
-            </view>
-            <text class="activity-time">{{ item.time }}</text>
-          </view>
-        </view>
-      </view>
-
-      <view style="height: 200rpx" />
-    </scroll-view>
-
-    <sl-custom-tabbar :current="2" />
+    </view>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
-  height: 100vh;
-  background-color: $sl-bg-page;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+<style scoped lang="scss">
+.dashboard-hero {
+  margin-top: 18rpx;
 }
 
-// ---- Header ----
-.header {
-  padding: $sl-spacing-lg $sl-spacing-xl;
-  padding-bottom: $sl-spacing-xl;
-  flex-shrink: 0;
+.metrics {
+  margin-top: 24rpx;
 }
 
-.greeting {
-  display: block;
-  font-size: $sl-font-xxl;
-  font-weight: 700;
-  color: $sl-text-primary;
+.actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8rpx;
+  margin-top: 24rpx;
+  padding: 24rpx 10rpx;
 }
 
-.date {
-  display: block;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-top: $sl-spacing-xs;
-}
-
-// ---- Scroll body ----
-.scroll-body {
-  flex: 1;
-  height: 0;
-}
-
-// ---- Stats Grid ----
-.stats-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  padding: 0 $sl-spacing-lg;
-  margin-bottom: $sl-spacing-xl;
-}
-
-.stat-card {
-  width: calc(50% - 12rpx);
-  height: 224rpx;
-  padding: $sl-spacing-lg;
-  border-radius: $sl-border-radius-xl;
-  background-color: $sl-bg-card;
-  box-shadow: $sl-shadow-sm;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  margin-bottom: $sl-spacing-md;
-  box-sizing: border-box;
-
-  &.primary {
-    background-color: $sl-primary-dark;
-    .stat-label { color: rgba(255, 255, 255, 0.7); }
-    .stat-num { color: #ffffff; }
-  }
-}
-
-.stat-label {
-  font-size: $sl-font-sm;
-  font-weight: 500;
-  color: $sl-text-placeholder;
-}
-
-.stat-num {
-  font-size: 60rpx;
-  font-weight: 700;
-  color: $sl-text-primary;
-}
-
-// ---- Sections ----
-.section {
-  padding: 0 $sl-spacing-lg;
-  margin-bottom: $sl-spacing-xl;
-}
-
-.section-title {
-  display: block;
-  font-size: $sl-font-lg;
-  font-weight: 700;
-  color: $sl-text-primary;
-  margin-bottom: $sl-spacing-md;
-  padding: 0 $sl-spacing-xs;
-}
-
-// ---- Quick Actions Card ----
-.quick-card {
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius-xl;
-  padding: $sl-spacing-lg;
-  display: flex;
-  justify-content: space-between;
-  box-shadow: $sl-shadow-sm;
-}
-
-.quick-item {
+.actions view {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: $sl-spacing-sm;
+  gap: 10rpx;
+  color: var(--sl-ink);
+  font-size: 24rpx;
+  font-weight: 700;
 }
 
-.quick-item-hover {
-  opacity: 0.6;
-  transform: scale(0.95);
+.community-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
 }
 
-.quick-icon {
-  width: 96rpx;
-  height: 96rpx;
-  border-radius: $sl-border-radius-lg;
+.community {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: $sl-font-xxl;
-  margin-bottom: $sl-spacing-xs;
-
-  &.blue { background-color: #DBEAFE; color: #2563EB; }
-  &.orange { background-color: #FFEDD5; color: #EA580C; }
-  &.green { background-color: #D1FAE5; color: #059669; }
-  &.purple { background-color: #F3E8FF; color: #9333EA; }
+  justify-content: space-between;
+  padding: 24rpx;
 }
 
-.icon-text {
-  font-size: $sl-font-xl;
+.community__name,
+.community__meta {
+  display: block;
 }
 
-.quick-label {
+.community__name {
+  font-size: 29rpx;
+  font-weight: 800;
+}
+
+.community__meta {
+  margin-top: 8rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.community__numbers {
+  text-align: right;
+}
+
+.community__numbers text:first-child {
+  display: block;
+  color: var(--sl-brand);
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.community__numbers text:last-child {
+  display: block;
+  color: var(--sl-muted);
   font-size: 22rpx;
-  font-weight: 500;
-  color: #475569;
-}
-
-// ---- Activity Feed ----
-.activity-card {
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius-xl;
-  padding: $sl-spacing-sm;
-  box-shadow: $sl-shadow-sm;
-}
-
-.activity-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: $sl-spacing-md;
-  border-bottom: 1rpx solid $sl-border-color-light;
-  border-radius: $sl-border-radius;
-
-  &.last {
-    border-bottom: none;
-  }
-}
-
-.activity-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.activity-title {
-  display: block;
-  font-size: $sl-font-md;
-  font-weight: 600;
-  color: $sl-text-primary;
-}
-
-.activity-desc {
-  display: block;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-top: 4rpx;
-}
-
-.activity-time {
-  font-size: $sl-font-xs;
-  color: $sl-text-placeholder;
-  flex-shrink: 0;
 }
 </style>

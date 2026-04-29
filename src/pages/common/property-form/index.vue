@@ -1,759 +1,802 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue'
+import type { AddSlPropertyInput, ShenLeId, SlBuildingOutput, SlCommunitySelectOutput, SlPropertyOutput, SlTagOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
-import { getCommunityList } from '@/api/community'
+import { computed, reactive, ref } from 'vue'
 import { getBuildingList } from '@/api/building'
+import { getCommunityList } from '@/api/community'
+import { getPropertyDetail, addProperty, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
-import { addProperty, updateProperty, getPropertyDetail } from '@/api/property'
-import { uploadFile, downloadFile } from '@/api/file'
-import { ORIENTATIONS, DECORATIONS, RENTAL_TYPES, DEPOSIT_RULES } from '@/utils/constants'
-import type { SlCommunitySelectOutput } from '@/types/community'
-import type { SlBuildingOutput } from '@/types/building'
-import type { SlTagOutput } from '@/types/tag'
+import { uploadFile } from '@/api/file'
+import {
+  DECORATION_OPTIONS,
+  DEPOSIT_RULE_OPTIONS,
+  ORIENTATION_OPTIONS,
+  PROPERTY_STATUS_OPTIONS,
+  RENTAL_TYPE_OPTIONS,
+} from '@/constants/shenle'
+import { resolveAssetUrl } from '@/utils/shenle'
 
+definePage({
+  style: {
+    navigationBarTitleText: '新增/编辑房源',
+  },
+})
+
+interface FormState {
+  communityId: string
+  buildingId: string
+  floor: string
+  totalFloors: string
+  roomNo: string
+  title: string
+  bedrooms: number
+  livingRooms: number
+  bathrooms: number
+  area: string
+  orientationIdx: number
+  decorationIdx: number
+  rentalTypeIdx: number
+  rentPrice: string
+  deposit: string
+  depositRuleIdx: number
+  minLease: string
+  landlordName: string
+  landlordPhone: string
+  description: string
+  remark: string
+  status: number
+  tagIds: ShenLeId[]
+  facilityIds: ShenLeId[]
+  imageIds: ShenLeId[]
+  imageUrls: string[]
+  coverImageId: string
+}
+
+const steps = ['位置', '信息', '图片']
 const currentStep = ref(0)
-const steps = ['选择位置', '填写信息', '上传图片']
 const isEdit = ref(false)
 const editId = ref('')
 const submitting = ref(false)
-
-// 步骤1：位置信息
+const loading = ref(false)
+const uploading = ref(false)
 const communities = ref<SlCommunitySelectOutput[]>([])
 const buildings = ref<SlBuildingOutput[]>([])
-const form = reactive({
+const houseTags = ref<SlTagOutput[]>([])
+const facilityTags = ref<SlTagOutput[]>([])
+const communityPickerIdx = ref(0)
+const buildingPickerIdx = ref(0)
+
+const form = reactive<FormState>({
   communityId: '',
   buildingId: '',
   floor: '',
-  roomNumber: '',
-  totalFloor: '',
-  // 步骤2：基本信息
+  totalFloors: '',
+  roomNo: '',
   title: '',
   bedrooms: 1,
-  livingRooms: 1,
+  livingRooms: 0,
   bathrooms: 1,
   area: '',
   orientationIdx: -1,
   decorationIdx: -1,
   rentalTypeIdx: -1,
-  monthlyRent: '',
+  rentPrice: '',
   deposit: '',
   depositRuleIdx: -1,
+  minLease: '',
+  landlordName: '',
+  landlordPhone: '',
   description: '',
-  contactName: '',
-  contactPhone: '',
-  // 标签
-  selectedTagIds: [] as string[],
-  selectedFacilityIds: [] as string[],
-  // 步骤3：图片
-  imageIds: [] as string[],
-  imageUrls: [] as string[],
+  remark: '',
+  status: 0,
+  tagIds: [],
+  facilityIds: [],
+  imageIds: [],
+  imageUrls: [],
   coverImageId: '',
 })
 
-// 标签数据
-const houseTags = ref<SlTagOutput[]>([])
-const facilityTags = ref<SlTagOutput[]>([])
+const communityNames = computed(() => communities.value.map(item => item.name))
+const buildingNames = computed(() => buildings.value.map(item => item.name))
+const selectedCommunity = computed(() => communities.value[communityPickerIdx.value])
+const selectedBuilding = computed(() => buildings.value[buildingPickerIdx.value])
+
+function toNumber(value: string, fallback = 0) {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : fallback
+}
+
+function idEquals(left?: ShenLeId | string, right?: ShenLeId | string) {
+  return left !== undefined && right !== undefined && String(left) === String(right)
+}
+
+function optionIndex(options: readonly { value: string, label: string }[], value?: string | null) {
+  if (!value)
+    return -1
+  return options.findIndex(item => item.value === value || item.label === value)
+}
 
 async function loadCommunities() {
-  try {
-    communities.value = await getCommunityList({})
-  } catch {}
+  communities.value = await getCommunityList({})
 }
 
 async function loadBuildings(communityId: string) {
-  if (!communityId) { buildings.value = []; return }
-  try {
-    buildings.value = await getBuildingList({ communityId })
-  } catch {}
+  if (!communityId) {
+    buildings.value = []
+    buildingPickerIdx.value = 0
+    return
+  }
+  buildings.value = await getBuildingList({ communityId })
+  buildingPickerIdx.value = Math.max(0, buildings.value.findIndex(item => idEquals(item.id, form.buildingId)))
 }
 
 async function loadTags() {
-  try {
-    houseTags.value = await getTagList({ category: 'house' })
-    facilityTags.value = await getTagList({ category: 'facility' })
-  } catch {}
+  const [house, facility] = await Promise.allSettled([
+    getTagList({ category: 'house', status: 0 }),
+    getTagList({ category: 'facility', status: 0 }),
+  ])
+  if (house.status === 'fulfilled')
+    houseTags.value = house.value
+  if (facility.status === 'fulfilled')
+    facilityTags.value = facility.value
 }
 
-watch(() => form.communityId, (val) => {
-  form.buildingId = ''
-  loadBuildings(val)
-})
-
-// 社区选择
-const communityPickerIdx = ref(0)
-function onCommunityChange(e: any) {
-  const idx = Number(e.detail.value)
+async function onCommunityChange(event: any) {
+  const idx = Number(event.detail.value)
   communityPickerIdx.value = idx
-  form.communityId = communities.value[idx]?.id || ''
+  form.communityId = String(communities.value[idx]?.id || '')
+  form.buildingId = ''
+  await loadBuildings(form.communityId)
 }
 
-// 楼栋选择
-const buildingPickerIdx = ref(0)
-function onBuildingChange(e: any) {
-  const idx = Number(e.detail.value)
+function onBuildingChange(event: any) {
+  const idx = Number(event.detail.value)
   buildingPickerIdx.value = idx
-  form.buildingId = buildings.value[idx]?.id || ''
-  if (buildings.value[idx]?.totalFloors) {
-    form.totalFloor = String(buildings.value[idx].totalFloors)
+  const building = buildings.value[idx]
+  form.buildingId = String(building?.id || '')
+  if (building?.totalFloors)
+    form.totalFloors = String(building.totalFloors)
+}
+
+function toggleId(list: ShenLeId[], id: ShenLeId) {
+  const index = list.findIndex(item => idEquals(item, id))
+  if (index >= 0)
+    list.splice(index, 1)
+  else
+    list.push(id)
+}
+
+function hasId(list: ShenLeId[], id: ShenLeId) {
+  return list.some(item => idEquals(item, id))
+}
+
+async function chooseImages() {
+  const remain = 9 - form.imageIds.length
+  if (remain <= 0) {
+    uni.showToast({ title: '最多上传 9 张', icon: 'none' })
+    return
   }
-}
-
-// 标签切换
-function toggleTag(id: string, list: string[]) {
-  const idx = list.indexOf(id)
-  if (idx >= 0) list.splice(idx, 1)
-  else list.push(id)
-}
-
-// 图片上传
-async function onChooseImage() {
   uni.chooseImage({
-    count: 9 - form.imageIds.length,
+    count: remain,
+    sizeType: ['compressed'],
     success: async (res) => {
-      for (const path of res.tempFilePaths) {
-        try {
-          const file = await uploadFile(path)
+      uploading.value = true
+      try {
+        for (const tempPath of res.tempFilePaths) {
+          const file = await uploadFile(tempPath)
           form.imageIds.push(file.id)
-          form.imageUrls.push(path) // 直接用本地临时路径
-          if (!form.coverImageId) form.coverImageId = file.id
-        } catch {}
+          form.imageUrls.push(resolveAssetUrl(file.url) || tempPath)
+          if (!form.coverImageId)
+            form.coverImageId = String(file.id)
+        }
+      }
+      finally {
+        uploading.value = false
       }
     },
   })
 }
 
-function removeImage(idx: number) {
-  const removedId = form.imageIds[idx]
-  form.imageIds.splice(idx, 1)
-  form.imageUrls.splice(idx, 1)
-  if (form.coverImageId === removedId) {
-    form.coverImageId = form.imageIds[0] || ''
-  }
+function removeImage(index: number) {
+  const removed = form.imageIds[index]
+  form.imageIds.splice(index, 1)
+  form.imageUrls.splice(index, 1)
+  if (idEquals(form.coverImageId, removed))
+    form.coverImageId = String(form.imageIds[0] || '')
 }
 
-function setCover(idx: number) {
-  form.coverImageId = form.imageIds[idx]
+function setCover(index: number) {
+  form.coverImageId = String(form.imageIds[index] || '')
 }
 
-// 步骤验证
-function validateStep(): boolean {
-  if (currentStep.value === 0) {
-    if (!form.communityId) { uni.showToast({ title: '请选择楼盘', icon: 'none' }); return false }
-    if (!form.buildingId) { uni.showToast({ title: '请选择楼栋', icon: 'none' }); return false }
-    if (!form.floor) { uni.showToast({ title: '请填写楼层', icon: 'none' }); return false }
-    return true
+function validateStep(step = currentStep.value) {
+  if (step === 0) {
+    if (!form.communityId) {
+      uni.showToast({ title: '请选择楼盘', icon: 'none' })
+      return false
+    }
+    if (!form.buildingId) {
+      uni.showToast({ title: '请选择楼栋', icon: 'none' })
+      return false
+    }
+    if (!form.floor) {
+      uni.showToast({ title: '请输入楼层', icon: 'none' })
+      return false
+    }
   }
-  if (currentStep.value === 1) {
-    if (!form.title.trim()) { uni.showToast({ title: '请填写标题', icon: 'none' }); return false }
-    if (!form.monthlyRent) { uni.showToast({ title: '请填写月租金', icon: 'none' }); return false }
-    return true
+  if (step === 1) {
+    if (!form.title.trim()) {
+      uni.showToast({ title: '请输入房源标题', icon: 'none' })
+      return false
+    }
+    if (!form.rentPrice) {
+      uni.showToast({ title: '请输入月租金', icon: 'none' })
+      return false
+    }
   }
   return true
 }
 
-function onNext() {
-  if (!validateStep()) return
-  currentStep.value++
+function nextStep() {
+  if (!validateStep())
+    return
+  currentStep.value = Math.min(currentStep.value + 1, steps.length - 1)
 }
 
-async function onSubmit() {
-  if (submitting.value) return
+function prevStep() {
+  currentStep.value = Math.max(currentStep.value - 1, 0)
+}
+
+function buildSubmitData(): AddSlPropertyInput {
+  return {
+    title: form.title.trim(),
+    communityId: form.communityId,
+    buildingId: form.buildingId,
+    roomNo: form.roomNo || undefined,
+    floor: toNumber(form.floor),
+    totalFloors: toNumber(form.totalFloors),
+    area: toNumber(form.area),
+    bedrooms: form.bedrooms,
+    livingRooms: form.livingRooms,
+    bathrooms: form.bathrooms,
+    orientation: ORIENTATION_OPTIONS[form.orientationIdx]?.value,
+    decoration: DECORATION_OPTIONS[form.decorationIdx]?.value,
+    rentalType: RENTAL_TYPE_OPTIONS[form.rentalTypeIdx]?.value,
+    rentPrice: toNumber(form.rentPrice),
+    deposit: form.deposit ? toNumber(form.deposit) : undefined,
+    depositRule: DEPOSIT_RULE_OPTIONS[form.depositRuleIdx]?.value,
+    minLease: form.minLease ? toNumber(form.minLease) : undefined,
+    landlordName: form.landlordName || undefined,
+    landlordPhone: form.landlordPhone || undefined,
+    description: form.description || undefined,
+    remark: form.remark || undefined,
+    status: form.status,
+    coverImageId: form.coverImageId || undefined,
+    tagIds: form.tagIds,
+    facilityIds: form.facilityIds,
+    images: form.imageIds.map(id => ({ fileId: id, fileType: 'image' })),
+  }
+}
+
+async function submit() {
+  if (!validateStep(0) || !validateStep(1) || submitting.value)
+    return
   submitting.value = true
   try {
-    const data: any = {
-      title: form.title,
-      communityId: Number(form.communityId),
-      buildingId: Number(form.buildingId),
-      floor: Number(form.floor) || 0,
-      totalFloors: Number(form.totalFloor) || 0,
-      roomNo: form.roomNumber || undefined,
-      area: Number(form.area) || 0,
-      bedrooms: form.bedrooms,
-      livingRooms: form.livingRooms,
-      bathrooms: form.bathrooms,
-      orientation: form.orientationIdx >= 0 ? ORIENTATIONS[form.orientationIdx] : undefined,
-      decoration: form.decorationIdx >= 0 ? DECORATIONS[form.decorationIdx] : undefined,
-      rentalType: form.rentalTypeIdx >= 0 ? RENTAL_TYPES[form.rentalTypeIdx] : undefined,
-      rentPrice: Number(form.monthlyRent) || 0,
-      deposit: Number(form.deposit) || 0,
-      depositRule: form.depositRuleIdx >= 0 ? DEPOSIT_RULES[form.depositRuleIdx].label : undefined,
-      description: form.description || undefined,
-      landlordName: form.contactName || undefined,
-      landlordPhone: form.contactPhone || undefined,
-      status: 0,
-      coverImageId: form.coverImageId ? Number(form.coverImageId) : undefined,
-      tagIds: form.selectedTagIds.map(Number),
-      facilityIds: form.selectedFacilityIds.map(Number),
-      images: form.imageIds.map(id => ({ fileId: Number(id) })),
-    }
-
+    const data = buildSubmitData()
     if (isEdit.value) {
-      await updateProperty({ ...data, id: Number(editId.value) })
+      await updateProperty({ ...data, id: editId.value })
       uni.showToast({ title: '更新成功', icon: 'success' })
-    } else {
-      await addProperty(data)
-      uni.showToast({ title: '发布成功', icon: 'success' })
     }
-    setTimeout(() => uni.navigateBack(), 500)
-  } catch {} finally {
+    else {
+      await addProperty(data)
+      uni.showToast({ title: '新增成功', icon: 'success' })
+    }
+    setTimeout(() => uni.navigateBack(), 700)
+  }
+  finally {
     submitting.value = false
   }
 }
 
-onLoad(async (options) => {
-  await Promise.all([loadCommunities(), loadTags()])
-  if (options?.id) {
-    isEdit.value = true
-    editId.value = options.id
-    try {
-      const detail = await getPropertyDetail(options.id)
-      form.communityId = detail.communityId
-      await loadBuildings(detail.communityId)
-      form.buildingId = detail.buildingId
-      form.floor = String(detail.floor ?? '')
-      form.totalFloor = String(detail.totalFloors ?? '')
-      form.roomNumber = detail.roomNo ?? ''
-      form.title = detail.title
-      form.bedrooms = detail.bedrooms
-      form.livingRooms = detail.livingRooms
-      form.bathrooms = detail.bathrooms
-      form.area = String(detail.area)
-      form.orientationIdx = ORIENTATIONS.indexOf(detail.orientation)
-      form.decorationIdx = DECORATIONS.indexOf(detail.decoration)
-      form.rentalTypeIdx = RENTAL_TYPES.indexOf(detail.rentalType)
-      form.monthlyRent = String(detail.rentPrice ?? '')
-      form.deposit = String(detail.deposit || '')
-      form.description = detail.description || ''
-      form.contactName = detail.landlordName || ''
-      form.contactPhone = detail.landlordPhone || ''
-      form.selectedTagIds = detail.tags?.map(t => t.id) || []
-      form.selectedFacilityIds = detail.facilities?.map(f => f.id) || []
-      form.imageIds = detail.images?.map(i => i.id) || []
-      // 带 token 下载图片到本地临时路径
-      const urls: string[] = []
-      for (const img of (detail.images || [])) {
-        try { urls.push(await downloadFile(String(img.id))) } catch { urls.push('') }
-      }
-      form.imageUrls = urls
-      form.coverImageId = detail.coverImageId || ''
-      // 设置 picker 索引
-      communityPickerIdx.value = communities.value.findIndex(c => c.id === detail.communityId)
-      buildingPickerIdx.value = buildings.value.findIndex(b => b.id === detail.buildingId)
-    } catch {}
+function fillDetail(detail: SlPropertyOutput) {
+  form.communityId = String(detail.communityId || '')
+  form.buildingId = String(detail.buildingId || '')
+  form.floor = detail.floor === null || detail.floor === undefined ? '' : String(detail.floor)
+  form.totalFloors = detail.totalFloors === null || detail.totalFloors === undefined ? '' : String(detail.totalFloors)
+  form.roomNo = detail.roomNo || ''
+  form.title = detail.title || ''
+  form.bedrooms = detail.bedrooms || 1
+  form.livingRooms = detail.livingRooms || 0
+  form.bathrooms = detail.bathrooms || 1
+  form.area = detail.area === null || detail.area === undefined ? '' : String(detail.area)
+  form.orientationIdx = optionIndex(ORIENTATION_OPTIONS, detail.orientation)
+  form.decorationIdx = optionIndex(DECORATION_OPTIONS, detail.decoration)
+  form.rentalTypeIdx = optionIndex(RENTAL_TYPE_OPTIONS, detail.rentalType)
+  form.rentPrice = detail.rentPrice === null || detail.rentPrice === undefined ? '' : String(detail.rentPrice)
+  form.deposit = detail.deposit ? String(detail.deposit) : ''
+  form.depositRuleIdx = optionIndex(DEPOSIT_RULE_OPTIONS, detail.depositRule)
+  form.minLease = detail.minLease ? String(detail.minLease) : ''
+  form.landlordName = detail.landlordName || ''
+  form.landlordPhone = detail.landlordPhone || ''
+  form.description = detail.description || ''
+  form.remark = detail.remark || ''
+  form.status = detail.status ?? 0
+  form.tagIds = detail.tags?.map(item => item.id) || []
+  form.facilityIds = detail.facilities?.map(item => item.id) || []
+  form.imageIds = detail.images?.map(item => item.id) || []
+  form.imageUrls = detail.images?.map(item => resolveAssetUrl(item.url)) || []
+  form.coverImageId = detail.coverImageId ? String(detail.coverImageId) : String(form.imageIds[0] || '')
+}
+
+onLoad(async (query) => {
+  loading.value = true
+  try {
+    await Promise.all([loadCommunities(), loadTags()])
+    if (query?.id) {
+      isEdit.value = true
+      editId.value = String(query.id)
+      const detail = await getPropertyDetail(editId.value)
+      fillDetail(detail)
+      communityPickerIdx.value = Math.max(0, communities.value.findIndex(item => idEquals(item.id, form.communityId)))
+      await loadBuildings(form.communityId)
+      buildingPickerIdx.value = Math.max(0, buildings.value.findIndex(item => idEquals(item.id, form.buildingId)))
+      uni.setNavigationBarTitle({ title: '编辑房源' })
+      return
+    }
+
+    if (query?.communityId) {
+      form.communityId = String(query.communityId)
+      communityPickerIdx.value = Math.max(0, communities.value.findIndex(item => idEquals(item.id, form.communityId)))
+      await loadBuildings(form.communityId)
+    }
+  }
+  finally {
+    loading.value = false
   }
 })
 </script>
 
 <template>
-  <view class="page">
-    <!-- 步骤条 -->
-    <view class="steps">
-      <view
-        v-for="(step, i) in steps"
-        :key="i"
-        class="step"
-        :class="{ active: i === currentStep, done: i < currentStep }"
-      >
-        <view class="step-dot">
-          <text>{{ i < currentStep ? '✓' : i + 1 }}</text>
-        </view>
-        <text class="step-text">{{ step }}</text>
+  <view class="sl-page form-page">
+    <view class="form-hero sl-card">
+      <view>
+        <text class="form-hero__eyebrow">{{ isEdit ? 'Edit Property' : 'Create Property' }}</text>
+        <text class="form-hero__title">{{ form.title || '完善房源信息' }}</text>
+        <text class="form-hero__desc">按楼盘、房间、价格和图片三步录入，保存后可进入销控表。</text>
+      </view>
+      <wd-tag :type="isEdit ? 'warning' : 'success'" plain>{{ isEdit ? '编辑' : '新增' }}</wd-tag>
+    </view>
+
+    <view class="steps sl-card">
+      <view v-for="(step, index) in steps" :key="step" class="step" :class="{ active: currentStep === index, done: currentStep > index }" @tap="currentStep = index">
+        <text class="step__dot">{{ currentStep > index ? '✓' : index + 1 }}</text>
+        <text class="step__text">{{ step }}</text>
       </view>
     </view>
 
-    <!-- 步骤1：选择位置 -->
-    <view v-if="currentStep === 0" class="form-area">
-      <view class="form-card">
+    <view v-if="loading" class="loading sl-card">房源加载中...</view>
+
+    <scroll-view v-else scroll-y class="form-scroll">
+      <view v-if="currentStep === 0" class="form-card sl-card">
+        <text class="form-card__title">位置归属</text>
         <view class="form-item">
           <text class="form-label">楼盘 *</text>
-          <picker :range="communities.map(c => c.name)" :value="communityPickerIdx" @change="onCommunityChange">
-            <view class="picker-value">
-              {{ form.communityId ? communities[communityPickerIdx]?.name : '请选择楼盘' }}
-            </view>
+          <picker :range="communityNames" :value="communityPickerIdx" @change="onCommunityChange">
+            <view class="picker-value">{{ selectedCommunity?.name || '请选择楼盘' }}</view>
           </picker>
         </view>
         <view class="form-item">
           <text class="form-label">楼栋 *</text>
-          <picker :range="buildings.map(b => b.name)" :value="buildingPickerIdx" @change="onBuildingChange" :disabled="!form.communityId">
-            <view class="picker-value" :class="{ disabled: !form.communityId }">
-              {{ form.buildingId ? buildings[buildingPickerIdx]?.name : (form.communityId ? '请选择楼栋' : '请先选择楼盘') }}
-            </view>
+          <picker :range="buildingNames" :value="buildingPickerIdx" :disabled="!form.communityId" @change="onBuildingChange">
+            <view class="picker-value" :class="{ disabled: !form.communityId }">{{ selectedBuilding?.name || (form.communityId ? '请选择楼栋' : '请先选择楼盘') }}</view>
           </picker>
         </view>
-        <view class="form-row">
-          <view class="form-item half">
+        <view class="form-grid">
+          <view class="form-item">
             <text class="form-label">楼层 *</text>
-            <input v-model="form.floor" class="form-input" type="number" placeholder="如 6" />
+            <input v-model="form.floor" class="form-input" type="number" placeholder="如 6">
           </view>
-          <view class="form-item half">
-            <text class="form-label">房间号</text>
-            <input v-model="form.roomNumber" class="form-input" placeholder="如 605" />
+          <view class="form-item">
+            <text class="form-label">总楼层</text>
+            <input v-model="form.totalFloors" class="form-input" type="number" placeholder="如 12">
           </view>
         </view>
         <view class="form-item">
-          <text class="form-label">总楼层</text>
-          <input v-model="form.totalFloor" class="form-input" type="number" placeholder="如 12" />
+          <text class="form-label">房间号</text>
+          <input v-model="form.roomNo" class="form-input" placeholder="如 605 / A302">
         </view>
       </view>
-    </view>
 
-    <!-- 步骤2：房源信息 -->
-    <scroll-view v-if="currentStep === 1" scroll-y class="form-area form-scroll">
-      <view class="form-card">
+      <view v-if="currentStep === 1" class="form-card sl-card">
+        <text class="form-card__title">基础信息</text>
         <view class="form-item">
           <text class="form-label">标题 *</text>
-          <input v-model="form.title" class="form-input" placeholder="如：精装一房一厅 采光极佳" />
+          <input v-model="form.title" class="form-input" placeholder="如 精装一房 采光好">
         </view>
-
-        <view class="form-item">
-          <text class="form-label">户型</text>
-          <view class="stepper-row">
-            <view class="stepper-group">
-              <view class="stepper-btn" @tap="form.bedrooms = Math.max(0, form.bedrooms - 1)"><text>-</text></view>
-              <text class="stepper-value">{{ form.bedrooms }}室</text>
-              <view class="stepper-btn" @tap="form.bedrooms++"><text>+</text></view>
-            </view>
-            <view class="stepper-group">
-              <view class="stepper-btn" @tap="form.livingRooms = Math.max(0, form.livingRooms - 1)"><text>-</text></view>
-              <text class="stepper-value">{{ form.livingRooms }}厅</text>
-              <view class="stepper-btn" @tap="form.livingRooms++"><text>+</text></view>
-            </view>
-            <view class="stepper-group">
-              <view class="stepper-btn" @tap="form.bathrooms = Math.max(0, form.bathrooms - 1)"><text>-</text></view>
-              <text class="stepper-value">{{ form.bathrooms }}卫</text>
-              <view class="stepper-btn" @tap="form.bathrooms++"><text>+</text></view>
-            </view>
+        <view class="counter-row">
+          <view class="counter">
+            <text>室</text>
+            <view><text @tap="form.bedrooms = Math.max(0, form.bedrooms - 1)">-</text><text>{{ form.bedrooms }}</text><text @tap="form.bedrooms += 1">+</text></view>
+          </view>
+          <view class="counter">
+            <text>厅</text>
+            <view><text @tap="form.livingRooms = Math.max(0, form.livingRooms - 1)">-</text><text>{{ form.livingRooms }}</text><text @tap="form.livingRooms += 1">+</text></view>
+          </view>
+          <view class="counter">
+            <text>卫</text>
+            <view><text @tap="form.bathrooms = Math.max(0, form.bathrooms - 1)">-</text><text>{{ form.bathrooms }}</text><text @tap="form.bathrooms += 1">+</text></view>
           </view>
         </view>
-
-        <view class="form-row">
-          <view class="form-item half">
+        <view class="form-grid">
+          <view class="form-item">
             <text class="form-label">面积(㎡)</text>
-            <input v-model="form.area" class="form-input" type="digit" placeholder="如 45" />
+            <input v-model="form.area" class="form-input" type="digit" placeholder="如 45">
           </view>
-          <view class="form-item half">
-            <text class="form-label">朝向</text>
-            <picker :range="ORIENTATIONS" :value="form.orientationIdx" @change="(e: any) => form.orientationIdx = Number(e.detail.value)">
-              <view class="picker-value">{{ form.orientationIdx >= 0 ? ORIENTATIONS[form.orientationIdx] : '请选择' }}</view>
-            </picker>
+          <view class="form-item">
+            <text class="form-label">月租金 *</text>
+            <input v-model="form.rentPrice" class="form-input" type="digit" placeholder="如 1800">
           </view>
         </view>
-
-        <view class="form-row">
-          <view class="form-item half">
-            <text class="form-label">装修</text>
-            <picker :range="DECORATIONS" :value="form.decorationIdx" @change="(e: any) => form.decorationIdx = Number(e.detail.value)">
-              <view class="picker-value">{{ form.decorationIdx >= 0 ? DECORATIONS[form.decorationIdx] : '请选择' }}</view>
-            </picker>
+        <view class="form-grid">
+          <view class="form-item">
+            <text class="form-label">押金</text>
+            <input v-model="form.deposit" class="form-input" type="digit" placeholder="如 1800">
           </view>
-          <view class="form-item half">
-            <text class="form-label">租赁方式</text>
-            <picker :range="RENTAL_TYPES" :value="form.rentalTypeIdx" @change="(e: any) => form.rentalTypeIdx = Number(e.detail.value)">
-              <view class="picker-value">{{ form.rentalTypeIdx >= 0 ? RENTAL_TYPES[form.rentalTypeIdx] : '请选择' }}</view>
-            </picker>
+          <view class="form-item">
+            <text class="form-label">最短租期(月)</text>
+            <input v-model="form.minLease" class="form-input" type="number" placeholder="如 3">
           </view>
         </view>
-
-        <view class="form-row">
-          <view class="form-item half">
-            <text class="form-label">月租金(元) *</text>
-            <input v-model="form.monthlyRent" class="form-input" type="number" placeholder="1350" />
-          </view>
-          <view class="form-item half">
-            <text class="form-label">押金(元)</text>
-            <input v-model="form.deposit" class="form-input" type="number" placeholder="1350" />
-          </view>
-        </view>
-
         <view class="form-item">
-          <text class="form-label">押付规则</text>
-          <picker :range="DEPOSIT_RULES.map(r => r.label)" :value="form.depositRuleIdx" @change="(e: any) => form.depositRuleIdx = Number(e.detail.value)">
-            <view class="picker-value">{{ form.depositRuleIdx >= 0 ? DEPOSIT_RULES[form.depositRuleIdx].label : '请选择' }}</view>
+          <text class="form-label">朝向</text>
+          <picker :range="ORIENTATION_OPTIONS.map(item => item.label)" :value="form.orientationIdx" @change="(event: any) => form.orientationIdx = Number(event.detail.value)">
+            <view class="picker-value">{{ form.orientationIdx >= 0 ? ORIENTATION_OPTIONS[form.orientationIdx].label : '请选择' }}</view>
           </picker>
         </view>
-      </view>
-
-      <!-- 标签选择 -->
-      <view class="form-card" v-if="houseTags.length > 0">
-        <text class="form-label">房源标签</text>
-        <view class="tag-grid">
-          <view
-            v-for="tag in houseTags"
-            :key="tag.id"
-            class="tag-item"
-            :class="{ selected: form.selectedTagIds.includes(tag.id) }"
-            @tap="toggleTag(tag.id, form.selectedTagIds)"
-          >
-            <text>{{ tag.name }}</text>
+        <view class="form-item">
+          <text class="form-label">装修</text>
+          <picker :range="DECORATION_OPTIONS.map(item => item.label)" :value="form.decorationIdx" @change="(event: any) => form.decorationIdx = Number(event.detail.value)">
+            <view class="picker-value">{{ form.decorationIdx >= 0 ? DECORATION_OPTIONS[form.decorationIdx].label : '请选择' }}</view>
+          </picker>
+        </view>
+        <view class="form-item">
+          <text class="form-label">出租方式</text>
+          <picker :range="RENTAL_TYPE_OPTIONS.map(item => item.label)" :value="form.rentalTypeIdx" @change="(event: any) => form.rentalTypeIdx = Number(event.detail.value)">
+            <view class="picker-value">{{ form.rentalTypeIdx >= 0 ? RENTAL_TYPE_OPTIONS[form.rentalTypeIdx].label : '请选择' }}</view>
+          </picker>
+        </view>
+        <view class="form-item">
+          <text class="form-label">押付方式</text>
+          <picker :range="DEPOSIT_RULE_OPTIONS.map(item => item.label)" :value="form.depositRuleIdx" @change="(event: any) => form.depositRuleIdx = Number(event.detail.value)">
+            <view class="picker-value">{{ form.depositRuleIdx >= 0 ? DEPOSIT_RULE_OPTIONS[form.depositRuleIdx].label : '请选择' }}</view>
+          </picker>
+        </view>
+        <view class="form-item">
+          <text class="form-label">状态</text>
+          <view class="status-row">
+            <wd-tag v-for="item in PROPERTY_STATUS_OPTIONS" :key="item.value" :type="form.status === item.value ? item.tone as any : 'default'" @click="form.status = item.value">{{ item.label }}</wd-tag>
           </view>
         </view>
-      </view>
-
-      <view class="form-card" v-if="facilityTags.length > 0">
-        <text class="form-label">配套设施</text>
-        <view class="tag-grid">
-          <view
-            v-for="tag in facilityTags"
-            :key="tag.id"
-            class="tag-item"
-            :class="{ selected: form.selectedFacilityIds.includes(tag.id) }"
-            @tap="toggleTag(tag.id, form.selectedFacilityIds)"
-          >
-            <text>{{ tag.name }}</text>
+        <view class="form-grid">
+          <view class="form-item">
+            <text class="form-label">房东姓名</text>
+            <input v-model="form.landlordName" class="form-input" placeholder="姓名/称呼">
+          </view>
+          <view class="form-item">
+            <text class="form-label">房东电话</text>
+            <input v-model="form.landlordPhone" class="form-input" type="number" placeholder="手机号">
           </view>
         </view>
-      </view>
-
-      <view class="form-card">
         <view class="form-item">
           <text class="form-label">描述</text>
-          <textarea v-model="form.description" class="form-textarea" placeholder="描述房源详细情况" />
-        </view>
-        <view class="form-row">
-          <view class="form-item half">
-            <text class="form-label">联系人</text>
-            <input v-model="form.contactName" class="form-input" placeholder="姓名" />
-          </view>
-          <view class="form-item half">
-            <text class="form-label">联系电话</text>
-            <input v-model="form.contactPhone" class="form-input" type="number" placeholder="手机号" />
-          </view>
+          <textarea v-model="form.description" class="form-textarea" placeholder="填写采光、交通、家具等亮点" />
         </view>
       </view>
-      <view style="height: 120rpx;" />
+
+      <view v-if="currentStep === 2" class="form-card sl-card">
+        <text class="form-card__title">图片与标签</text>
+        <view class="image-grid">
+          <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
+            <image :src="url" mode="aspectFill" />
+            <text v-if="idEquals(form.coverImageId, form.imageIds[index])" class="cover-badge">封面</text>
+            <view class="image-actions">
+              <text @tap="setCover(index)">设封面</text>
+              <text @tap="removeImage(index)">删除</text>
+            </view>
+          </view>
+          <view class="image-add" @tap="chooseImages">
+            <wd-icon name="add" size="24px" color="#126b4f" />
+            <text>{{ uploading ? '上传中' : '上传图片' }}</text>
+          </view>
+        </view>
+        <view v-if="houseTags.length" class="tag-section">
+          <text class="form-label">房源标签</text>
+          <view class="tag-list">
+            <wd-tag v-for="tag in houseTags" :key="String(tag.id)" :type="hasId(form.tagIds, tag.id) ? 'success' : 'default'" @click="toggleId(form.tagIds, tag.id)">{{ tag.name }}</wd-tag>
+          </view>
+        </view>
+        <view v-if="facilityTags.length" class="tag-section">
+          <text class="form-label">配套设施</text>
+          <view class="tag-list">
+            <wd-tag v-for="tag in facilityTags" :key="String(tag.id)" :type="hasId(form.facilityIds, tag.id) ? 'success' : 'default'" @click="toggleId(form.facilityIds, tag.id)">{{ tag.name }}</wd-tag>
+          </view>
+        </view>
+        <view class="form-item">
+          <text class="form-label">内部备注</text>
+          <textarea v-model="form.remark" class="form-textarea" placeholder="仅管理端可见" />
+        </view>
+      </view>
     </scroll-view>
 
-    <!-- 步骤3：上传图片 -->
-    <view v-if="currentStep === 2" class="form-area">
-      <view class="form-card">
-        <text class="form-label">房源图片（点击第一张设为封面）</text>
-        <view class="image-grid">
-          <view
-            v-for="(url, idx) in form.imageUrls"
-            :key="idx"
-            class="image-item"
-            @tap="setCover(idx)"
-          >
-            <image :src="url" mode="aspectFill" class="image-thumb" />
-            <view v-if="form.imageIds[idx] === form.coverImageId" class="cover-badge">
-              <text>封面</text>
-            </view>
-            <view class="image-delete" @tap.stop="removeImage(idx)">
-              <text>×</text>
-            </view>
-          </view>
-          <view v-if="form.imageIds.length < 9" class="image-add" @tap="onChooseImage">
-            <text class="add-icon">+</text>
-            <text class="add-text">添加图片</text>
-          </view>
-        </view>
-      </view>
-    </view>
-
-    <!-- 底部按钮 -->
-    <view class="bottom-bar">
-      <view v-if="currentStep > 0" class="btn btn-secondary" @tap="currentStep--">
-        <text>上一步</text>
-      </view>
-      <view
-        class="btn btn-primary"
-        :class="{ disabled: submitting }"
-        @tap="currentStep < 2 ? onNext() : onSubmit()"
-      >
-        <text>{{ currentStep < 2 ? '下一步' : (submitting ? '提交中...' : (isEdit ? '更新' : '发布')) }}</text>
-      </view>
+    <view class="bottom-bar sl-safe-bottom">
+      <wd-button v-if="currentStep > 0" plain type="default" @click="prevStep">上一步</wd-button>
+      <wd-button v-if="currentStep < steps.length - 1" block type="primary" @click="nextStep">下一步</wd-button>
+      <wd-button v-else block type="primary" :loading="submitting" @click="submit">{{ isEdit ? '保存修改' : '发布房源' }}</wd-button>
     </view>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
-  min-height: 100vh;
-  background-color: $sl-bg-page;
-  padding-bottom: 120rpx;
+<style scoped lang="scss">
+.form-page {
+  padding-bottom: calc(130rpx + env(safe-area-inset-bottom));
+}
+
+.form-hero,
+.steps,
+.form-card,
+.loading {
+  padding: 26rpx;
+}
+
+.form-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.form-hero__eyebrow,
+.form-hero__title,
+.form-hero__desc {
+  display: block;
+}
+
+.form-hero__eyebrow {
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+.form-hero__title {
+  margin-top: 8rpx;
+  font-size: 36rpx;
+  font-weight: 850;
+}
+
+.form-hero__desc {
+  margin-top: 8rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 
 .steps {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: $sl-spacing-lg;
-  padding: $sl-spacing-lg $sl-spacing-md;
-  background-color: $sl-bg-card;
-  margin-bottom: $sl-spacing-sm;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14rpx;
+  margin-top: 20rpx;
 }
 
 .step {
   display: flex;
-  flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 8rpx;
+  color: var(--sl-muted);
 }
 
-.step-dot {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  background-color: $sl-border-color;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
+.step.active,
+.step.done {
+  color: var(--sl-brand);
+  font-weight: 850;
 }
 
-.step.active .step-dot {
-  background-color: $sl-primary;
-  color: #ffffff;
-}
-
-.step.done .step-dot {
-  background-color: $sl-vacant;
-  color: #ffffff;
-}
-
-.step-text {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-}
-
-.step.active .step-text {
-  color: $sl-primary;
-  font-weight: 600;
-}
-
-.form-area {
-  padding: $sl-spacing-sm $sl-spacing-md;
-}
-
-.form-scroll {
-  height: calc(100vh - 220rpx);
-}
-
-.form-card {
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
-  padding: $sl-spacing-md;
-  margin-bottom: $sl-spacing-sm;
-}
-
-.form-item {
-  margin-bottom: $sl-spacing-md;
-
-  &:last-child { margin-bottom: 0; }
-}
-
-.form-row {
-  display: flex;
-  gap: $sl-spacing-md;
-}
-
-.half {
-  flex: 1;
-}
-
-.form-label {
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-xs;
-  display: block;
-}
-
-.form-input {
-  width: 100%;
-  height: 72rpx;
-  padding: 0 $sl-spacing-sm;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-}
-
-.form-textarea {
-  width: 100%;
-  min-height: 160rpx;
-  padding: $sl-spacing-sm;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-}
-
-.picker-value {
-  height: 72rpx;
-  line-height: 72rpx;
-  padding: 0 $sl-spacing-sm;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-
-  &.disabled {
-    color: $sl-text-placeholder;
-  }
-}
-
-// Stepper
-.stepper-row {
-  display: flex;
-  gap: $sl-spacing-md;
-}
-
-.stepper-group {
-  display: flex;
-  align-items: center;
-  gap: $sl-spacing-xs;
-}
-
-.stepper-btn {
-  width: 52rpx;
-  height: 52rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-  font-size: $sl-font-lg;
-  color: $sl-text-primary;
-}
-
-.stepper-value {
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  min-width: 60rpx;
+.step__dot {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 999rpx;
+  background: #edf4ea;
+  line-height: 40rpx;
   text-align: center;
 }
 
-// Tags
-.tag-grid {
+.step.active .step__dot,
+.step.done .step__dot {
+  background: var(--sl-brand);
+  color: #fff;
+}
+
+.step__text {
+  font-size: 25rpx;
+}
+
+.form-scroll {
+  margin-top: 20rpx;
+}
+
+.form-card__title {
+  display: block;
+  margin-bottom: 20rpx;
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.form-item {
+  margin-top: 20rpx;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 10rpx;
+  color: #4d5e56;
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.form-input,
+.picker-value,
+.form-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 18rpx;
+  background: #f3f7f1;
+  color: var(--sl-ink);
+  font-size: 27rpx;
+}
+
+.form-input,
+.picker-value {
+  height: 76rpx;
+  padding: 0 20rpx;
+  line-height: 76rpx;
+}
+
+.picker-value.disabled {
+  color: var(--sl-muted);
+}
+
+.form-textarea {
+  min-height: 160rpx;
+  padding: 18rpx 20rpx;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+}
+
+.counter-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14rpx;
+  margin-top: 20rpx;
+}
+
+.counter {
+  padding: 18rpx 12rpx;
+  border-radius: 18rpx;
+  background: #f3f7f1;
+  text-align: center;
+}
+
+.counter > text {
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+.counter view {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12rpx;
+  font-size: 30rpx;
+  font-weight: 850;
+}
+
+.counter view text:first-child,
+.counter view text:last-child {
+  width: 42rpx;
+  height: 42rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: var(--sl-brand);
+  line-height: 42rpx;
+}
+
+.status-row,
+.tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: $sl-spacing-xs;
-  margin-top: $sl-spacing-xs;
+  gap: 12rpx;
 }
 
-.tag-item {
-  padding: $sl-spacing-xs $sl-spacing-md;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  background-color: $sl-bg-page;
-  border-radius: 32rpx;
-  border: 1rpx solid transparent;
-
-  &.selected {
-    color: $sl-primary;
-    background-color: rgba($sl-primary, 0.08);
-    border-color: $sl-primary;
-  }
-}
-
-// Images
 .image-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $sl-spacing-sm;
-  margin-top: $sl-spacing-xs;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14rpx;
 }
 
-.image-item {
-  width: 200rpx;
-  height: 200rpx;
+.image-item,
+.image-add {
   position: relative;
-  border-radius: $sl-border-radius-sm;
+  height: 180rpx;
   overflow: hidden;
+  border-radius: 18rpx;
+  background: #f3f7f1;
 }
 
-.image-thumb {
+.image-item image {
   width: 100%;
   height: 100%;
 }
 
 .cover-badge {
   position: absolute;
-  left: 0;
-  top: 0;
-  background-color: $sl-primary;
-  color: #ffffff;
-  font-size: $sl-font-xs;
-  padding: 4rpx 12rpx;
-  border-radius: 0 0 $sl-border-radius-sm 0;
+  top: 8rpx;
+  left: 8rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: var(--sl-brand);
+  color: #fff;
+  font-size: 20rpx;
 }
 
-.image-delete {
+.image-actions {
   position: absolute;
   right: 0;
-  top: 0;
-  width: 44rpx;
-  height: 44rpx;
+  bottom: 0;
+  left: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: rgba(0, 0, 0, 0.5);
-  color: #ffffff;
-  font-size: $sl-font-md;
-  border-radius: 0 0 0 $sl-border-radius-sm;
+  justify-content: space-around;
+  background: rgb(0 0 0 / 48%);
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.image-actions text {
+  padding: 8rpx 0;
 }
 
 .image-add {
-  width: 200rpx;
-  height: 200rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8rpx;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius-sm;
-  border: 2rpx dashed $sl-border-color;
+  gap: 10rpx;
+  color: var(--sl-brand);
+  font-size: 24rpx;
+  font-weight: 800;
 }
 
-.add-icon {
-  font-size: 56rpx;
-  color: $sl-text-placeholder;
-  line-height: 1;
+.tag-section {
+  margin-top: 24rpx;
 }
 
-.add-text {
-  font-size: $sl-font-xs;
-  color: $sl-text-placeholder;
+.loading {
+  margin-top: 20rpx;
+  color: var(--sl-muted);
+  text-align: center;
 }
 
-// Bottom bar
 .bottom-bar {
   position: fixed;
-  left: 0;
   right: 0;
   bottom: 0;
+  left: 0;
   display: flex;
-  gap: $sl-spacing-sm;
-  padding: $sl-spacing-sm $sl-spacing-lg;
-  padding-bottom: calc(#{$sl-spacing-sm} + #{$sl-safe-bottom});
-  background-color: $sl-bg-card;
-  border-top: 1rpx solid $sl-border-color;
-}
-
-.btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: $sl-spacing-sm 0;
-  border-radius: $sl-border-radius;
-  font-size: $sl-font-md;
-  font-weight: 600;
-}
-
-.btn-secondary {
-  background-color: #f0f0f0;
-  color: $sl-text-primary;
-}
-
-.btn-primary {
-  background-color: $sl-primary;
-  color: #ffffff;
-
-  &.disabled {
-    opacity: 0.6;
-  }
+  gap: 16rpx;
+  padding: 18rpx 28rpx 24rpx;
+  border-top: 1rpx solid rgb(18 107 79 / 10%);
+  background: rgb(255 255 255 / 96%);
 }
 </style>

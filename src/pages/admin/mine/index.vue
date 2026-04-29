@@ -1,160 +1,153 @@
 <script setup lang="ts">
-import { useUserStore } from '@/stores/user'
-import { useAppStore } from '@/stores/app'
+import { useShenleAuthStore } from '@/store/auth'
 
-const userStore = useUserStore()
-const appStore = useAppStore()
+definePage({
+  style: {
+    navigationBarTitleText: '管理我的',
+  },
+})
 
-function onSwitchUser() {
-  appStore.switchMode('user')
+const auth = useShenleAuthStore()
+
+const menus = [
+  { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', url: '/pages/common/community-manage/index' },
+  { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'list', url: '/pages/common/building-manage/index' },
+  { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', url: '/pages/common/region-manage/index' },
+  { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'tag', url: '/pages/common/tag-manage/index' },
+  { title: '销控表', desc: '区域 -> 楼盘 -> 楼栋 -> 房间', icon: 'chart', url: '/pages/admin/sales-control/index' },
+]
+
+function go(url: string) {
+  uni.navigateTo({ url })
 }
 
-function onLogout() {
-  uni.showModal({
-    title: '提示',
-    content: '确定退出登录吗？',
-    success(res) {
-      if (res.confirm) userStore.logout()
-    },
-  })
+async function signOut() {
+  await auth.signOut()
+  uni.reLaunch({ url: '/pages/common/login/index' })
 }
 </script>
 
 <template>
-  <view class="page">
-    <!-- 管理员信息 -->
-    <view class="profile" :style="{ paddingTop: appStore.headerPaddingStyle(24) }">
-      <view class="avatar">
-        <image
-          v-if="userStore.avatarUrl"
-          class="avatar-img"
-          :src="userStore.avatarUrl"
-          mode="aspectFill"
-        />
-        <text v-else class="avatar-text">{{ userStore.nickName?.[0] || 'A' }}</text>
-      </view>
+  <view class="sl-page mine-page">
+    <view class="profile sl-card">
+      <image class="avatar" :src="auth.user?.avatar || '/static/images/default-avatar.png'" mode="aspectFill" />
       <view class="profile-info">
-        <text class="name">{{ userStore.nickName || '管理员' }}</text>
-        <text class="desc">管理端</text>
+        <text class="name">{{ auth.displayName }}</text>
+        <text class="meta">{{ auth.isAdmin ? '管理端账号' : '普通账号' }} · {{ auth.openId ? '微信已绑定' : '未绑定微信' }}</text>
       </view>
     </view>
 
-    <!-- 菜单列表 -->
-    <view class="menu-group">
-      <view class="menu-item" @tap="() => uni.navigateTo({ url: '/pages/common/region-manage/index' })">
-        <text>区域管理</text>
-        <text class="arrow">›</text>
-      </view>
-      <view class="menu-item" @tap="() => uni.navigateTo({ url: '/pages/common/community-manage/index' })">
-        <text>楼盘管理</text>
-        <text class="arrow">›</text>
-      </view>
-      <view class="menu-item" @tap="() => uni.navigateTo({ url: '/pages/common/building-manage/index' })">
-        <text>楼栋管理</text>
-        <text class="arrow">›</text>
-      </view>
-      <view class="menu-item" @tap="() => uni.navigateTo({ url: '/pages/common/tag-manage/index' })">
-        <text>标签管理</text>
-        <text class="arrow">›</text>
+    <view class="sl-section-head">
+      <text class="sl-section-title">管理入口</text>
+      <text class="sl-section-extra">Admin</text>
+    </view>
+
+    <view class="menu-list">
+      <view v-for="item in menus" :key="item.url" class="menu sl-card" @tap="go(item.url)">
+        <view class="menu-icon">
+          <wd-icon :name="item.icon" size="23px" color="#126b4f" />
+        </view>
+        <view class="menu-text">
+          <text>{{ item.title }}</text>
+          <text>{{ item.desc }}</text>
+        </view>
+        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
       </view>
     </view>
 
-    <view class="menu-group">
-      <view class="menu-item" @tap="onSwitchUser">
-        <text>切换到用户端</text>
-        <text class="arrow">›</text>
-      </view>
-    </view>
-
-    <view class="menu-group" v-if="userStore.isLoggedIn">
-      <view class="menu-item" @tap="onLogout">
-        <text class="text-danger">退出登录</text>
-      </view>
-    </view>
-
-    <sl-custom-tabbar :current="4" />
+    <wd-button block plain type="danger" custom-class="logout" @click="signOut">
+      退出登录
+    </wd-button>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
-  min-height: 100vh;
-  background-color: $sl-bg-page;
+<style scoped lang="scss">
+.mine-page {
+  padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
 }
 
 .profile {
   display: flex;
   align-items: center;
-  gap: $sl-spacing-md;
-  padding: $sl-spacing-xl $sl-spacing-lg;
-  background-color: $sl-primary;
+  gap: 22rpx;
+  margin-top: 18rpx;
+  padding: 28rpx;
+  background:
+    radial-gradient(circle at 90% -10%, rgb(228 161 27 / 20%), transparent 220rpx),
+    #fff;
 }
 
 .avatar {
-  width: 120rpx;
-  height: 120rpx;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.avatar-img {
-  width: 100%;
-  height: 100%;
-}
-
-.avatar-text {
-  font-size: $sl-font-xxl;
-  color: #ffffff;
-  font-weight: 600;
+  width: 112rpx;
+  height: 112rpx;
+  border: 6rpx solid #fff;
+  border-radius: 999rpx;
+  box-shadow: 0 12rpx 26rpx rgb(18 107 79 / 15%);
 }
 
 .profile-info {
-  display: flex;
-  flex-direction: column;
-  gap: 8rpx;
+  min-width: 0;
+  flex: 1;
+}
+
+.name,
+.meta {
+  display: block;
 }
 
 .name {
-  font-size: $sl-font-xl;
-  font-weight: 600;
-  color: #ffffff;
+  font-size: 34rpx;
+  font-weight: 900;
 }
 
-.desc {
-  font-size: $sl-font-sm;
-  color: rgba(255, 255, 255, 0.8);
+.meta {
+  margin-top: 10rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 
-.menu-group {
-  background-color: $sl-bg-card;
-  margin-bottom: $sl-spacing-sm;
+.menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
 }
 
-.menu-item {
+.menu {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: $sl-spacing-md $sl-spacing-lg;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  border-bottom: 1rpx solid $sl-border-color;
-
-  &:last-child {
-    border-bottom: none;
-  }
+  gap: 18rpx;
+  padding: 24rpx;
 }
 
-.arrow {
-  font-size: $sl-font-lg;
-  color: $sl-text-placeholder;
+.menu-icon {
+  display: flex;
+  width: 72rpx;
+  height: 72rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 20rpx;
+  background: #ecf5ee;
 }
 
-.text-danger {
-  color: $sl-danger;
+.menu-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.menu-text text:first-child {
+  display: block;
+  font-size: 29rpx;
+  font-weight: 850;
+}
+
+.menu-text text:last-child {
+  display: block;
+  margin-top: 8rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+:deep(.logout) {
+  margin-top: 34rpx;
 }
 </style>

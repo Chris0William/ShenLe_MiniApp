@@ -1,47 +1,29 @@
-import { get, post } from './http'
-import type { PagedList, BaseIdInput } from '@/types/common'
-import type {
-  PageSlRegionInput,
-  AddSlRegionInput,
-  UpdateSlRegionInput,
-  SaveSlRegionBoundaryInput,
-  SlRegionOutput,
-  SlRegionTreeOutput,
-  SlRegionStatsOutput,
-} from '@/types/region'
+import { get, post } from './request'
+import type { AddSlRegionInput, PageSlRegionInput, PagedList, SaveSlRegionBoundaryInput, ShenLeId, SlRegionOutput, SlRegionStatsOutput, SlRegionTreeOutput, UpdateSlRegionInput } from '@/types/shenle'
 
-/** 获取区域树 */
 export const getRegionTree = () =>
   get<SlRegionTreeOutput[]>('/api/slRegion/tree')
 
-/** 获取区域分页列表 */
 export const getRegionPage = (input: PageSlRegionInput) =>
-  get<PagedList<SlRegionOutput>>('/api/slRegion/page', input)
+  get<PagedList<SlRegionOutput>>('/api/slRegion/page', input as unknown as Record<string, unknown>)
 
-/** 获取区域统计（单个区域） */
-export const getRegionStats = (id: string) =>
+export const getRegionStats = (id: ShenLeId) =>
   get<SlRegionStatsOutput>('/api/slRegion/stats', { id })
 
-/** 获取区域详情 */
-export const getRegionDetail = (id: string) =>
+export const getRegionDetail = (id: ShenLeId) =>
   get<SlRegionOutput>('/api/slRegion/detail', { id })
 
-/** 获取子区域 */
-export const getRegionChildren = (id: string) =>
-  get<SlRegionOutput[]>('/api/slRegion/children', { id })
+export const getRegionChildren = (id: ShenLeId) =>
+  get<SlRegionOutput[]>('/api/slRegion/getChildren', { id })
 
-/** 新增区域 */
 export const addRegion = (input: AddSlRegionInput) =>
-  post<string>('/api/slRegion/add', input)
+  post<ShenLeId>('/api/slRegion/add', input as unknown as Record<string, unknown>)
 
-/** 更新区域 */
 export const updateRegion = (input: UpdateSlRegionInput) =>
-  post<void>('/api/slRegion/update', input)
+  post<void>('/api/slRegion/update', input as unknown as Record<string, unknown>)
 
-/** 删除区域 */
-export const deleteRegion = (input: BaseIdInput) =>
-  post<void>('/api/slRegion/delete', input)
+export const saveRegionBoundary = (input: SaveSlRegionBoundaryInput) =>
+  post<void>('/api/slRegion/saveBoundary', input as unknown as Record<string, unknown>)
 
-/** 保存区域边界 */
-export const saveBoundary = (input: SaveSlRegionBoundaryInput) =>
-  post<void>('/api/slRegion/saveBoundary', input)
+export const deleteRegion = (id: ShenLeId) =>
+  post<void>('/api/slRegion/delete', { id })

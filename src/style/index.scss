@@ -1,0 +1,127 @@
+:root,
+page {
+  --sl-bg: #f4f7f2;
+  --sl-card: #ffffff;
+  --sl-ink: #1e2f27;
+  --sl-muted: #72817b;
+  --sl-line: #dfe8e1;
+  --sl-brand: #126b4f;
+  --sl-brand-2: #e4a11b;
+  --sl-danger: #c94832;
+  --sl-shadow: 0 16rpx 42rpx rgb(31 60 45 / 9%);
+  --wot-color-theme: #126b4f;
+  --wot-button-primary-bg-color: #126b4f;
+  --wot-button-primary-color: #ffffff;
+
+  min-height: 100%;
+  color: var(--sl-ink);
+  background:
+    radial-gradient(circle at 16% -4%, rgb(228 161 27 / 18%), transparent 310rpx),
+    linear-gradient(180deg, #f8fbf4 0%, #eef5ef 38%, #f7f8f3 100%);
+  font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.sl-page {
+  min-height: 100vh;
+  padding: 32rpx 28rpx calc(132rpx + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+.sl-page--plain {
+  padding-bottom: 36rpx;
+}
+
+.sl-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 34rpx;
+  border: 1rpx solid rgb(18 107 79 / 12%);
+  border-radius: 28rpx;
+  background:
+    linear-gradient(135deg, rgb(18 107 79 / 96%), rgb(35 94 77 / 92%)),
+    radial-gradient(circle at 82% 8%, rgb(228 161 27 / 58%), transparent 240rpx);
+  box-shadow: var(--sl-shadow);
+  color: #fff;
+}
+
+.sl-hero::after {
+  position: absolute;
+  right: -48rpx;
+  bottom: -72rpx;
+  width: 240rpx;
+  height: 240rpx;
+  border: 2rpx solid rgb(255 255 255 / 18%);
+  border-radius: 999rpx;
+  content: '';
+}
+
+.sl-eyebrow {
+  color: rgb(255 255 255 / 72%);
+  font-size: 24rpx;
+  letter-spacing: 0;
+}
+
+.sl-title {
+  display: block;
+  margin-top: 10rpx;
+  font-size: 46rpx;
+  font-weight: 800;
+  line-height: 1.18;
+}
+
+.sl-subtitle {
+  display: block;
+  margin-top: 14rpx;
+  color: rgb(255 255 255 / 78%);
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.sl-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 34rpx 2rpx 18rpx;
+}
+
+.sl-section-title {
+  font-size: 32rpx;
+  font-weight: 800;
+}
+
+.sl-section-extra {
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.sl-card {
+  border: 1rpx solid rgb(18 107 79 / 9%);
+  border-radius: 24rpx;
+  background: var(--sl-card);
+  box-shadow: var(--sl-shadow);
+}
+
+.sl-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18rpx;
+}
+
+.sl-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sl-muted {
+  color: var(--sl-muted);
+}
+
+.sl-price {
+  color: #c26916;
+  font-weight: 800;
+}
+
+.sl-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}

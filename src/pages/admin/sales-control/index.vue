@@ -1,753 +1,853 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useAppStore } from '@/stores/app'
-import { getRegionTree, getRegionStats } from '@/api/region'
-
-const appStore = useAppStore()
-import { getCommunityList } from '@/api/community'
+import type {
+  ShenLeId,
+  SlBuildingStatsOutput,
+  SlCommunitySelectOutput,
+  SlPropertyListOutput,
+  SlRegionStatsOutput,
+  SlRegionTreeOutput,
+} from '@/types/shenle'
+import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
 import { getBuildingStats } from '@/api/building'
+import { getCommunityList } from '@/api/community'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
-import type { SlRegionTreeOutput, SlRegionStatsOutput } from '@/types/region'
-import type { SlCommunitySelectOutput } from '@/types/community'
-import type { SlBuildingStatsOutput } from '@/types/building'
-import type { SlPropertyListOutput } from '@/types/property'
+import { getRegionStats, getRegionTree } from '@/api/region'
+import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
+import { formatMoney, getStatusMeta, idToQuery } from '@/utils/shenle'
 
-// ---- Navigation ----
-const level = ref(1)
-const breadcrumbs = ref<string[]>(['区域概览'])
+definePage({
+  style: {
+    navigationStyle: 'custom',
+    navigationBarTitleText: '销控台',
+    enablePullDownRefresh: true,
+  },
+})
 
-// ---- Status map ----
-const STATUS_BG: Record<number, string> = {
-  0: '#e6f7e6', // vacant
-  1: '#fff7e6', // reserved
-  2: '#e6f0ff', // rented
-}
-const STATUS_COLOR: Record<number, string> = {
-  0: '#52c41a',
-  1: '#faad14',
-  2: '#1890ff',
-}
-const STATUS_NAME: Record<number, string> = {
-  0: '空置',
-  1: '预定',
-  2: '已租',
-}
-
-// ---- Level 1: Region list ----
 interface RegionRow {
-  id: number
+  id: ShenLeId
   name: string
   stats: SlRegionStatsOutput | null
 }
-const regionList = ref<RegionRow[]>([])
 
-function flattenLeaf(nodes: SlRegionTreeOutput[]): SlRegionTreeOutput[] {
-  const result: SlRegionTreeOutput[] = []
-  for (const n of nodes) {
-    if (n.children?.length) result.push(...flattenLeaf(n.children))
-    else result.push(n)
-  }
-  return result
-}
-
-async function loadRegions() {
-  try {
-    const tree = await getRegionTree()
-    const leaves = flattenLeaf(tree)
-    regionList.value = leaves.map(l => ({ id: l.id, name: l.name, stats: null }))
-    // Load stats in parallel
-    await Promise.all(
-      regionList.value.map(async r => {
-        try {
-          r.stats = await getRegionStats(r.id)
-        } catch {}
-      }),
-    )
-  } catch {}
-}
-
-// ---- Level 2: Community + Building ----
 interface CommunityRow {
   community: SlCommunitySelectOutput
   buildings: SlBuildingStatsOutput[]
 }
-const selectedRegion = ref({ id: 0 as number, name: '' })
-const communityData = ref<CommunityRow[]>([])
 
-async function drillRegion(r: RegionRow) {
-  selectedRegion.value = { id: r.id, name: r.name }
-  level.value = 2
-  breadcrumbs.value = ['区域概览', r.name]
-  try {
-    const comms = await getCommunityList({ regionId: r.id })
-    communityData.value = await Promise.all(
-      comms.map(async c => ({
-        community: c,
-        buildings: await getBuildingStats(c.id).catch(() => [] as SlBuildingStatsOutput[]),
-      })),
-    )
-  } catch {}
+interface FloorRow {
+  floor: number | null
+  label: string
+  rooms: SlPropertyListOutput[]
 }
 
-// ---- Level 3: Floor grid ----
+const level = ref<1 | 2 | 3>(1)
+const breadcrumbs = ref<string[]>(['销控'])
+const regionList = ref<RegionRow[]>([])
+const selectedRegion = ref<RegionRow | null>(null)
+const communityRows = ref<CommunityRow[]>([])
+const selectedCommunityName = ref('')
 const selectedBuilding = ref<SlBuildingStatsOutput | null>(null)
 const properties = ref<SlPropertyListOutput[]>([])
+const activeProperty = ref<SlPropertyListOutput | null>(null)
+const actionVisible = ref(false)
+const loading = ref(false)
+const propertyLoading = ref(false)
 
-const floorGrid = computed(() => {
-  if (!selectedBuilding.value) return []
-  const totalFloors = selectedBuilding.value.totalFloors || 1
-  const floors: { floor: number; rooms: SlPropertyListOutput[] }[] = []
-  for (let f = totalFloors; f >= 1; f--) {
-    floors.push({
-      floor: f,
-      rooms: properties.value
-        .filter(p => p.floor === f)
-        .sort((a, b) => (a.roomNo || '').localeCompare(b.roomNo || '')),
+const totalRegionStats = computed(() => regionList.value.reduce((acc, item) => {
+  acc.community += item.stats?.communityCount || 0
+  acc.building += item.stats?.buildingCount || 0
+  acc.property += item.stats?.propertyCount || 0
+  acc.available += item.stats?.availableCount || 0
+  acc.rented += item.stats?.rentedCount || 0
+  return acc
+}, { community: 0, building: 0, property: 0, available: 0, rented: 0 }))
+
+const floorGrid = computed<FloorRow[]>(() => {
+  const floors = new Map<number | null, SlPropertyListOutput[]>()
+  for (const item of properties.value) {
+    const floor = getFloor(item)
+    const key = floor || null
+    floors.set(key, [...(floors.get(key) || []), item])
+  }
+
+  const totalFloors = selectedBuilding.value?.totalFloors || Math.max(0, ...properties.value.map(item => getFloor(item) || 0))
+  const rows: FloorRow[] = []
+  for (let floor = totalFloors; floor >= 1; floor -= 1) {
+    rows.push({
+      floor,
+      label: `${floor}F`,
+      rooms: (floors.get(floor) || []).sort(sortRooms),
     })
   }
-  return floors
+
+  const unknown = floors.get(null)
+  if (unknown?.length)
+    rows.push({ floor: null, label: '未知楼层', rooms: unknown.sort(sortRooms) })
+  return rows
 })
 
-async function drillBuilding(b: SlBuildingStatsOutput, communityName = '') {
-  selectedBuilding.value = b
-  level.value = 3
-  breadcrumbs.value = ['区域概览', selectedRegion.value.name, communityName ? communityName + ' · ' + b.name : b.name]
-  try {
-    properties.value = await getPropertyList({ buildingId: b.id })
-  } catch {}
+function flattenRegions(nodes: SlRegionTreeOutput[]) {
+  const result: SlRegionTreeOutput[] = []
+  function walk(list: SlRegionTreeOutput[]) {
+    for (const item of list) {
+      if (item.children?.length)
+        walk(item.children)
+      else
+        result.push(item)
+    }
+  }
+  walk(nodes)
+  return result
 }
 
-// ---- Navigation ----
+async function mapLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>) {
+  const result: R[] = []
+  let index = 0
+  async function run() {
+    while (index < items.length) {
+      const current = index
+      index += 1
+      result[current] = await worker(items[current])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, run))
+  return result
+}
+
+async function loadRegions() {
+  loading.value = true
+  try {
+    level.value = 1
+    breadcrumbs.value = ['销控']
+    selectedRegion.value = null
+    selectedBuilding.value = null
+    properties.value = []
+
+    const tree = await getRegionTree()
+    const leaves = flattenRegions(tree)
+    regionList.value = leaves.map(item => ({ id: item.id, name: item.name, stats: null }))
+
+    await mapLimit(regionList.value, 5, async (region) => {
+      try {
+        region.stats = await getRegionStats(region.id)
+      }
+      catch {
+        region.stats = null
+      }
+      return region
+    })
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
+  }
+}
+
+async function drillRegion(region: RegionRow) {
+  selectedRegion.value = region
+  level.value = 2
+  breadcrumbs.value = ['销控', region.name]
+  communityRows.value = []
+  loading.value = true
+  try {
+    const communities = await getCommunityList({ regionId: region.id })
+    communityRows.value = await mapLimit(communities, 6, async (community) => ({
+      community,
+      buildings: await getBuildingStats(community.id).catch(() => []),
+    }))
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+async function drillBuilding(building: SlBuildingStatsOutput, communityName: string) {
+  selectedBuilding.value = building
+  selectedCommunityName.value = communityName
+  level.value = 3
+  breadcrumbs.value = ['销控', selectedRegion.value?.name || '', `${communityName} · ${building.name}`].filter(Boolean)
+  propertyLoading.value = true
+  properties.value = []
+  try {
+    properties.value = await getPropertyList({ buildingId: building.id })
+  }
+  finally {
+    propertyLoading.value = false
+  }
+}
+
 function goBack() {
   if (level.value === 3) {
     level.value = 2
-    breadcrumbs.value = ['区域概览', selectedRegion.value.name]
     selectedBuilding.value = null
+    activeProperty.value = null
+    actionVisible.value = false
     properties.value = []
-  } else if (level.value === 2) {
+    breadcrumbs.value = ['销控', selectedRegion.value?.name || ''].filter(Boolean)
+    return
+  }
+  if (level.value === 2) {
     level.value = 1
-    breadcrumbs.value = ['区域概览']
-    communityData.value = []
+    selectedRegion.value = null
+    communityRows.value = []
+    breadcrumbs.value = ['销控']
   }
 }
 
-// ---- Status change modal ----
-const showModal = ref(false)
-const activeProperty = ref<SlPropertyListOutput | null>(null)
-
-function onRoomTap(p: SlPropertyListOutput) {
-  activeProperty.value = p
-  showModal.value = true
+function refreshCurrent() {
+  if (level.value === 1)
+    return loadRegions()
+  if (level.value === 2 && selectedRegion.value)
+    return drillRegion(selectedRegion.value)
+  if (level.value === 3 && selectedBuilding.value)
+    return drillBuilding(selectedBuilding.value, selectedCommunityName.value)
+  return Promise.resolve()
 }
 
-async function changeStatus(s: number) {
-  if (!activeProperty.value) return
-  try {
-    await updatePropertyStatus({ id: activeProperty.value.id, status: s })
-    uni.showToast({ title: '状态已更新', icon: 'success' })
-    showModal.value = false
-    // Refresh
-    if (selectedBuilding.value) drillBuilding(selectedBuilding.value, breadcrumbs.value[2]?.split(' · ')[0] || '')
-  } catch {}
+function getFloor(item: SlPropertyListOutput) {
+  if (item.floor !== null && item.floor !== undefined)
+    return Number(item.floor)
+  const matched = item.floorInfo?.match(/(\d+)/)
+  return matched ? Number(matched[1]) : 0
+}
+
+function roomLabel(item: SlPropertyListOutput) {
+  return item.roomNo || item.title || '房间'
+}
+
+function sortRooms(left: SlPropertyListOutput, right: SlPropertyListOutput) {
+  return roomLabel(left).localeCompare(roomLabel(right), 'zh-CN', { numeric: true })
+}
+
+function statusTone(status: number) {
+  return getStatusMeta(status).tone as any
+}
+
+function statusLabel(status: number) {
+  return getStatusMeta(status).label
+}
+
+function rate(rented?: number, total?: number) {
+  if (!total)
+    return 0
+  return Math.round(((rented || 0) / total) * 100)
+}
+
+function openProperty(item: SlPropertyListOutput) {
+  activeProperty.value = item
+  actionVisible.value = true
+}
+
+async function changeStatus(status: number) {
+  if (!activeProperty.value)
+    return
+  await updatePropertyStatus({ id: activeProperty.value.id, status })
+  uni.showToast({ title: '状态已更新', icon: 'success' })
+  actionVisible.value = false
+  await refreshCurrent()
 }
 
 function goDetail() {
-  if (!activeProperty.value) return
-  showModal.value = false
-  uni.navigateTo({ url: `/pages/common/property-detail/index?id=${activeProperty.value.id}` })
+  if (!activeProperty.value)
+    return
+  actionVisible.value = false
+  uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(activeProperty.value.id)}` })
 }
 
 function goEdit() {
-  if (!activeProperty.value) return
-  showModal.value = false
-  uni.navigateTo({ url: `/pages/common/property-form/index?id=${activeProperty.value.id}` })
+  if (!activeProperty.value)
+    return
+  actionVisible.value = false
+  uni.navigateTo({ url: `/pages/common/property-form/index?id=${idToQuery(activeProperty.value.id)}` })
 }
 
-function getRate(rented: number, total: number) {
-  if (!total) return 0
-  return Math.round((rented / total) * 100)
+function goCommunityProperties(community: SlCommunitySelectOutput) {
+  uni.navigateTo({
+    url: `/pages/common/community-properties/index?communityId=${idToQuery(community.id)}&communityName=${encodeURIComponent(community.name)}`,
+  })
 }
 
-onMounted(() => {
-  if (level.value === 1) loadRegions()
-})
+onLoad(loadRegions)
+onPullDownRefresh(refreshCurrent)
 </script>
 
 <template>
-  <view class="page">
-    <!-- 顶部导航 -->
-    <view class="header" :style="{ paddingTop: appStore.headerPaddingStyle(8) }">
-      <view class="nav-row">
+  <view class="sales-page">
+    <view class="sales-hero">
+      <view class="sales-hero__top">
         <view v-if="level > 1" class="back-btn" @tap="goBack">
-          <text>&#x2190;</text>
+          <wd-icon name="arrow-left" size="18px" color="#ffffff" />
         </view>
-        <text class="header-title">销控表</text>
+        <view class="sales-hero__text">
+          <text class="sales-hero__eyebrow">Admin Console</text>
+          <text class="sales-hero__title">楼栋销控</text>
+        </view>
+        <wd-button size="small" plain custom-class="hero-refresh" @click="refreshCurrent">
+          刷新
+        </wd-button>
       </view>
-      <view class="breadcrumb">
-        <text
-          v-for="(b, idx) in breadcrumbs"
-          :key="idx"
-          class="crumb"
-          :class="{ last: idx === breadcrumbs.length - 1 }"
-        >
-          <text v-if="idx > 0"> / </text>{{ b }}
-        </text>
+      <view class="breadcrumbs">
+        <text v-for="(item, index) in breadcrumbs" :key="`${item}-${index}`">{{ index > 0 ? ' / ' : '' }}{{ item }}</text>
       </view>
     </view>
 
-    <!-- 图例 -->
-    <view class="legend-bar">
-      <view v-for="(name, status) in STATUS_NAME" :key="status" class="legend-item">
-        <view class="legend-dot" :style="{ backgroundColor: STATUS_COLOR[Number(status)] }" />
-        <text class="legend-text">{{ name }}</text>
+    <view class="legend sl-card">
+      <view v-for="item in PROPERTY_STATUS_OPTIONS" :key="item.value" class="legend__item">
+        <view class="legend__dot" :class="`legend__dot--${item.value}`" />
+        <text>{{ item.label }}</text>
       </view>
     </view>
 
-    <!-- Level 1: 区域概览 -->
-    <scroll-view v-if="level === 1" scroll-y class="content-scroll">
-      <view v-if="regionList.length === 0" class="empty-wrap">
-        <sl-empty-state text="暂无区域数据" />
-      </view>
-      <view v-else class="region-list">
-        <view
-          v-for="r in regionList"
-          :key="r.id"
-          class="region-card"
-          @tap="drillRegion(r)"
-        >
-          <view class="region-top">
-            <text class="region-name">{{ r.name }}</text>
-            <text class="region-arrow">&#x203A;</text>
+    <scroll-view scroll-y class="content-scroll">
+      <view v-if="level === 1" class="content-inner">
+        <view class="overview sl-card">
+          <view>
+            <text>{{ totalRegionStats.community }}</text>
+            <text>小区</text>
           </view>
-          <template v-if="r.stats">
-            <view class="stat-row">
-              <view class="stat-item">
-                <text class="stat-num" style="color: #52c41a">{{ r.stats.availableCount }}</text>
-                <text class="stat-lbl">可租</text>
-              </view>
-              <view class="stat-item">
-                <text class="stat-num" style="color: #1890ff">{{ r.stats.rentedCount }}</text>
-                <text class="stat-lbl">已租</text>
-              </view>
-              <view class="stat-item">
-                <text class="stat-num">{{ r.stats.propertyCount }}</text>
-                <text class="stat-lbl">总计</text>
-              </view>
-            </view>
-            <view class="progress-bar">
-              <view
-                class="progress-fill"
-                :style="{ width: getRate(r.stats.rentedCount, r.stats.propertyCount) + '%' }"
-              />
-            </view>
-            <text class="rate-text">
-              出租率 {{ getRate(r.stats.rentedCount, r.stats.propertyCount) }}%
-            </text>
-          </template>
+          <view>
+            <text>{{ totalRegionStats.building }}</text>
+            <text>楼栋</text>
+          </view>
+          <view>
+            <text>{{ totalRegionStats.property }}</text>
+            <text>房源</text>
+          </view>
+          <view>
+            <text>{{ totalRegionStats.rented }}</text>
+            <text>已租</text>
+          </view>
         </view>
-      </view>
-      <view style="height: 120rpx" />
-    </scroll-view>
 
-    <!-- Level 2: 楼盘楼栋 -->
-    <scroll-view v-if="level === 2" scroll-y class="content-scroll">
-      <view v-if="communityData.length === 0" class="empty-wrap">
-        <sl-empty-state text="该区域暂无楼盘" />
-      </view>
-      <view v-else class="community-list">
-        <view v-for="cd in communityData" :key="cd.community.id" class="community-section">
-          <text class="community-name">{{ cd.community.name }}</text>
-          <view v-if="cd.buildings.length === 0" class="no-building">
-            <text>暂无楼栋</text>
-          </view>
-          <view v-else class="building-grid">
-            <view
-              v-for="b in cd.buildings"
-              :key="b.id"
-              class="building-card"
-              @tap="drillBuilding(b, cd.community.name)"
-            >
-              <text class="building-name">{{ b.name }}</text>
-              <view class="building-stats">
-                <text class="bs-item" style="color: #52c41a">可租{{ b.availableCount }}</text>
-                <text class="bs-item" style="color: #1890ff">已租{{ b.rentedCount }}</text>
-              </view>
-              <text class="building-total">
-                {{ b.propertyCount }}套 · {{ b.totalFloors ?? '-' }}层
-              </text>
+        <view v-if="loading && !regionList.length" class="loading sl-card">数据加载中...</view>
+        <view v-else class="region-list">
+          <view v-for="region in regionList" :key="String(region.id)" class="region-card sl-card" @tap="drillRegion(region)">
+            <view class="region-card__top">
+              <text class="region-card__name">{{ region.name }}</text>
+              <wd-icon name="arrow-right" size="18px" color="#72817b" />
             </view>
+            <view class="region-card__stats">
+              <view><text>{{ region.stats?.availableCount || 0 }}</text><text>空置</text></view>
+              <view><text>{{ region.stats?.rentedCount || 0 }}</text><text>已租</text></view>
+              <view><text>{{ region.stats?.propertyCount || 0 }}</text><text>房源</text></view>
+              <view><text>{{ rate(region.stats?.rentedCount, region.stats?.propertyCount) }}%</text><text>出租率</text></view>
+            </view>
+            <view class="progress"><view :style="{ width: `${rate(region.stats?.rentedCount, region.stats?.propertyCount)}%` }" /></view>
           </view>
         </view>
       </view>
-      <view style="height: 120rpx" />
-    </scroll-view>
 
-    <!-- Level 3: 楼层网格 -->
-    <scroll-view v-if="level === 3" scroll-y class="content-scroll">
-      <view v-if="floorGrid.length === 0" class="empty-wrap">
-        <sl-empty-state text="该楼栋暂无房源" />
-      </view>
-      <view v-else class="floor-grid">
-        <view v-for="row in floorGrid" :key="row.floor" class="floor-row">
-          <view class="floor-label">
-            <text>{{ row.floor }}F</text>
+      <view v-if="level === 2" class="content-inner">
+        <view v-if="loading" class="loading sl-card">数据加载中...</view>
+        <view v-else-if="!communityRows.length" class="empty sl-card">
+          <wd-icon name="home" size="36px" color="#8ea099" />
+          <text>暂无小区数据</text>
+        </view>
+        <view v-else class="community-list">
+          <view v-for="row in communityRows" :key="String(row.community.id)" class="community-card sl-card">
+            <view class="community-card__head">
+              <view>
+                <text class="community-card__name">{{ row.community.name }}</text>
+                <text class="community-card__desc">{{ row.buildings.length }} 栋楼 · 点击楼栋进入销控</text>
+              </view>
+              <wd-button size="small" plain @click="goCommunityProperties(row.community)">
+                房源
+              </wd-button>
+            </view>
+            <view v-if="row.buildings.length" class="building-grid">
+              <view v-for="building in row.buildings" :key="String(building.id)" class="building-card" @tap="drillBuilding(building, row.community.name)">
+                <text class="building-card__name">{{ building.name }}</text>
+                <view class="building-card__nums">
+                  <text>{{ building.availableCount }} 空置</text>
+                  <text>{{ building.rentedCount }} 已租</text>
+                </view>
+                <text class="building-card__meta">{{ building.propertyCount }}间 · {{ building.totalFloors || '-' }}层</text>
+              </view>
+            </view>
+            <view v-else class="no-building">暂无楼栋</view>
           </view>
-          <scroll-view scroll-x class="room-scroll">
-            <view class="room-list">
-              <view
-                v-for="p in row.rooms"
-                :key="p.id"
-                class="room-cell"
-                :style="{
-                  backgroundColor: STATUS_BG[p.status] || '#f5f5f5',
-                  borderColor: STATUS_COLOR[p.status] || '#ddd',
-                }"
-                @tap="onRoomTap(p)"
-              >
-                <text class="room-no">{{ p.roomNo || '-' }}</text>
-                <text
-                  class="room-status"
-                  :style="{ color: STATUS_COLOR[p.status] }"
+        </view>
+      </view>
+
+      <view v-if="level === 3" class="content-inner">
+        <view class="building-summary sl-card">
+          <view>
+            <text class="building-summary__name">{{ selectedBuilding?.name }}</text>
+            <text class="building-summary__desc">{{ selectedCommunityName }} · {{ selectedBuilding?.totalFloors || '-' }} 层</text>
+          </view>
+          <view class="building-summary__stats">
+            <text>{{ selectedBuilding?.propertyCount || 0 }}间</text>
+            <text>出租率 {{ rate(selectedBuilding?.rentedCount, selectedBuilding?.propertyCount) }}%</text>
+          </view>
+        </view>
+
+        <view v-if="propertyLoading" class="loading sl-card">房间加载中...</view>
+        <view v-else-if="!properties.length" class="empty sl-card">
+          <wd-icon name="home" size="36px" color="#8ea099" />
+          <text>暂无房源数据</text>
+        </view>
+        <view v-else class="floor-list">
+          <view v-for="row in floorGrid" :key="row.label" class="floor-row">
+            <view class="floor-label">{{ row.label }}</view>
+            <scroll-view scroll-x class="room-scroll">
+              <view class="room-list">
+                <view v-if="!row.rooms.length" class="room-empty">暂无房间</view>
+                <view
+                  v-for="room in row.rooms"
+                  :key="String(room.id)"
+                  class="room-cell"
+                  :class="`room-cell--${room.status}`"
+                  @tap="openProperty(room)"
                 >
-                  {{ STATUS_NAME[p.status] }}
-                </text>
-                <text class="room-rent">¥{{ p.rentPrice ?? '-' }}</text>
+                  <text class="room-cell__no">{{ roomLabel(room) }}</text>
+                  <wd-tag :type="statusTone(room.status)" custom-class="room-cell__tag">{{ room.statusName || statusLabel(room.status) }}</wd-tag>
+                  <text class="room-cell__price">¥{{ formatMoney(room.rentPrice) }}</text>
+                </view>
               </view>
-              <view v-if="row.rooms.length === 0" class="room-empty">
-                <text>暂无房间</text>
-              </view>
-            </view>
-          </scroll-view>
-        </view>
-      </view>
-      <view style="height: 120rpx" />
-    </scroll-view>
-
-    <!-- 房间操作弹窗 -->
-    <view v-if="showModal" class="modal-mask" @tap="showModal = false">
-      <view class="modal-panel" @tap.stop>
-        <view class="modal-header">
-          <text class="modal-title">
-            {{ activeProperty?.roomNo || '房间' }} -
-            {{ STATUS_NAME[activeProperty?.status ?? 0] }}
-          </text>
-          <text class="modal-close" @tap="showModal = false">&#x2715;</text>
-        </view>
-        <view class="modal-info">
-          <text>{{ activeProperty?.title }}</text>
-          <text class="modal-rent">¥{{ activeProperty?.rentPrice ?? '-' }}/月</text>
-        </view>
-        <view class="modal-section">
-          <text class="modal-label">更改状态</text>
-          <view class="status-btns">
-            <view
-              v-for="(name, s) in STATUS_NAME"
-              :key="s"
-              class="status-btn"
-              :class="{ active: Number(s) === activeProperty?.status }"
-              :style="{
-                backgroundColor: Number(s) === activeProperty?.status ? STATUS_COLOR[Number(s)] : STATUS_BG[Number(s)],
-                color: Number(s) === activeProperty?.status ? '#fff' : STATUS_COLOR[Number(s)],
-              }"
-              @tap="changeStatus(Number(s))"
-            >
-              {{ name }}
-            </view>
+            </scroll-view>
           </view>
         </view>
-        <view class="modal-actions">
-          <view class="modal-btn" @tap="goDetail">查看详情</view>
-          <view class="modal-btn primary" @tap="goEdit">编辑房源</view>
+      </view>
+    </scroll-view>
+
+    <wd-popup v-model="actionVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
+      <view class="action-sheet">
+        <view class="action-sheet__head">
+          <view>
+            <text class="action-sheet__title">{{ activeProperty?.title || '房源' }}</text>
+            <text class="action-sheet__desc">{{ activeProperty?.houseType }} · ¥{{ formatMoney(activeProperty?.rentPrice) }}/月</text>
+          </view>
+          <wd-tag v-if="activeProperty" :type="statusTone(activeProperty.status)">{{ activeProperty.statusName || statusLabel(activeProperty.status) }}</wd-tag>
+        </view>
+
+        <text class="action-sheet__label">快捷操作</text>
+        <view class="action-status">
+          <wd-button
+            v-for="item in PROPERTY_STATUS_OPTIONS"
+            :key="item.value"
+            :type="activeProperty?.status === item.value ? 'primary' : 'default'"
+            plain
+            @click="changeStatus(item.value)"
+          >
+            {{ item.label }}
+          </wd-button>
+        </view>
+
+        <view class="action-buttons">
+          <wd-button block plain type="default" @click="goDetail">查看详情</wd-button>
+          <wd-button block type="primary" @click="goEdit">编辑房源</wd-button>
         </view>
       </view>
-    </view>
-
-    <sl-custom-tabbar :current="3" />
+    </wd-popup>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
+<style scoped lang="scss">
+.sales-page {
   display: flex;
-  flex-direction: column;
   height: 100vh;
-  background-color: $sl-bg-page;
+  flex-direction: column;
+  background:
+    radial-gradient(circle at 12% -2%, rgb(228 161 27 / 18%), transparent 260rpx),
+    linear-gradient(180deg, #f8fbf4 0%, #eef5ef 100%);
 }
 
-.header {
-  padding: $sl-spacing-sm $sl-spacing-lg;
-  // padding-top 由 :style 动态设置
-  background-color: $sl-primary;
-  flex-shrink: 0;
+.sales-hero {
+  flex: 0 0 auto;
+  padding: 34rpx 28rpx 26rpx;
+  background:
+    linear-gradient(135deg, rgb(18 107 79 / 98%), rgb(35 94 77 / 94%)),
+    radial-gradient(circle at 84% 8%, rgb(228 161 27 / 60%), transparent 240rpx);
+  color: #fff;
 }
 
-.nav-row {
+.sales-hero__top {
   display: flex;
   align-items: center;
-  gap: $sl-spacing-sm;
-  margin-bottom: $sl-spacing-xs;
+  gap: 18rpx;
 }
 
 .back-btn {
-  font-size: $sl-font-xl;
-  color: #ffffff;
-  padding-right: $sl-spacing-sm;
-}
-
-.header-title {
-  font-size: $sl-font-xl;
-  font-weight: 700;
-  color: #ffffff;
-}
-
-.breadcrumb {
-  font-size: $sl-font-xs;
-  color: rgba(255, 255, 255, 0.8);
-}
-
-.crumb.last {
-  color: #ffffff;
-  font-weight: 600;
-}
-
-.legend-bar {
   display: flex;
+  width: 58rpx;
+  height: 58rpx;
+  align-items: center;
   justify-content: center;
-  gap: $sl-spacing-lg;
-  padding: $sl-spacing-xs $sl-spacing-md;
-  background-color: $sl-bg-card;
-  border-bottom: 1rpx solid $sl-border-color;
-  flex-shrink: 0;
+  border-radius: 999rpx;
+  background: rgb(255 255 255 / 16%);
 }
 
-.legend-item {
+.sales-hero__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.sales-hero__eyebrow,
+.sales-hero__title {
+  display: block;
+}
+
+.sales-hero__eyebrow {
+  color: rgb(255 255 255 / 72%);
+  font-size: 23rpx;
+}
+
+.sales-hero__title {
+  margin-top: 6rpx;
+  font-size: 42rpx;
+  font-weight: 900;
+}
+
+.breadcrumbs {
+  margin-top: 18rpx;
+  color: rgb(255 255 255 / 80%);
+  font-size: 24rpx;
+}
+
+.legend {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: space-around;
+  margin: 18rpx 28rpx 0;
+  padding: 18rpx 12rpx;
+}
+
+.legend__item {
   display: flex;
   align-items: center;
-  gap: 6rpx;
+  gap: 8rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
 }
 
-.legend-dot {
+.legend__dot {
   width: 16rpx;
   height: 16rpx;
-  border-radius: 50%;
+  border-radius: 999rpx;
 }
 
-.legend-text {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-}
+.legend__dot--0 { background: #2fb06f; }
+.legend__dot--1 { background: #e4a11b; }
+.legend__dot--2 { background: #7d8b85; }
+.legend__dot--3 { background: #c94832; }
 
 .content-scroll {
   flex: 1;
   height: 0;
 }
 
-.empty-wrap {
-  padding: $sl-spacing-xl;
+.content-inner {
+  padding: 22rpx 28rpx calc(130rpx + env(safe-area-inset-bottom));
 }
 
-// ---- Level 1 ----
-.region-list {
-  padding: $sl-spacing-sm;
+.overview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8rpx;
+  padding: 22rpx 10rpx;
+}
+
+.overview view {
+  text-align: center;
+}
+
+.overview text:first-child {
+  display: block;
+  color: var(--sl-brand);
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.overview text:last-child {
+  display: block;
+  margin-top: 6rpx;
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.region-list,
+.community-list,
+.floor-list {
   display: flex;
   flex-direction: column;
-  gap: $sl-spacing-sm;
+  gap: 18rpx;
+  margin-top: 18rpx;
 }
 
-.region-card {
-  padding: $sl-spacing-md;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
+.region-card,
+.community-card,
+.building-summary,
+.loading,
+.empty {
+  padding: 24rpx;
 }
 
-.region-top {
+.region-card__top,
+.community-card__head,
+.building-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: $sl-spacing-sm;
+  gap: 16rpx;
 }
 
-.region-name {
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-}
-
-.region-arrow {
-  font-size: $sl-font-xl;
-  color: $sl-text-placeholder;
-}
-
-.stat-row {
-  display: flex;
-  gap: $sl-spacing-md;
-  margin-bottom: $sl-spacing-sm;
-}
-
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4rpx;
-}
-
-.stat-num {
-  font-size: $sl-font-lg;
-  font-weight: 700;
-  color: $sl-text-primary;
-}
-
-.stat-lbl {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-}
-
-.progress-bar {
-  height: 10rpx;
-  background-color: $sl-bg-page;
-  border-radius: 5rpx;
-  overflow: hidden;
-  margin-bottom: $sl-spacing-xs;
-}
-
-.progress-fill {
-  height: 100%;
-  background-color: $sl-primary;
-  border-radius: 5rpx;
-}
-
-.rate-text {
-  font-size: $sl-font-xs;
-  color: $sl-primary;
-}
-
-// ---- Level 2 ----
-.community-list {
-  padding: $sl-spacing-sm;
-}
-
-.community-section {
-  margin-bottom: $sl-spacing-md;
-}
-
-.community-name {
+.region-card__name,
+.community-card__name,
+.building-summary__name {
   display: block;
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-  margin-bottom: $sl-spacing-sm;
-  padding-left: $sl-spacing-xs;
+  font-size: 31rpx;
+  font-weight: 850;
 }
 
-.no-building {
-  padding: $sl-spacing-md;
+.community-card__desc,
+.building-summary__desc {
+  display: block;
+  margin-top: 7rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+.region-card__stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10rpx;
+  margin-top: 22rpx;
+}
+
+.region-card__stats view {
+  border-radius: 18rpx;
+  background: #f3f7f1;
+  padding: 14rpx 4rpx;
   text-align: center;
-  font-size: $sl-font-sm;
-  color: $sl-text-placeholder;
+}
+
+.region-card__stats text:first-child {
+  display: block;
+  color: var(--sl-brand);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.region-card__stats text:last-child {
+  display: block;
+  margin-top: 4rpx;
+  color: var(--sl-muted);
+  font-size: 20rpx;
+}
+
+.progress {
+  overflow: hidden;
+  height: 10rpx;
+  margin-top: 18rpx;
+  border-radius: 999rpx;
+  background: #edf4ea;
+}
+
+.progress view {
+  height: 100%;
+  border-radius: 999rpx;
+  background: linear-gradient(90deg, var(--sl-brand), var(--sl-brand-2));
 }
 
 .building-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $sl-spacing-sm;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 20rpx;
 }
 
 .building-card {
-  width: calc(50% - #{$sl-spacing-sm} / 2);
-  padding: $sl-spacing-md;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius;
+  padding: 20rpx;
+  border: 1rpx solid rgb(18 107 79 / 8%);
+  border-radius: 20rpx;
+  background: #f7faf4;
+}
+
+.building-card__name,
+.building-card__meta {
+  display: block;
+}
+
+.building-card__name {
+  font-size: 27rpx;
+  font-weight: 850;
+}
+
+.building-card__nums {
   display: flex;
-  flex-direction: column;
-  gap: 6rpx;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 14rpx;
 }
 
-.building-name {
-  font-size: $sl-font-md;
-  font-weight: 600;
-  color: $sl-text-primary;
+.building-card__nums text {
+  padding: 5rpx 10rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  color: var(--sl-brand);
+  font-size: 21rpx;
 }
 
-.building-stats {
-  display: flex;
-  gap: $sl-spacing-sm;
+.building-card__meta,
+.no-building {
+  margin-top: 12rpx;
+  color: var(--sl-muted);
+  font-size: 22rpx;
 }
 
-.bs-item {
-  font-size: $sl-font-xs;
+.building-summary {
+  margin-bottom: 18rpx;
 }
 
-.building-total {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
+.building-summary__stats {
+  text-align: right;
 }
 
-// ---- Level 3 ----
-.floor-grid {
-  padding: $sl-spacing-sm;
+.building-summary__stats text:first-child {
+  display: block;
+  color: var(--sl-brand);
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.building-summary__stats text:last-child {
+  display: block;
+  margin-top: 6rpx;
+  color: var(--sl-muted);
+  font-size: 22rpx;
 }
 
 .floor-row {
   display: flex;
+  gap: 14rpx;
   align-items: stretch;
-  margin-bottom: $sl-spacing-xs;
 }
 
 .floor-label {
-  width: 64rpx;
   display: flex;
+  width: 74rpx;
+  flex: 0 0 74rpx;
   align-items: center;
   justify-content: center;
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-  font-weight: 600;
-  flex-shrink: 0;
+  border-radius: 18rpx;
+  background: #eaf2e8;
+  color: var(--sl-brand);
+  font-size: 24rpx;
+  font-weight: 900;
 }
 
 .room-scroll {
+  min-width: 0;
   flex: 1;
   white-space: nowrap;
 }
 
 .room-list {
-  display: flex;
-  gap: $sl-spacing-xs;
-  padding: 2rpx 0;
+  display: inline-flex;
+  gap: 12rpx;
+  min-height: 144rpx;
 }
 
-.room-cell {
-  width: 140rpx;
-  min-height: 120rpx;
-  display: flex;
+.room-cell,
+.room-empty {
+  display: inline-flex;
+  width: 176rpx;
+  min-height: 144rpx;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4rpx;
-  border-radius: 8rpx;
-  border: 2rpx solid;
-  flex-shrink: 0;
+  box-sizing: border-box;
+  padding: 12rpx;
+  border: 2rpx solid transparent;
+  border-radius: 20rpx;
+  background: #edf6ef;
+  text-align: center;
 }
 
-.room-no {
-  font-size: $sl-font-sm;
-  font-weight: 600;
-  color: $sl-text-primary;
+.room-cell--1 { background: #fff6df; border-color: rgb(228 161 27 / 22%); }
+.room-cell--2 { background: #eef2f0; border-color: rgb(125 139 133 / 18%); }
+.room-cell--3 { background: #fff0ed; border-color: rgb(201 72 50 / 18%); }
+
+.room-cell__no {
+  overflow: hidden;
+  max-width: 148rpx;
+  font-size: 25rpx;
+  font-weight: 850;
+  text-overflow: ellipsis;
 }
 
-.room-status {
-  font-size: 20rpx;
-}
-
-.room-rent {
-  font-size: 20rpx;
-  color: $sl-text-secondary;
+.room-cell__price {
+  margin-top: 8rpx;
+  color: #c26916;
+  font-size: 23rpx;
+  font-weight: 850;
 }
 
 .room-empty {
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.loading,
+.empty {
+  margin-top: 18rpx;
+  color: var(--sl-muted);
+  text-align: center;
+}
+
+.empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: $sl-spacing-sm;
-  font-size: $sl-font-xs;
-  color: $sl-text-placeholder;
+  gap: 14rpx;
 }
 
-// ---- Modal ----
-.modal-mask {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+.action-sheet {
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+.action-sheet__head {
   display: flex;
-  align-items: flex-end;
-  z-index: 999;
-}
-
-.modal-panel {
-  width: 100%;
-  background-color: $sl-bg-card;
-  border-radius: $sl-border-radius $sl-border-radius 0 0;
-  padding: $sl-spacing-lg;
-  padding-bottom: calc(#{$sl-spacing-lg} + #{$sl-safe-bottom});
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: $sl-spacing-md;
+  gap: 16rpx;
 }
 
-.modal-title {
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-}
-
-.modal-close {
-  font-size: $sl-font-lg;
-  color: $sl-text-placeholder;
-  padding: $sl-spacing-xs;
-}
-
-.modal-info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: $sl-spacing-md;
-  font-size: $sl-font-md;
-  color: $sl-text-secondary;
-}
-
-.modal-rent {
-  font-weight: 700;
-  color: $sl-text-price;
-}
-
-.modal-section {
-  margin-bottom: $sl-spacing-md;
-}
-
-.modal-label {
+.action-sheet__title,
+.action-sheet__desc,
+.action-sheet__label {
   display: block;
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-sm;
 }
 
-.status-btns {
+.action-sheet__title {
+  font-size: 32rpx;
+  font-weight: 850;
+}
+
+.action-sheet__desc {
+  margin-top: 8rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.action-sheet__label {
+  margin: 28rpx 0 14rpx;
+  font-size: 26rpx;
+  font-weight: 850;
+}
+
+.action-status {
   display: flex;
-  gap: $sl-spacing-sm;
+  flex-wrap: wrap;
+  gap: 12rpx;
 }
 
-.status-btn {
-  flex: 1;
-  text-align: center;
-  padding: $sl-spacing-sm;
-  border-radius: $sl-border-radius-sm;
-  font-size: $sl-font-sm;
-  font-weight: 600;
-}
-
-.modal-actions {
-  display: flex;
-  gap: $sl-spacing-sm;
-}
-
-.modal-btn {
-  flex: 1;
-  text-align: center;
-  padding: $sl-spacing-sm;
-  border-radius: $sl-border-radius;
-  font-size: $sl-font-md;
-  font-weight: 600;
-  background-color: $sl-bg-page;
-  color: $sl-text-primary;
-
-  &.primary {
-    background-color: $sl-primary;
-    color: #ffffff;
-  }
+.action-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16rpx;
+  margin-top: 26rpx;
 }
 </style>

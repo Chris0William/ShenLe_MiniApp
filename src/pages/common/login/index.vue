@@ -1,392 +1,285 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useUserStore } from '@/stores/user'
-import { useAppStore } from '@/stores/app'
+import { computed, ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
+import { useShenleAuthStore } from '@/store/auth'
 
-const userStore = useUserStore()
-const appStore = useAppStore()
+definePage({
+  style: {
+    navigationBarTitleText: '微信授权登录',
+  },
+})
 
+const auth = useShenleAuthStore()
 const loading = ref(false)
-const showAccountForm = ref(false)
-const account = ref('')
-const password = ref('')
-
-// 两步微信登录
 const step = ref<'login' | 'profile'>('login')
+const redirect = ref('/pages/admin/dashboard/index')
 const profileNickName = ref('')
 const profileAvatarTemp = ref('')
+const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
 
-/** 微信一键登录（第一步） */
+function goAfterLogin() {
+  const target = redirect.value || '/pages/admin/dashboard/index'
+  uni.reLaunch({ url: target })
+}
+
 async function onWxLogin() {
-  if (loading.value) return
+  if (loading.value)
+    return
+
   loading.value = true
   try {
-    const result = await userStore.wxLoginStep1()
-    if (result === 'done') {
-      uni.showToast({ title: '登录成功', icon: 'success' })
-      appStore.loadMode()
-      setTimeout(() => uni.reLaunch({ url: '/pages/shell/index' }), 500)
-    } else {
+    const result = await auth.wxLoginStep1()
+    if (result === 'needProfile') {
       step.value = 'profile'
+      return
     }
-  } catch (e: any) {
-    console.error('微信登录失败', e)
-    uni.showToast({ title: '登录失败，请重试', icon: 'none' })
-  } finally {
-    loading.value = false
-  }
-}
 
-function onChooseAvatar(e: any) {
-  profileAvatarTemp.value = e.detail.avatarUrl
-}
-
-/** 完善资料提交（第二步） */
-async function onProfileSubmit() {
-  if (!profileNickName.value.trim()) {
-    uni.showToast({ title: '请输入昵称', icon: 'none' })
-    return
-  }
-  if (!profileAvatarTemp.value) {
-    uni.showToast({ title: '请选择头像', icon: 'none' })
-    return
-  }
-  if (loading.value) return
-  loading.value = true
-  try {
-    await userStore.wxLoginStep2(profileNickName.value.trim(), profileAvatarTemp.value)
-    uni.showToast({ title: '注册成功', icon: 'success' })
-    appStore.loadMode()
-    setTimeout(() => uni.reLaunch({ url: '/pages/shell/index' }), 500)
-  } catch (e: any) {
-    console.error('完善资料失败', e)
-    uni.showToast({ title: '注册失败，请重试', icon: 'none' })
-  } finally {
-    loading.value = false
-  }
-}
-
-/** 账号密码登录 */
-async function onAccountLogin() {
-  if (!account.value.trim()) {
-    uni.showToast({ title: '请输入账号', icon: 'none' })
-    return
-  }
-  if (!password.value.trim()) {
-    uni.showToast({ title: '请输入密码', icon: 'none' })
-    return
-  }
-
-  loading.value = true
-  try {
-    await userStore.login({ account: account.value.trim(), password: password.value })
     uni.showToast({ title: '登录成功', icon: 'success' })
-    appStore.loadMode()
-    setTimeout(() => {
-      uni.reLaunch({ url: '/pages/shell/index' })
-    }, 500)
-  } catch {
-  } finally {
+    setTimeout(goAfterLogin, 300)
+  }
+  catch (error) {
+    console.error('微信授权登录失败', error)
+    uni.showToast({ title: '微信授权失败，请重试', icon: 'none' })
+  }
+  finally {
     loading.value = false
   }
 }
+
+function onChooseAvatar(event: any) {
+  profileAvatarTemp.value = event.detail?.avatarUrl || ''
+}
+
+async function onProfileSubmit() {
+  if (!canSubmitProfile.value || loading.value) {
+    uni.showToast({ title: '请先选择头像并填写昵称', icon: 'none' })
+    return
+  }
+
+  loading.value = true
+  try {
+    await auth.wxLoginStep2(profileNickName.value.trim(), profileAvatarTemp.value)
+    uni.showToast({ title: '登录成功', icon: 'success' })
+    setTimeout(goAfterLogin, 300)
+  }
+  catch (error) {
+    console.error('完善微信资料失败', error)
+    uni.showToast({ title: '资料提交失败，请重试', icon: 'none' })
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+onLoad((query) => {
+  if (typeof query?.redirect === 'string' && query.redirect.startsWith('/pages/'))
+    redirect.value = decodeURIComponent(query.redirect)
+
+  if (auth.isLogin)
+    setTimeout(goAfterLogin, 0)
+})
 </script>
 
 <template>
-  <view class="page">
-    <view class="logo-area">
-      <view class="logo">
-        <text class="logo-text">深乐租</text>
-      </view>
-      <text class="slogan">让租房更简单</text>
+  <view class="sl-page login-page">
+    <view class="login-bg login-bg--one" />
+    <view class="login-bg login-bg--two" />
+
+    <view class="sl-hero login-hero">
+      <text class="sl-eyebrow">WeChat Authorization</text>
+      <text class="sl-title">管理端微信授权登录</text>
+      <text class="sl-subtitle">使用当前微信身份进入深乐租管理工作台，不再提供账号密码登录入口。</text>
     </view>
 
-    <!-- 微信一键登录 (主操作) -->
-    <view v-if="!showAccountForm && step === 'login'" class="wx-area">
-      <button class="wx-btn" :disabled="loading" @tap="onWxLogin">
-        <text class="wx-icon">W</text>
-        <text>{{ loading ? '登录中...' : '微信一键登录' }}</text>
-      </button>
-      <view class="divider">
-        <view class="divider-line" />
-        <text class="divider-text">或</text>
-        <view class="divider-line" />
+    <view v-if="step === 'login'" class="login-card sl-card">
+      <view class="wx-mark">
+        <text>微</text>
       </view>
-      <text class="switch-link" @tap="showAccountForm = true">使用账号密码登录</text>
+      <text class="card-title">授权后进入管理端</text>
+      <text class="card-desc">小程序会先通过 wx.login 获取微信登录凭证，再按旧版流程换取 OpenId 与后端 Token。</text>
+
+      <wd-button block type="success" :loading="loading" @click="onWxLogin">
+        {{ loading ? '授权中...' : '微信授权登录' }}
+      </wd-button>
+
+      <view class="login-note">
+        <wd-icon name="info-circle" size="16px" color="#5e756a" />
+        <text>登录即表示同意《用户服务协议》和《隐私政策》</text>
+      </view>
     </view>
 
-    <!-- 完善资料（微信新用户第二步） -->
-    <view v-if="step === 'profile'" class="wx-area">
-      <text class="profile-title">完善个人资料</text>
-      <text class="profile-subtitle">设置头像和昵称后即可使用</text>
+    <view v-else class="login-card profile-card sl-card">
+      <text class="card-title">完善微信资料</text>
+      <text class="card-desc">首次登录需要选择头像并填写昵称，用于创建管理端用户资料。</text>
+
       <button class="avatar-chooser" open-type="chooseAvatar" @chooseavatar="onChooseAvatar">
         <image v-if="profileAvatarTemp" class="avatar-preview" :src="profileAvatarTemp" mode="aspectFill" />
         <view v-else class="avatar-placeholder">
-          <text class="avatar-placeholder-icon">+</text>
-          <text class="avatar-placeholder-text">选择头像</text>
+          <wd-icon name="user" size="30px" color="#8ba095" />
+          <text>选择头像</text>
         </view>
       </button>
-      <input class="nickname-input" type="nickname" v-model="profileNickName" placeholder="请输入昵称" />
-      <button class="wx-btn" :disabled="loading" @tap="onProfileSubmit">
-        <text>{{ loading ? '提交中...' : '完成注册' }}</text>
-      </button>
-    </view>
 
-    <!-- 账号密码表单 (次要操作) -->
-    <view v-else class="form">
-      <view class="input-group">
-        <input
-          v-model="account"
-          class="input"
-          placeholder="请输入账号"
-          placeholder-class="input-placeholder"
-          type="text"
-        />
-      </view>
-      <view class="input-group">
-        <input
-          v-model="password"
-          class="input"
-          placeholder="请输入密码"
-          placeholder-class="input-placeholder"
-          password
-        />
-      </view>
-      <button class="login-btn" :disabled="loading" @tap="onAccountLogin">
-        {{ loading ? '登录中...' : '登录' }}
-      </button>
-      <text class="switch-link" @tap="showAccountForm = false">返回微信登录</text>
-    </view>
+      <input
+        v-model="profileNickName"
+        class="nickname-input"
+        type="nickname"
+        placeholder="请输入微信昵称"
+        placeholder-class="nickname-placeholder"
+      />
 
-    <text class="tip">登录即表示同意《用户服务协议》和《隐私政策》</text>
+      <wd-button block type="success" :loading="loading" :disabled="!canSubmitProfile" @click="onProfileSubmit">
+        {{ loading ? '提交中...' : '完成并登录' }}
+      </wd-button>
+    </view>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
+<style scoped lang="scss">
+.login-page {
+  position: relative;
   min-height: 100vh;
-  background-color: $sl-bg-card;
+  overflow: hidden;
+  padding-bottom: 56rpx;
+}
+
+.login-bg {
+  position: absolute;
+  z-index: 0;
+  border-radius: 999rpx;
+  filter: blur(6rpx);
+  opacity: 0.72;
+}
+
+.login-bg--one {
+  top: -120rpx;
+  right: -140rpx;
+  width: 360rpx;
+  height: 360rpx;
+  background: rgba(7, 193, 96, 0.18);
+}
+
+.login-bg--two {
+  left: -180rpx;
+  bottom: 120rpx;
+  width: 420rpx;
+  height: 420rpx;
+  background: rgba(211, 169, 85, 0.16);
+}
+
+.login-hero,
+.login-card {
+  position: relative;
+  z-index: 1;
+}
+
+.login-hero {
+  margin-top: 28rpx;
+}
+
+.login-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: $sl-spacing-xl;
+  gap: 24rpx;
+  margin-top: 38rpx;
+  padding: 42rpx 30rpx 34rpx;
 }
 
-.logo-area {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  margin-bottom: 80rpx;
-}
-
-.logo {
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 32rpx;
-  background-color: $sl-primary;
+.wx-mark {
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: $sl-spacing-md;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 34rpx;
+  background: linear-gradient(135deg, #07c160 0%, #1d8f58 100%);
+  box-shadow: 0 18rpx 42rpx rgba(7, 193, 96, 0.24);
 }
 
-.logo-text {
-  font-size: $sl-font-xl;
-  color: #ffffff;
-  font-weight: 700;
+.wx-mark text {
+  color: #fff;
+  font-size: 42rpx;
+  font-weight: 900;
 }
 
-.slogan {
-  font-size: $sl-font-lg;
-  color: $sl-text-secondary;
+.card-title {
+  color: var(--sl-ink);
+  font-size: 34rpx;
+  font-weight: 900;
 }
 
-// 微信登录区域
-.wx-area {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: $sl-spacing-lg;
-}
-
-.wx-btn {
-  width: 100%;
-  height: 96rpx;
-  line-height: 96rpx;
-  background-color: #07c160;
-  color: #ffffff;
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  border-radius: 48rpx;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: $sl-spacing-sm;
-
-  &[disabled] {
-    opacity: 0.6;
-  }
-}
-
-.wx-icon {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: $sl-font-md;
-  font-weight: 700;
-}
-
-.divider {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: $sl-spacing-md;
-}
-
-.divider-line {
-  flex: 1;
-  height: 1rpx;
-  background-color: $sl-border-color;
-}
-
-.divider-text {
-  font-size: $sl-font-sm;
-  color: $sl-text-placeholder;
-}
-
-.switch-link {
-  font-size: $sl-font-sm;
-  color: $sl-primary;
-}
-
-// 账号密码表单
-.form {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: $sl-spacing-md;
-}
-
-.input-group {
-  width: 100%;
-  background-color: $sl-bg-page;
-  border-radius: $sl-border-radius;
-  padding: 0 $sl-spacing-lg;
-  height: 96rpx;
-  display: flex;
-  align-items: center;
-}
-
-.input {
-  width: 100%;
-  height: 96rpx;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-}
-
-.input-placeholder {
-  color: $sl-text-placeholder;
-}
-
-.login-btn {
-  width: 100%;
-  height: 88rpx;
-  line-height: 88rpx;
-  background-color: $sl-primary;
-  color: #ffffff;
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  border-radius: 44rpx;
-  border: none;
-
-  &[disabled] {
-    opacity: 0.6;
-  }
-}
-
-.tip {
-  font-size: $sl-font-xs;
-  color: $sl-text-placeholder;
+.card-desc {
+  max-width: 560rpx;
+  color: var(--sl-muted);
+  font-size: 25rpx;
+  line-height: 1.55;
   text-align: center;
-  margin-top: 60rpx;
 }
 
-// 完善资料步骤
-.profile-title {
-  font-size: $sl-font-lg;
-  color: $sl-text-primary;
-  font-weight: 600;
+.login-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  color: #5e756a;
+  font-size: 22rpx;
 }
 
-.profile-subtitle {
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
+.profile-card {
+  gap: 26rpx;
 }
 
 .avatar-chooser {
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 50%;
-  padding: 0;
-  margin: 0;
-  background-color: transparent;
-  border: none;
-  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
-
-  &::after {
-    border: none;
-  }
+  width: 168rpx;
+  height: 168rpx;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
 }
 
-.avatar-preview {
-  width: 160rpx;
-  height: 160rpx;
+.avatar-chooser::after {
+  border: 0;
+}
+
+.avatar-preview,
+.avatar-placeholder {
+  width: 168rpx;
+  height: 168rpx;
   border-radius: 50%;
 }
 
 .avatar-placeholder {
-  width: 160rpx;
-  height: 160rpx;
-  border-radius: 50%;
-  background-color: $sl-bg-page;
-  border: 2rpx dashed $sl-border-color;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-}
-
-.avatar-placeholder-icon {
-  font-size: 48rpx;
-  color: $sl-text-placeholder;
-  line-height: 1;
-}
-
-.avatar-placeholder-text {
-  font-size: $sl-font-xs;
-  color: $sl-text-placeholder;
+  border: 2rpx dashed rgba(18, 107, 79, 0.28);
+  background: rgba(255, 255, 255, 0.7);
+  color: #8ba095;
+  font-size: 22rpx;
 }
 
 .nickname-input {
   width: 100%;
   height: 88rpx;
-  border: 2rpx solid $sl-border-color;
-  border-radius: $sl-border-radius;
-  padding: 0 24rpx;
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
   box-sizing: border-box;
+  padding: 0 26rpx;
+  border: 1rpx solid rgba(18, 107, 79, 0.16);
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.86);
+  color: var(--sl-ink);
+  font-size: 28rpx;
+}
+
+.nickname-placeholder {
+  color: #9cac9f;
 }
 </style>

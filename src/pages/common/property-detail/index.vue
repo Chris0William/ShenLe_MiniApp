@@ -1,422 +1,234 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import type { SlPropertyOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
 import { getPropertyDetail } from '@/api/property'
-import { downloadFile } from '@/api/file'
-import type { SlPropertyOutput } from '@/types/property'
+import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
+
+definePage({
+  style: {
+    navigationBarTitleText: '房源详情',
+  },
+})
 
 const id = ref('')
 const detail = ref<SlPropertyOutput | null>(null)
-const currentSwiper = ref(0)
-const imageUrls = ref<string[]>([])
-
-async function loadImages() {
-  if (!detail.value) return
-  const imgs = detail.value.images
-  if (imgs?.length) {
-    const urls: string[] = []
-    for (const img of imgs) {
-      try { urls.push(await downloadFile(String(img.id))) } catch { urls.push('') }
-    }
-    imageUrls.value = urls.filter(Boolean)
-  } else if (detail.value.coverImageId) {
-    try {
-      imageUrls.value = [await downloadFile(String(detail.value.coverImageId))]
-    } catch {}
-  }
-}
-
-const locationText = computed(() => {
-  if (!detail.value) return ''
-  const d = detail.value
-  const parts = [d.communityName, d.buildingName]
-  if (d.floor && d.totalFloors) parts.push(`${d.floor}/${d.totalFloors}层`)
-  if (d.roomNo) parts.push(d.roomNo)
-  return parts.filter(Boolean).join(' · ')
+const loading = ref(true)
+const status = computed(() => getStatusMeta(detail.value?.status))
+const gallery = computed(() => {
+  const images = detail.value?.images?.map(item => resolveAssetUrl(item.url)).filter(Boolean) || []
+  return images.length ? images : [resolveAssetUrl(detail.value?.coverImage)]
 })
 
 async function loadDetail() {
-  if (!id.value) return
+  if (!id.value)
+    return
+  loading.value = true
   try {
     detail.value = await getPropertyDetail(id.value)
-    loadImages()
-  } catch {}
-}
-
-function callPhone() {
-  if (!detail.value?.landlordPhone) {
-    uni.showToast({ title: '暂无联系电话', icon: 'none' })
-    return
   }
-  uni.makePhoneCall({ phoneNumber: detail.value.landlordPhone })
-}
-
-function onSwiperChange(e: any) {
-  currentSwiper.value = e.detail.current
-}
-
-onLoad((options) => {
-  if (options?.id) {
-    id.value = options.id
-    loadDetail()
+  finally {
+    loading.value = false
   }
+}
+
+function callLandlord() {
+  uni.makePhoneCall({ phoneNumber: detail.value?.landlordPhone || '10086' })
+}
+
+onLoad((query) => {
+  id.value = String(query?.id || '')
+  loadDetail()
 })
 </script>
 
 <template>
-  <view class="page">
-    <!-- 图片轮播 -->
-    <view class="swiper-area">
-      <swiper
-        v-if="imageUrls.length"
-        class="swiper"
-        :current="currentSwiper"
-        @change="onSwiperChange"
-      >
-        <swiper-item v-for="(url, idx) in imageUrls" :key="idx">
-          <image class="swiper-img" :src="url" mode="aspectFill" />
+  <view class="sl-page sl-page--plain detail">
+    <view v-if="loading" class="loading sl-card">
+      加载房源详情...
+    </view>
+    <template v-else-if="detail">
+      <swiper class="gallery" indicator-dots circular>
+        <swiper-item v-for="img in gallery" :key="img">
+          <image class="gallery__image" :src="img" mode="aspectFill" />
         </swiper-item>
       </swiper>
-      <view v-else class="swiper-empty">
-        <text>暂无图片</text>
-      </view>
-      <view v-if="imageUrls.length > 1" class="swiper-counter">
-        {{ currentSwiper + 1 }}/{{ imageUrls.length }}
-      </view>
-    </view>
 
-    <template v-if="detail">
-      <!-- 基本信息 -->
-      <view class="info-card">
-        <view class="price-row">
-          <text class="price">¥{{ (detail.rentPrice ?? 0).toLocaleString() }}/月</text>
-          <sl-status-badge :status="detail.status" />
+      <view class="detail-main sl-card">
+        <view class="sl-row-between">
+          <text class="detail-title">{{ detail.title }}</text>
+          <wd-tag :type="status.tone as any">{{ detail.statusName || status.label }}</wd-tag>
         </view>
-        <text class="title">{{ detail.title }}</text>
-        <view class="meta">
-          <text>{{ detail.area ?? '-' }}㎡</text>
-          <text> · </text>
-          <text>{{ detail.houseType }}</text>
-          <text v-if="detail.floor || detail.totalFloors"> · {{ detail.floor ?? '-' }}/{{ detail.totalFloors ?? '-' }}层</text>
+        <text class="detail-community">{{ detail.communityName }} {{ detail.buildingName || '' }}</text>
+        <view class="price-line">
+          <text class="price">¥{{ formatMoney(detail.rentPrice) }}</text>
+          <text class="unit">/月</text>
         </view>
-        <view class="location">
-          <text class="location-text">{{ locationText }}</text>
+        <view class="facts">
+          <view><text>{{ detail.houseType }}</text><text>户型</text></view>
+          <view><text>{{ formatArea(detail.area) }}</text><text>面积</text></view>
+          <view><text>{{ detail.floorInfo || `${detail.floor || '--'}/${detail.totalFloors || '--'}层` }}</text><text>楼层</text></view>
         </view>
       </view>
 
-      <!-- 房源信息 -->
-      <view class="section-card">
-        <text class="section-title">房源信息</text>
-        <view class="info-grid">
-          <view class="info-item">
-            <text class="label">朝向</text>
-            <text class="val">{{ detail.orientation || '-' }}</text>
-          </view>
-          <view class="info-item">
-            <text class="label">装修</text>
-            <text class="val">{{ detail.decoration || '-' }}</text>
-          </view>
-          <view class="info-item">
-            <text class="label">租赁方式</text>
-            <text class="val">{{ detail.rentalType || '-' }}</text>
-          </view>
-          <view class="info-item">
-            <text class="label">押付方式</text>
-            <text class="val">{{ detail.depositRule || '-' }}</text>
-          </view>
-          <view v-if="detail.deposit" class="info-item">
-            <text class="label">押金</text>
-            <text class="val">¥{{ detail.deposit.toLocaleString() }}</text>
-          </view>
-          <view class="info-item">
-            <text class="label">面积</text>
-            <text class="val">{{ detail.area ?? '-' }}㎡</text>
-          </view>
-        </view>
+      <view class="section sl-card">
+        <text class="section__title">房源信息</text>
+        <view class="info-row"><text>朝向</text><text>{{ detail.orientation || '待补充' }}</text></view>
+        <view class="info-row"><text>装修</text><text>{{ detail.decoration || '待补充' }}</text></view>
+        <view class="info-row"><text>出租方式</text><text>{{ detail.rentalType || '待补充' }}</text></view>
+        <view class="info-row"><text>押付</text><text>{{ detail.depositRule || '待补充' }}</text></view>
       </view>
 
-      <!-- 房源特色 -->
-      <view v-if="detail.tags?.length" class="section-card">
-        <text class="section-title">房源特色</text>
+      <view v-if="detail.tags?.length || detail.facilities?.length" class="section sl-card">
+        <text class="section__title">标签与配套</text>
         <view class="tag-list">
-          <view
-            v-for="tag in detail.tags"
-            :key="tag.id"
-            class="tag-chip"
-            :style="tag.color ? { color: tag.color, borderColor: tag.color } : {}"
-          >
-            {{ tag.name }}
-          </view>
+          <wd-tag v-for="tag in detail.tags" :key="`tag-${String(tag.id)}`" plain>{{ tag.name }}</wd-tag>
+          <wd-tag v-for="tag in detail.facilities" :key="`facility-${String(tag.id)}`" type="success" plain>{{ tag.name }}</wd-tag>
         </view>
       </view>
 
-      <!-- 配套设施 -->
-      <view v-if="detail.facilities?.length" class="section-card">
-        <text class="section-title">配套设施</text>
-        <view class="facility-grid">
-          <view v-for="f in detail.facilities" :key="f.id" class="facility-item">
-            <text v-if="f.icon" class="facility-icon">{{ f.icon }}</text>
-            <text class="facility-name">{{ f.name }}</text>
-          </view>
-        </view>
+      <view class="section sl-card">
+        <text class="section__title">描述</text>
+        <text class="description">{{ detail.description || detail.remark || '暂无描述，后续会接入更完整的房源亮点。' }}</text>
       </view>
 
-      <!-- 房源描述 -->
-      <view v-if="detail.description" class="section-card">
-        <text class="section-title">房源描述</text>
-        <text class="desc-text">{{ detail.description }}</text>
-      </view>
-
-      <!-- 联系人 -->
-      <view v-if="detail.landlordName" class="section-card">
-        <text class="section-title">联系人</text>
-        <view class="contact-row">
-          <text class="contact-name">{{ detail.landlordName }}</text>
-          <text v-if="detail.landlordPhone" class="contact-phone" @tap="callPhone">
-            {{ detail.landlordPhone }}
-          </text>
-        </view>
+      <view class="bottom-bar sl-safe-bottom">
+        <wd-button block type="primary" @click="callLandlord">
+          联系房东
+        </wd-button>
       </view>
     </template>
-
-    <!-- 底部操作栏 -->
-    <view class="action-bar">
-      <view class="action-btn phone" @tap="callPhone">
-        <text>联系房东</text>
-      </view>
-      <view class="action-btn primary" @tap="callPhone">
-        <text>预约看房</text>
-      </view>
-    </view>
   </view>
 </template>
 
-<style lang="scss" scoped>
-.page {
-  min-height: 100vh;
-  background-color: $sl-bg-page;
-  padding-bottom: 130rpx;
+<style scoped lang="scss">
+.detail {
+  padding-top: 0;
 }
 
-// ---- Swiper ----
-.swiper-area {
-  position: relative;
-  width: 100%;
-  height: 500rpx;
-  background-color: #e0e0e0;
+.loading {
+  margin-top: 40rpx;
+  padding: 40rpx;
+  color: var(--sl-muted);
+  text-align: center;
 }
 
-.swiper {
-  width: 100%;
-  height: 100%;
+.gallery {
+  height: 520rpx;
+  margin: 0 -28rpx;
+  background: #e8eee6;
 }
 
-.swiper-img {
+.gallery__image {
   width: 100%;
   height: 100%;
 }
 
-.swiper-empty {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: $sl-font-md;
-  color: $sl-text-secondary;
+.detail-main,
+.section {
+  margin-top: 22rpx;
+  padding: 28rpx;
 }
 
-.swiper-counter {
-  position: absolute;
-  right: $sl-spacing-md;
-  bottom: $sl-spacing-md;
-  padding: 4rpx 16rpx;
-  background-color: rgba(0, 0, 0, 0.5);
-  color: #ffffff;
-  font-size: $sl-font-xs;
-  border-radius: 20rpx;
+.detail-title {
+  max-width: 520rpx;
+  font-size: 38rpx;
+  font-weight: 850;
+  line-height: 1.25;
 }
 
-// ---- Info card ----
-.info-card {
-  padding: $sl-spacing-md $sl-spacing-lg;
-  background-color: $sl-bg-card;
-  margin-bottom: $sl-spacing-sm;
+.detail-community {
+  display: block;
+  margin-top: 14rpx;
+  color: var(--sl-muted);
+  font-size: 25rpx;
 }
 
-.price-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: $sl-spacing-xs;
+.price-line {
+  margin-top: 22rpx;
 }
 
 .price {
-  font-size: $sl-font-xxl;
-  font-weight: 700;
-  color: $sl-text-price;
+  color: #c26916;
+  font-size: 48rpx;
+  font-weight: 900;
 }
 
-.title {
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-  margin-bottom: $sl-spacing-xs;
+.unit {
+  color: #c26916;
+  font-size: 24rpx;
 }
 
-.meta {
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-  margin-bottom: $sl-spacing-xs;
+.facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12rpx;
+  margin-top: 26rpx;
 }
 
-.location {
-  margin-top: $sl-spacing-xs;
+.facts view {
+  padding: 18rpx 10rpx;
+  border-radius: 18rpx;
+  background: #f2f6f0;
+  text-align: center;
 }
 
-.location-text {
-  font-size: $sl-font-sm;
-  color: $sl-text-secondary;
-}
-
-// ---- Section card ----
-.section-card {
-  padding: $sl-spacing-md $sl-spacing-lg;
-  background-color: $sl-bg-card;
-  margin-bottom: $sl-spacing-sm;
-}
-
-.section-title {
+.facts text:first-child {
   display: block;
-  font-size: $sl-font-lg;
-  font-weight: 600;
-  color: $sl-text-primary;
-  margin-bottom: $sl-spacing-md;
+  font-size: 28rpx;
+  font-weight: 800;
 }
 
-// ---- Info grid ----
-.info-grid {
-  display: flex;
-  flex-wrap: wrap;
+.facts text:last-child {
+  display: block;
+  margin-top: 8rpx;
+  color: var(--sl-muted);
+  font-size: 22rpx;
 }
 
-.info-item {
-  width: 50%;
+.section__title {
+  display: block;
+  margin-bottom: 18rpx;
+  font-size: 30rpx;
+  font-weight: 800;
+}
+
+.info-row {
   display: flex;
   justify-content: space-between;
-  padding: $sl-spacing-xs 0;
-  padding-right: $sl-spacing-md;
-  box-sizing: border-box;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid var(--sl-line);
+  color: var(--sl-muted);
+  font-size: 26rpx;
 }
 
-.label {
-  font-size: $sl-font-md;
-  color: $sl-text-secondary;
+.info-row:last-child {
+  border-bottom: 0;
 }
 
-.val {
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
+.info-row text:last-child {
+  color: var(--sl-ink);
 }
 
-// ---- Tags ----
 .tag-list {
   display: flex;
   flex-wrap: wrap;
-  gap: $sl-spacing-sm;
+  gap: 12rpx;
 }
 
-.tag-chip {
-  padding: $sl-spacing-xs $sl-spacing-md;
-  font-size: $sl-font-sm;
-  color: $sl-primary;
-  background-color: rgba(24, 144, 255, 0.08);
-  border: 1rpx solid rgba(24, 144, 255, 0.3);
-  border-radius: 8rpx;
+.description {
+  color: #4e5d56;
+  font-size: 27rpx;
+  line-height: 1.7;
 }
 
-// ---- Facilities ----
-.facility-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: $sl-spacing-md;
-}
-
-.facility-item {
-  display: flex;
-  align-items: center;
-  gap: 6rpx;
-  width: calc(25% - #{$sl-spacing-md});
-  flex-direction: column;
-}
-
-.facility-icon {
-  font-size: 40rpx;
-}
-
-.facility-name {
-  font-size: $sl-font-xs;
-  color: $sl-text-secondary;
-}
-
-// ---- Description ----
-.desc-text {
-  font-size: $sl-font-md;
-  color: $sl-text-secondary;
-  line-height: 1.8;
-  white-space: pre-wrap;
-}
-
-// ---- Contact ----
-.contact-row {
-  display: flex;
-  align-items: center;
-  gap: $sl-spacing-md;
-}
-
-.contact-name {
-  font-size: $sl-font-md;
-  color: $sl-text-primary;
-  font-weight: 600;
-}
-
-.contact-phone {
-  font-size: $sl-font-md;
-  color: $sl-primary;
-}
-
-// ---- Action bar ----
-.action-bar {
+.bottom-bar {
   position: fixed;
-  left: 0;
   right: 0;
   bottom: 0;
-  display: flex;
-  gap: $sl-spacing-sm;
-  padding: $sl-spacing-sm $sl-spacing-lg;
-  padding-bottom: calc(#{$sl-spacing-sm} + #{$sl-safe-bottom});
-  background-color: $sl-bg-card;
-  border-top: 1rpx solid $sl-border-color;
-}
-
-.action-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: $sl-spacing-sm 0;
-  border-radius: $sl-border-radius;
-  font-size: $sl-font-md;
-  font-weight: 600;
-
-  &.phone {
-    background-color: #f0f9ff;
-    color: $sl-primary;
-  }
-
-  &.primary {
-    background-color: $sl-primary;
-    color: #ffffff;
-  }
+  left: 0;
+  padding: 18rpx 28rpx 22rpx;
+  border-top: 1rpx solid rgb(18 107 79 / 10%);
+  background: rgb(255 255 255 / 96%);
 }
 </style>
