@@ -19,11 +19,18 @@ export const PROPERTY_FILTER_CATEGORIES = [
 
 export const BEDROOM_OPTIONS = [
   { label: '不限', value: undefined },
-  { label: '一室', value: 1 },
-  { label: '二室', value: 2 },
-  { label: '三室', value: 3 },
-  { label: '四室', value: 4 },
-  { label: '五室+', value: 5 },
+  { label: '1室', value: 1 },
+  { label: '2室', value: 2 },
+  { label: '3室', value: 3 },
+  { label: '4室+', value: 4 },
+] as const
+
+export const DISTANCE_OPTIONS = [
+  { label: '不限', value: undefined },
+  { label: '500m', value: 0.5 },
+  { label: '1km', value: 1 },
+  { label: '3km', value: 3 },
+  { label: '5km', value: 5 },
 ] as const
 
 export const PRICE_SEGMENTS = [
