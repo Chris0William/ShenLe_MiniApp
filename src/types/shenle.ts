@@ -56,11 +56,17 @@ export interface PageSlPropertyInput extends BasePageInput {
   minArea?: number
   maxArea?: number
   depositRule?: string
+  userLng?: number
+  userLat?: number
+  distanceKm?: number
 }
 
 export interface PropertyFilterState {
   regionId?: ShenLeId
   regionName?: string
+  userLng?: number
+  userLat?: number
+  distanceKm?: number
   bedrooms?: number
   minPrice?: number
   maxPrice?: number

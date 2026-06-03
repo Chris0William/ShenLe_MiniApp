@@ -4,6 +4,7 @@ import {
   BEDROOM_OPTIONS,
   DECORATION_OPTIONS,
   DEPOSIT_RULE_OPTIONS,
+  DISTANCE_OPTIONS,
   ORIENTATION_OPTIONS,
   PRICE_SEGMENTS,
   RENTAL_TYPE_OPTIONS,
@@ -15,7 +16,7 @@ export function clonePropertyFilters(filters?: PropertyFilterState): PropertyFil
 
 export function countPropertyFilters(filters: PropertyFilterState) {
   let count = 0
-  if (filters.regionId)
+  if (filters.regionId || filters.distanceKm !== undefined)
     count += 1
   if (filters.bedrooms)
     count += 1
@@ -38,7 +39,7 @@ export function countPropertyFilters(filters: PropertyFilterState) {
 
 export function hasPropertyFilter(filters: PropertyFilterState, key: string) {
   switch (key) {
-    case 'region': return !!filters.regionId
+    case 'region': return !!filters.regionId || filters.distanceKm !== undefined
     case 'bedrooms': return !!filters.bedrooms
     case 'price': return filters.minPrice !== undefined || filters.maxPrice !== undefined
     case 'orientation': return !!filters.orientation
@@ -52,6 +53,9 @@ export function hasPropertyFilter(filters: PropertyFilterState, key: string) {
 export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<PageSlPropertyInput, 'page' | 'pageSize'> {
   return {
     regionId: filters.regionId,
+    userLng: filters.userLng,
+    userLat: filters.userLat,
+    distanceKm: filters.distanceKm,
     communityId: filters.communityId,
     bedrooms: filters.bedrooms,
     minPrice: filters.minPrice,
@@ -83,13 +87,25 @@ function optionLabel<T extends { label: string, value: unknown }>(options: reado
   return options.find(item => item.value === value)?.label
 }
 
+function distanceLabel(value?: number) {
+  if (value === undefined)
+    return ''
+  return optionLabel(DISTANCE_OPTIONS, value) || (value < 1 ? `${Math.round(value * 1000)}m` : `${value}km`)
+}
+
 export function getPropertyFilterLabels(filters: PropertyFilterState, maps: {
   regionName?: string
   communityName?: string
 } = {}) {
   const labels: string[] = []
-  if (filters.regionId)
-    labels.push(maps.regionName || filters.regionName || '已选区域')
+  if (filters.regionId || filters.distanceKm !== undefined) {
+    const parts: string[] = []
+    if (filters.regionId)
+      parts.push(maps.regionName || filters.regionName || '已选区域')
+    if (filters.distanceKm !== undefined)
+      parts.push(`附近${distanceLabel(filters.distanceKm)}`)
+    labels.push(parts.join(' · '))
+  }
   if (filters.communityId)
     labels.push(maps.communityName || filters.communityName || '已选楼盘')
   if (filters.bedrooms)

@@ -16,9 +16,7 @@ definePage({
 })
 
 const keyword = ref('')
-const status = ref<number | undefined>()
 const filters = ref<PropertyFilterState>({})
-const filterVisible = ref(false)
 const page = ref(1)
 const pageSize = 10
 const total = ref(0)
@@ -27,8 +25,7 @@ const loading = ref(false)
 const hasLoaded = ref(false)
 const finished = computed(() => total.value > 0 && items.value.length >= total.value)
 const filterCount = computed(() => countPropertyFilters(filters.value))
-const statusCount = computed(() => status.value === undefined ? 0 : 1)
-const activeCount = computed(() => filterCount.value + statusCount.value)
+const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getPropertyFilterLabels(filters.value))
 
 function buildQuery(): PageSlPropertyInput {
@@ -36,7 +33,6 @@ function buildQuery(): PageSlPropertyInput {
     page: page.value,
     pageSize,
     title: keyword.value.trim() || undefined,
-    status: status.value,
     ...buildPropertyFilterQuery(filters.value),
   }
 }
@@ -70,26 +66,21 @@ async function changeStatus(item: SlPropertyListOutput, nextStatus: number) {
   await load(true)
 }
 
-function selectStatus(value?: number) {
-  status.value = value
-  load(true)
-}
-
-function onFilterConfirm(nextFilters: PropertyFilterState) {
+function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string) {
   filters.value = nextFilters
-  filterVisible.value = false
+  if (nextKeyword !== undefined)
+    keyword.value = nextKeyword
   load(true)
 }
 
 function resetFilters() {
   filters.value = {}
-  filterVisible.value = false
+  keyword.value = ''
   load(true)
 }
 
 function clearAllFilters() {
   keyword.value = ''
-  status.value = undefined
   filters.value = {}
   load(true)
 }
@@ -137,42 +128,18 @@ onReachBottom(() => {
       </view>
     </view>
 
-    <view class="search sl-card">
-      <wd-icon name="search" size="20px" color="#7a8780" />
-      <input v-model="keyword" class="search__input" placeholder="搜索房源名称 / 小区 / 房号" confirm-type="search" @confirm="load(true)">
-      <wd-button size="small" type="primary" @click="load(true)">
-        搜索
-      </wd-button>
-      <view class="filter-trigger" :class="{ active: filterCount > 0 }" @tap="filterVisible = true">
-        <wd-icon name="filter" size="18px" :color="filterCount > 0 ? '#ffffff' : '#126b4f'" />
-        <text>筛选</text>
-        <text v-if="filterCount" class="filter-trigger__badge">{{ filterCount }}</text>
-      </view>
-    </view>
+    <sl-property-filter-bar
+      :filters="filters"
+      :keyword="keyword"
+      mount-key="admin-property-list"
+      @confirm="onFilterConfirm"
+      @reset="resetFilters"
+    />
 
-    <scroll-view scroll-x class="chips">
-      <view class="chips__inner">
-        <wd-tag :type="status === undefined ? 'success' : 'default'" @click="selectStatus(undefined)">
-          全部
-        </wd-tag>
-        <wd-tag
-          v-for="item in PROPERTY_STATUS_OPTIONS"
-          :key="item.value"
-          :type="status === item.value ? item.tone as any : 'default'"
-          @click="selectStatus(item.value)"
-        >
-          {{ item.label }}
-        </wd-tag>
-      </view>
-    </scroll-view>
-
-    <view v-if="activeCount || keyword" class="active-summary sl-card">
+    <view v-if="activeCount" class="active-summary sl-card">
       <view class="active-summary__body">
         <wd-tag v-if="keyword" plain type="primary">
           搜索：{{ keyword }}
-        </wd-tag>
-        <wd-tag v-if="status !== undefined" plain type="warning">
-          状态：{{ PROPERTY_STATUS_OPTIONS.find(item => item.value === status)?.label }}
         </wd-tag>
         <wd-tag v-for="label in filterLabels" :key="label" plain type="success">
           {{ label }}
@@ -235,14 +202,6 @@ onReachBottom(() => {
     <view v-else-if="finished" class="loading">
       已经到底了
     </view>
-
-    <sl-property-filter
-      :visible="filterVisible"
-      :filters="filters"
-      @confirm="onFilterConfirm"
-      @reset="resetFilters"
-      @close="filterVisible = false"
-    />
   </view>
 </template>
 
@@ -272,63 +231,6 @@ onReachBottom(() => {
   margin-top: 8rpx;
   font-size: 42rpx;
   font-weight: 850;
-}
-
-.search {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 14rpx;
-  margin-top: 24rpx;
-  padding: 18rpx;
-}
-
-.search__input {
-  min-width: 0;
-  font-size: 27rpx;
-}
-
-.filter-trigger {
-  position: relative;
-  display: flex;
-  height: 58rpx;
-  align-items: center;
-  gap: 6rpx;
-  box-sizing: border-box;
-  padding: 0 18rpx;
-  border: 1rpx solid rgb(18 107 79 / 16%);
-  border-radius: 999rpx;
-  color: var(--sl-brand);
-  font-size: 24rpx;
-  font-weight: 800;
-}
-
-.filter-trigger.active {
-  border-color: transparent;
-  background: var(--sl-brand);
-  color: #fff;
-}
-
-.filter-trigger__badge {
-  min-width: 26rpx;
-  height: 26rpx;
-  border-radius: 999rpx;
-  background: var(--sl-brand-2);
-  color: #fff;
-  font-size: 18rpx;
-  line-height: 26rpx;
-  text-align: center;
-}
-
-.chips {
-  margin: 20rpx 0 0;
-  white-space: nowrap;
-}
-
-.chips__inner {
-  display: inline-flex;
-  gap: 14rpx;
-  padding-right: 28rpx;
 }
 
 .active-summary {
