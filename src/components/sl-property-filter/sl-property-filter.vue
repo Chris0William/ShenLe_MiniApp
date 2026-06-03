@@ -22,11 +22,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   confirm: [filters: PropertyFilterState]
-  reset: []
   close: []
 }>()
 
-const popupStyle = 'height: 78vh; border-radius: 34rpx 34rpx 0 0; overflow: hidden; background: #f7faf4;'
+const popupStyle = 'height: 78vh; margin-bottom: calc(112rpx + env(safe-area-inset-bottom)); border-radius: 34rpx 34rpx 0 0; overflow: hidden; background: #f7faf4;'
 const activeCategory = ref<(typeof PROPERTY_FILTER_CATEGORIES)[number]['key']>('region')
 const temp = ref<PropertyFilterState>(clonePropertyFilters(props.filters))
 const regionTree = ref<SlRegionTreeOutput[]>([])
@@ -182,7 +181,6 @@ function onReset() {
   customMinPrice.value = ''
   customMaxPrice.value = ''
   communityKeyword.value = ''
-  emit('reset')
 }
 
 function onConfirm() {
@@ -196,7 +194,7 @@ function onConfirm() {
     :model-value="visible"
     position="bottom"
     :custom-style="popupStyle"
-    :z-index="90"
+    :z-index="1100"
     safe-area-inset-bottom
     @close="emit('close')"
     @click-modal="emit('close')"
@@ -433,11 +431,13 @@ function onConfirm() {
   display: flex;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .left-col {
   width: 178rpx;
   height: 100%;
+  min-height: 0;
   flex: 0 0 178rpx;
   background: #edf4ea;
 }
@@ -479,6 +479,7 @@ function onConfirm() {
 
 .right-col {
   height: 100%;
+  min-height: 0;
   flex: 1;
   box-sizing: border-box;
   padding: 24rpx;
@@ -581,9 +582,11 @@ function onConfirm() {
 .panel-footer {
   display: grid;
   grid-template-columns: 1fr 1.6fr;
+  flex-shrink: 0;
   gap: 18rpx;
-  padding: 18rpx 24rpx 24rpx;
+  padding: 18rpx 24rpx calc(24rpx + env(safe-area-inset-bottom));
   border-top: 1rpx solid rgb(18 107 79 / 8%);
   background: rgb(255 255 255 / 96%);
+  box-shadow: 0 -8rpx 24rpx rgb(18 107 79 / 8%);
 }
 </style>

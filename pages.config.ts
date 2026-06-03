@@ -9,6 +9,12 @@ export default defineUniPages({
     navigationBarTextStyle: 'black',
     backgroundColor: '#f4f7f2',
   },
+  permission: {
+    'scope.userLocation': {
+      desc: '\u7528\u4e8e\u5c06\u5730\u56fe\u5b9a\u4f4d\u5230\u4f60\u5f53\u524d\u6240\u5728\u4f4d\u7f6e',
+    },
+  },
+  requiredPrivateInfos: ['getLocation'],
   easycom: {
     autoscan: true,
     custom: {

@@ -6,7 +6,7 @@ export const SHENLE_USER_KEY = 'shenle_user'
 export const SHENLE_OPENID_KEY = 'shenle_openid'
 
 export function getApiBaseUrl() {
-  return (import.meta.env.VITE_SERVER_BASEURL || 'https://fmcs.deerservice.com/api/sl/').replace(/\/$/, '')
+  return (import.meta.env.VITE_SERVER_BASEURL || 'https://shenzuyk.com').replace(/\/$/, '')
 }
 
 export function resolveAssetUrl(url?: string | null) {

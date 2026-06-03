@@ -74,6 +74,7 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
         reject(new Error(message))
       },
       fail(error) {
+        console.error('request fail:', error)
         if (!silent) {
           uni.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
         }

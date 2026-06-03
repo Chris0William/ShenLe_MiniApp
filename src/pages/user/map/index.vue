@@ -14,6 +14,7 @@ definePage({
 })
 
 const DEFAULT_CENTER = { latitude: 22.5431, longitude: 114.0579 }
+const mapId = 'property-map'
 
 const mapLat = ref(DEFAULT_CENTER.latitude)
 const mapLng = ref(DEFAULT_CENTER.longitude)
@@ -22,6 +23,8 @@ const communities = ref<SlCommunityOutput[]>([])
 const selected = ref<SlCommunityOutput | null>(null)
 const loading = ref(false)
 const locationReady = ref(false)
+const locating = ref(false)
+let mapContext: UniApp.MapContext | null = null
 
 const markers = computed(() => communities.value.map((item, index) => ({
   id: index + 1,
@@ -65,23 +68,135 @@ async function loadCommunities() {
   }
 }
 
-function getLocation(showTip = false) {
-  uni.getLocation({
-    type: 'gcj02',
-    success(res) {
-      mapLat.value = res.latitude
-      mapLng.value = res.longitude
-      mapScale.value = 14
-      locationReady.value = true
-      if (showTip)
-        uni.showToast({ title: '已定位到附近', icon: 'success' })
-    },
-    fail() {
-      locationReady.value = false
-      if (showTip)
-        uni.showToast({ title: '定位失败，已展示默认区域', icon: 'none' })
-    },
+function requestLocation() {
+  return new Promise<UniApp.GetLocationSuccess>((resolve, reject) => {
+    uni.getLocation({
+      type: 'gcj02',
+      isHighAccuracy: true,
+      highAccuracyExpireTime: 4000,
+      success: resolve,
+      fail: reject,
+    })
   })
+}
+
+function checkLocationSetting() {
+  return new Promise<UniApp.GetSettingSuccess>((resolve, reject) => {
+    uni.getSetting({
+      success: resolve,
+      fail: reject,
+    })
+  })
+}
+
+function authorizeLocation() {
+  return new Promise<void>((resolve, reject) => {
+    uni.authorize({
+      scope: 'scope.userLocation',
+      success: () => resolve(),
+      fail: reject,
+    })
+  })
+}
+
+function openLocationSetting() {
+  return new Promise<UniApp.OpenSettingSuccess>((resolve, reject) => {
+    uni.openSetting({
+      success: resolve,
+      fail: reject,
+    })
+  })
+}
+
+function showLocationModal(title: string, content: string) {
+  return new Promise<UniApp.ShowModalRes>((resolve) => {
+    uni.showModal({
+      title,
+      content,
+      confirmText: '\u53bb\u5f00\u542f',
+      cancelText: '\u53d6\u6d88',
+      success: resolve,
+    })
+  })
+}
+
+function applyLocation(res: UniApp.GetLocationSuccess, showTip: boolean) {
+  mapLat.value = res.latitude
+  mapLng.value = res.longitude
+  mapScale.value = 15
+  locationReady.value = true
+  mapContext?.moveToLocation({
+    latitude: res.latitude,
+    longitude: res.longitude,
+  })
+  if (showTip)
+    uni.showToast({ title: '\u5df2\u5b9a\u4f4d\u5230\u5f53\u524d\u4f4d\u7f6e', icon: 'success' })
+}
+
+function getLocationErrorText(message: string) {
+  if (message.includes('auth deny') || message.includes('auth denied'))
+    return '\u672a\u6388\u4e88\u4f4d\u7f6e\u6743\u9650'
+  if (message.includes('system permission denied') || message.includes('system deny'))
+    return '\u7cfb\u7edf\u5b9a\u4f4d\u6743\u9650\u672a\u5f00\u542f'
+  if (message.includes('fail auth'))
+    return '\u4f4d\u7f6e\u6388\u6743\u5931\u8d25'
+  if (message.includes('ERROR_NOCELL&WIFI_LOCATIONSWITCHOFF'))
+    return '\u8bf7\u6253\u5f00\u624b\u673a\u5b9a\u4f4d\u670d\u52a1\u6216 Wi-Fi'
+  if (message.includes('location service is disabled'))
+    return '\u624b\u673a\u5b9a\u4f4d\u670d\u52a1\u5df2\u5173\u95ed'
+  if (message.includes('timeout'))
+    return '\u5b9a\u4f4d\u8d85\u65f6\uff0c\u8bf7\u91cd\u8bd5'
+  return '\u5b9a\u4f4d\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7cfb\u7edf\u5b9a\u4f4d\u662f\u5426\u5f00\u542f'
+}
+
+async function getLocation(showTip = false) {
+  if (locating.value)
+    return
+
+  locating.value = true
+  try {
+    const setting = await checkLocationSetting().catch(() => null)
+    const authSetting = setting?.authSetting?.['scope.userLocation']
+
+    if (authSetting === false) {
+      const modal = await showLocationModal('\u9700\u8981\u4f4d\u7f6e\u6743\u9650', '\u8bf7\u5141\u8bb8\u5c0f\u7a0b\u5e8f\u8bbf\u95ee\u4f60\u7684\u4f4d\u7f6e\uff0c\u7528\u4e8e\u628a\u5730\u56fe\u5b9a\u4f4d\u5230\u5f53\u524d\u6240\u5728\u4f4d\u7f6e\u3002')
+      if (modal.confirm) {
+        const opened = await openLocationSetting().catch(() => null)
+        if (!opened?.authSetting?.['scope.userLocation']) {
+          locationReady.value = false
+          if (showTip)
+            uni.showToast({ title: '\u672a\u5f00\u542f\u4f4d\u7f6e\u6743\u9650', icon: 'none' })
+          return
+        }
+      }
+      else {
+        locationReady.value = false
+        return
+      }
+    }
+    else if (authSetting === undefined) {
+      await authorizeLocation().catch(() => null)
+    }
+
+    const res = await requestLocation()
+    applyLocation(res, showTip)
+  }
+  catch (error) {
+    locationReady.value = false
+    const message = String((error && error.errMsg) || error || '')
+    console.error('[map-location-fail]', message, error)
+    if (message.includes('auth deny') || message.includes('auth denied')) {
+      const modal = await showLocationModal('\u4f4d\u7f6e\u6743\u9650\u88ab\u62d2\u7edd', '\u8bf7\u5728\u8bbe\u7f6e\u91cc\u5f00\u542f\u4f4d\u7f6e\u6743\u9650\u540e\u518d\u8bd5\u4e00\u6b21\u3002')
+      if (modal.confirm)
+        await openLocationSetting().catch(() => null)
+    }
+    else if (showTip) {
+      uni.showToast({ title: getLocationErrorText(message), icon: 'none' })
+    }
+  }
+  finally {
+    locating.value = false
+  }
 }
 
 function markerToCommunity(markerId: number) {
@@ -137,6 +252,7 @@ function idKey(id: ShenLeId) {
 }
 
 onLoad(() => {
+  mapContext = uni.createMapContext(mapId)
   getLocation(false)
   loadCommunities()
 })
@@ -148,20 +264,21 @@ onPullDownRefresh(loadCommunities)
     <view class="map-head">
       <view>
         <text class="map-head__eyebrow">Map View</text>
-        <text class="map-head__title">地图找房</text>
+        <text class="map-head__title">{{ '\u5730\u56fe\u627e\u623f' }}</text>
       </view>
       <view class="map-head__actions">
         <wd-button size="small" plain @click="getLocation(true)">
-          定位
+          {{ locating ? '\u5b9a\u4f4d\u4e2d' : '\u5b9a\u4f4d' }}
         </wd-button>
         <wd-button size="small" type="primary" @click="loadCommunities">
-          刷新
+          {{ '\u5237\u65b0' }}
         </wd-button>
       </view>
     </view>
 
     <view class="map-shell sl-card">
       <map
+        :id="mapId"
         class="map"
         :latitude="mapLat"
         :longitude="mapLng"
@@ -235,9 +352,9 @@ onPullDownRefresh(loadCommunities)
 
 .map-head {
   display: flex;
+  flex-direction: column;
   flex: 0 0 auto;
-  align-items: center;
-  justify-content: space-between;
+  align-items: flex-start;
   gap: 18rpx;
   padding-top: 18rpx;
 }
@@ -260,8 +377,9 @@ onPullDownRefresh(loadCommunities)
 
 .map-head__actions {
   display: flex;
-  flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 10rpx;
+  margin-top: 2rpx;
 }
 
 .map-shell {

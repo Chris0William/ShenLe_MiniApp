@@ -110,32 +110,7 @@ const formCoordinate = computed(() => {
     return null
   return { lng, lat }
 })
-const formMapCenter = computed(() => formCoordinate.value || DEFAULT_MAP_CENTER)
-const formMapMarkers = computed(() => {
-  const point = formCoordinate.value
-  if (!point)
-    return []
-  return [{
-    id: 1,
-    latitude: point.lat,
-    longitude: point.lng,
-    iconPath: '/static/images/dot-red.png',
-    width: 26,
-    height: 26,
-    callout: {
-      content: form.name || '楼盘位置',
-      display: 'ALWAYS' as const,
-      fontSize: 12,
-      borderRadius: 8,
-      borderWidth: 0,
-      borderColor: '#126b4f',
-      bgColor: '#126b4f',
-      color: '#ffffff',
-      padding: 7,
-      textAlign: 'center' as const,
-    },
-  }]
-})
+const formLocationLabel = computed(() => form.address || (formCoordinate.value ? '已选择地图位置' : '还未选择位置'))
 
 function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
   return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
@@ -350,13 +325,17 @@ function previewImage(index: number) {
 }
 
 function chooseLocation() {
+  const latitude = toNumber(form.lat, DEFAULT_MAP_CENTER.lat)
+  const longitude = toNumber(form.lng, DEFAULT_MAP_CENTER.lng)
   uni.chooseLocation({
-    latitude: toNumber(form.lat),
-    longitude: toNumber(form.lng),
+    latitude,
+    longitude,
     success(res) {
       setCoordinate(res.longitude, res.latitude)
-      form.address = res.address || res.name || form.address
+      const labels = [res.name, res.address].filter(Boolean)
+      form.address = labels.length ? Array.from(new Set(labels)).join(' - ') : form.address
     },
+    fail() {},
   })
 }
 
@@ -365,27 +344,6 @@ function setCoordinate(longitude?: number, latitude?: number) {
     return
   form.lng = Number(longitude).toFixed(6)
   form.lat = Number(latitude).toFixed(6)
-}
-
-function onFormMapTap(event: any) {
-  const latitude = Number(event.detail?.latitude ?? event.latitude)
-  const longitude = Number(event.detail?.longitude ?? event.longitude)
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude))
-    return
-  setCoordinate(longitude, latitude)
-}
-
-function useCurrentLocation() {
-  uni.getLocation({
-    type: 'gcj02',
-    success(res) {
-      setCoordinate(res.longitude, res.latitude)
-      uni.showToast({ title: '已填入当前定位', icon: 'success' })
-    },
-    fail() {
-      uni.showToast({ title: '定位失败，请手动选点', icon: 'none' })
-    },
-  })
 }
 
 function buildPayload(): AddSlCommunityInput {
@@ -404,6 +362,46 @@ function buildPayload(): AddSlCommunityInput {
   }
 }
 
+function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId }) {
+  const index = list.value.findIndex(item => sameId(item.id, payload.id))
+  if (index < 0)
+    return
+
+  const current = list.value[index]
+  const coverIndex = form.imageIds.findIndex(id => sameId(id, form.coverImageId))
+  const coverUrlValue = coverIndex >= 0 ? form.imageUrls[coverIndex] : ''
+  const coverKey = String(payload.id)
+  if (coverUrlValue)
+    coverMap.value = { ...coverMap.value, [coverKey]: coverUrlValue }
+  else if (coverMap.value[coverKey]) {
+    const { [coverKey]: _removed, ...nextCoverMap } = coverMap.value
+    coverMap.value = nextCoverMap
+  }
+
+  list.value.splice(index, 1, {
+    ...current,
+    ...payload,
+    id: payload.id,
+    name: payload.name,
+    type: payload.type ?? current.type,
+    typeName: typeLabel(payload.type),
+    regionId: payload.regionId ?? null,
+    regionName: payload.regionId ? regionName(payload.regionId) : null,
+    address: payload.address ?? null,
+    lng: payload.lng ?? null,
+    lat: payload.lat ?? null,
+    orderNo: payload.orderNo ?? current.orderNo,
+    status: payload.status ?? current.status,
+    remark: payload.remark ?? null,
+    coverImageId: payload.coverImageId ?? null,
+    coverImage: coverUrlValue || current.coverImage,
+    images: form.imageIds.map((id, imageIndex) => ({
+      id,
+      url: form.imageUrls[imageIndex] || null,
+    })),
+  })
+}
+
 async function submitForm() {
   if (!form.name.trim()) {
     uni.showToast({ title: '请输入楼盘名称', icon: 'none' })
@@ -417,13 +415,17 @@ async function submitForm() {
   submitting.value = true
   try {
     const payload = buildPayload()
-    if (isEdit.value)
-      await updateCommunity({ ...payload, id: form.id })
-    else
+    if (isEdit.value) {
+      const updatePayload = { ...payload, id: form.id }
+      await updateCommunity(updatePayload)
+      patchCommunityListItem(updatePayload)
+    }
+    else {
       await addCommunity(payload)
+      await loadData(true)
+    }
     uni.showToast({ title: isEdit.value ? '更新成功' : '新增成功', icon: 'success' })
     formVisible.value = false
-    await loadData(true)
   }
   finally {
     submitting.value = false
@@ -596,43 +598,17 @@ onReachBottom(() => loadData())
             <text>详细地址</text>
             <input v-model="form.address" placeholder="街道门牌、楼盘位置">
           </view>
-          <view class="coord-grid">
-            <view class="form-row">
-              <text>经度</text>
-              <input v-model="form.lng" type="digit" placeholder="lng">
-            </view>
-            <view class="form-row">
-              <text>纬度</text>
-              <input v-model="form.lat" type="digit" placeholder="lat">
-            </view>
-          </view>
-          <view class="location-actions">
-            <wd-button plain block @click="chooseLocation">
-              地图搜索选点
-            </wd-button>
-            <wd-button plain block type="primary" @click="useCurrentLocation">
-              当前定位
-            </wd-button>
-          </view>
-          <view class="coord-map-card">
-            <view class="coord-map-card__head">
+          <view class="location-picker" @tap="chooseLocation">
+            <view class="location-picker__info">
+              <wd-icon name="location" size="22px" color="#126b4f" />
               <view>
-                <text>地图预览</text>
-                <text>{{ formCoordinate ? '点击地图微调点位' : '点击地图或使用定位补充坐标' }}</text>
+                <text>地图位置</text>
+                <text>{{ formLocationLabel }}</text>
               </view>
-              <wd-tag :type="formCoordinate ? 'success' : 'warning'" plain>
-                {{ formCoordinate ? '已维护' : '缺坐标' }}
-              </wd-tag>
             </view>
-            <map
-              class="coord-map"
-              :latitude="formMapCenter.lat"
-              :longitude="formMapCenter.lng"
-              :scale="15"
-              :markers="formMapMarkers"
-              show-location
-              @tap="onFormMapTap"
-            />
+            <wd-button size="small" type="primary" plain @click.stop="chooseLocation">
+              定位选点
+            </wd-button>
           </view>
           <view class="form-row form-row--images">
             <view class="image-head">
@@ -1020,52 +996,45 @@ onReachBottom(() => loadData())
   gap: 14rpx;
 }
 
-.location-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-bottom: 18rpx;
-}
-
-.coord-map-card {
-  margin-bottom: 18rpx;
-  padding: 16rpx;
-  border: 1rpx solid rgb(18 107 79 / 10%);
-  border-radius: 22rpx;
-  background: linear-gradient(180deg, #f8fbf4, #fff);
-}
-
-.coord-map-card__head {
+.location-picker {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16rpx;
-  margin-bottom: 14rpx;
+  gap: 18rpx;
+  margin-bottom: 18rpx;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid rgb(18 107 79 / 12%);
+  border-radius: 20rpx;
+  background: #f6fbf7;
 }
 
-.coord-map-card__head text:first-child,
-.coord-map-card__head text:last-child {
+.location-picker__info {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.location-picker__info text {
   display: block;
 }
 
-.coord-map-card__head text:first-child {
+.location-picker__info text:first-child {
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+.location-picker__info text:last-child {
+  max-width: 420rpx;
+  overflow: hidden;
   color: var(--sl-ink);
   font-size: 27rpx;
-  font-weight: 850;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.coord-map-card__head text:last-child {
-  margin-top: 6rpx;
-  color: var(--sl-muted);
-  font-size: 22rpx;
-}
-
-.coord-map {
-  width: 100%;
-  height: 320rpx;
-  overflow: hidden;
-  border-radius: 18rpx;
-}
 
 .segmented {
   display: inline-flex;

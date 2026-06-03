@@ -106,7 +106,7 @@ function openForm(item?: SlPropertyListOutput) {
 function removeItem(item: SlPropertyListOutput) {
   uni.showModal({
     title: '删除房源',
-    content: `确定删除「${item.title}」？删除后将从列表和销控中移除。`,
+    content: '确定删除 ' + (item.title || '该房源') + '？',
     confirmColor: '#c94832',
     success: async (res) => {
       if (!res.confirm)
@@ -135,9 +135,6 @@ onReachBottom(() => {
         <text class="admin-head__eyebrow">Admin · Property</text>
         <text class="admin-head__title">房源管理</text>
       </view>
-      <wd-button size="small" type="primary" icon="add" @click="openForm">
-        新增
-      </wd-button>
     </view>
 
     <view class="search sl-card">
@@ -189,7 +186,12 @@ onReachBottom(() => {
         <text class="result-head__title">房源列表</text>
         <text class="result-head__desc">下拉刷新 · 触底加载 · 状态快捷维护</text>
       </view>
-      <text class="result-head__total">{{ total }} 套</text>
+      <view class="result-head__actions">
+        <text class="result-head__total">{{ total }} 套</text>
+        <wd-button size="small" type="primary" icon="add" @click="openForm()">
+          新增
+        </wd-button>
+      </view>
     </view>
 
     <view class="list">
@@ -356,6 +358,7 @@ onReachBottom(() => {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
+  gap: 18rpx;
   margin: 30rpx 2rpx 18rpx;
 }
 
@@ -363,6 +366,13 @@ onReachBottom(() => {
 .result-head__desc,
 .result-head__total {
   display: block;
+}
+
+.result-head__actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12rpx;
 }
 
 .result-head__title {

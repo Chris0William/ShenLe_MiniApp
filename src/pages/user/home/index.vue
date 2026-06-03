@@ -71,12 +71,6 @@ function onFilterConfirm(nextFilters: PropertyFilterState) {
   load(true)
 }
 
-function resetFilters() {
-  filters.value = {}
-  filterVisible.value = false
-  load(true)
-}
-
 function clearAll() {
   keyword.value = ''
   selectedStatus.value = undefined
@@ -86,10 +80,6 @@ function clearAll() {
 
 function openDetail(item: SlPropertyListOutput) {
   uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(item.id)}` })
-}
-
-function openLogin() {
-  uni.navigateTo({ url: '/pages/common/login/index' })
 }
 
 onLoad(() => load(true))
@@ -109,9 +99,6 @@ onReachBottom(() => {
         <text class="home-top__eyebrow">ShenLe Rent</text>
         <text class="home-top__title">找一套刚刚好的房子</text>
       </view>
-      <wd-button size="small" plain @click="openLogin">
-        地图
-      </wd-button>
     </view>
 
     <view class="search sl-card">
@@ -187,7 +174,6 @@ onReachBottom(() => {
       :visible="filterVisible"
       :filters="filters"
       @confirm="onFilterConfirm"
-      @reset="resetFilters"
       @close="filterVisible = false"
     />
   </view>

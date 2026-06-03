@@ -4,7 +4,7 @@ import path from 'node:path'
 import process from 'node:process'
 
 interface ManifestType {
-  'plus'?: {
+  plus?: {
     distribute?: {
       plugins?: Record<string, any>
     }
@@ -14,6 +14,21 @@ interface ManifestType {
       plugins?: Record<string, any>
     }
   }
+  'mp-weixin'?: {
+    permission?: Record<string, any>
+    requiredPrivateInfos?: string[]
+  }
+}
+
+function readJson<T>(filePath: string): T | null {
+  if (!fs.existsSync(filePath))
+    return null
+  return JSON.parse(fs.readFileSync(filePath, 'utf8')) as T
+}
+
+function writeJson(filePath: string, data: unknown) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true })
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2))
 }
 
 export default function syncManifestPlugin(): Plugin {
@@ -25,42 +40,49 @@ export default function syncManifestPlugin(): Plugin {
       order: 'post',
       handler() {
         const srcManifestPath = path.resolve(process.cwd(), './src/manifest.json')
-        const distAppPath = path.resolve(process.cwd(), './dist/dev/app/manifest.json')
+        const srcManifest = readJson<ManifestType>(srcManifestPath)
+        if (!srcManifest)
+          return
 
         try {
-          // 读取源文件
-          const srcManifest = JSON.parse(fs.readFileSync(srcManifestPath, 'utf8')) as ManifestType
+          const distAppManifestPath = path.resolve(process.cwd(), './dist/dev/app/manifest.json')
+          const distAppManifest = readJson<ManifestType>(distAppManifestPath) || {}
+          const appPlusPlugins = srcManifest['app-plus']?.distribute?.plugins
 
-          // 确保目标目录存在
-          const distAppDir = path.dirname(distAppPath)
-          if (!fs.existsSync(distAppDir)) {
-            fs.mkdirSync(distAppDir, { recursive: true })
+          if (appPlusPlugins) {
+            if (!distAppManifest.plus)
+              distAppManifest.plus = {}
+            if (!distAppManifest.plus.distribute)
+              distAppManifest.plus.distribute = {}
+            distAppManifest.plus.distribute.plugins = appPlusPlugins
+            writeJson(distAppManifestPath, distAppManifest)
+            console.log('Manifest app-plus plugins synced')
           }
 
-          // 读取目标文件（如果存在）
-          let distManifest: ManifestType = {}
-          if (fs.existsSync(distAppPath)) {
-            distManifest = JSON.parse(fs.readFileSync(distAppPath, 'utf8'))
-          }
+          const mpWeixinConfig = srcManifest['mp-weixin']
+          if (mpWeixinConfig?.permission || mpWeixinConfig?.requiredPrivateInfos?.length) {
+            const mpWeixinTargets = [
+              path.resolve(process.cwd(), './dist/dev/mp-weixin/app.json'),
+              path.resolve(process.cwd(), './dist/build/mp-weixin/app.json'),
+            ]
 
-          // 如果源文件存在 plugins
-          if (srcManifest['app-plus']?.distribute?.plugins) {
-            // 确保目标文件中有必要的对象结构
-            if (!distManifest.plus)
-              distManifest.plus = {}
-            if (!distManifest.plus.distribute)
-              distManifest.plus.distribute = {}
+            for (const target of mpWeixinTargets) {
+              const appJson = readJson<Record<string, any>>(target)
+              if (!appJson)
+                continue
 
-            // 复制 plugins 内容
-            distManifest.plus.distribute.plugins = srcManifest['app-plus'].distribute.plugins
+              if (mpWeixinConfig.permission)
+                appJson.permission = mpWeixinConfig.permission
+              if (mpWeixinConfig.requiredPrivateInfos?.length)
+                appJson.requiredPrivateInfos = mpWeixinConfig.requiredPrivateInfos
 
-            // 写入更新后的内容
-            fs.writeFileSync(distAppPath, JSON.stringify(distManifest, null, 2))
-            console.log('✅ Manifest plugins 同步成功')
+              writeJson(target, appJson)
+              console.log(`Manifest mp-weixin config synced: ${target}`)
+            }
           }
         }
         catch (error) {
-          console.error('❌ 同步 manifest plugins 失败:', error)
+          console.error('Sync manifest config failed:', error)
         }
       },
     },

@@ -96,6 +96,15 @@
       "minified": true
     },
     "usingComponents": true,
+    "permission": {
+      "scope.userLocation": {
+        "desc": "用于将地图定位到你当前所在位置"
+      }
+    },
+    "requiredPrivateInfos": [
+      "getLocation",
+      "chooseLocation"
+    ],
     "optimization": {
       "subPackages": true
     },
