@@ -222,6 +222,26 @@ function hasVideoCover(item: SlCommunityOutput) {
   return isVideoMedia(coverMedia(item))
 }
 
+function coverPreviewMedia(item: SlCommunityOutput): CommunityMedia | null {
+  const media = coverMedia(item)
+  if (!media)
+    return null
+
+  const kind: MediaKind = isVideoMedia(media) ? 'video' : 'image'
+  const url = kind === 'video' ? resolveAssetUrl(media.url) : coverUrl(item)
+  if (!url || url.endsWith('/static/images/placeholder.png'))
+    return null
+
+  return {
+    id: media.id || item.coverImageId || item.id,
+    url,
+    kind,
+    fileName: media.fileName || item.name,
+    fileType: media.fileType,
+    suffix: media.suffix,
+  }
+}
+
 async function hydrateCoverImages(items: SlCommunityOutput[]) {
   const next: Record<string, string> = {}
   await Promise.all(items.map(async (item) => {
@@ -493,6 +513,34 @@ function previewMedia(index: number) {
   })
 }
 
+function previewCommunityCover(item: SlCommunityOutput) {
+  const media = coverPreviewMedia(item)
+  if (!media)
+    return
+
+  if (media.kind === 'video') {
+    const wxApi = (globalThis as any).wx
+    if (wxApi?.previewMedia) {
+      wxApi.previewMedia({
+        current: 0,
+        sources: [{ url: media.url, type: 'video' }],
+        fail: () => {
+          previewVideo.value = media
+        },
+      })
+      return
+    }
+
+    previewVideo.value = media
+    return
+  }
+
+  uni.previewImage({
+    current: media.url,
+    urls: [media.url],
+  })
+}
+
 function chooseLocation() {
   const latitude = toNumber(form.lat, DEFAULT_MAP_CENTER.lat)
   const longitude = toNumber(form.lng, DEFAULT_MAP_CENTER.lng)
@@ -675,8 +723,8 @@ onReachBottom(() => loadData())
     <view class="community-list">
       <view v-for="item in list" :key="String(item.id)" class="community-card sl-card">
         <view class="community-card__main">
-          <image v-if="coverUrl(item)" class="card-cover" :src="coverUrl(item)" mode="aspectFill" />
-          <view v-else-if="hasVideoCover(item)" class="card-cover card-cover--video">
+          <image v-if="coverUrl(item)" class="card-cover card-cover--tap" :src="coverUrl(item)" mode="aspectFill" @tap.stop="previewCommunityCover(item)" />
+          <view v-else-if="hasVideoCover(item)" class="card-cover card-cover--video card-cover--tap" @tap.stop="previewCommunityCover(item)">
             <wd-icon name="play-circle" size="26px" color="#fff" />
             <text>视频</text>
           </view>
@@ -928,6 +976,11 @@ onReachBottom(() => loadData())
   flex: 0 0 154rpx;
   border-radius: 20rpx;
   background: #eef4ed;
+}
+
+.card-cover--tap:active {
+  opacity: 0.86;
+  transform: scale(0.98);
 }
 
 .card-cover--video {
