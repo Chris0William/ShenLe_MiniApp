@@ -372,32 +372,6 @@ onLoad(async (query) => {
 
 <template>
   <view class="sl-page form-page">
-    <view class="form-hero sl-card">
-      <view>
-        <text class="form-hero__eyebrow">{{ isEdit ? 'Edit Property' : 'Create Property' }}</text>
-        <text class="form-hero__title">{{ form.title || '完善房源信息' }}</text>
-        <text class="form-hero__desc">楼盘、房间、价格、图片和标签都在一页完成，保存后可进入销控表。</text>
-      </view>
-      <wd-tag :type="isEdit ? 'warning' : 'success'" plain>
-        {{ isEdit ? '编辑' : '新增' }}
-      </wd-tag>
-    </view>
-
-    <view class="quick-summary sl-card">
-      <view class="summary-pill" :class="{ done: !!form.communityId && !!form.buildingId }">
-        <text class="summary-dot">1</text>
-        <text>归属</text>
-      </view>
-      <view class="summary-pill" :class="{ done: !!form.title && !!form.rentPrice }">
-        <text class="summary-dot">2</text>
-        <text>信息</text>
-      </view>
-      <view class="summary-pill" :class="{ done: form.imageIds.length > 0 }">
-        <text class="summary-dot">3</text>
-        <text>图片</text>
-      </view>
-    </view>
-
     <view v-if="loading" class="loading sl-card">
       房源加载中...
     </view>
@@ -588,76 +562,9 @@ onLoad(async (query) => {
   padding-bottom: calc(130rpx + env(safe-area-inset-bottom));
 }
 
-.form-hero,
-.quick-summary,
 .form-card,
 .loading {
   padding: 26rpx;
-}
-
-.form-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18rpx;
-}
-
-.form-hero__eyebrow,
-.form-hero__title,
-.form-hero__desc {
-  display: block;
-}
-
-.form-hero__eyebrow {
-  color: var(--sl-muted);
-  font-size: 23rpx;
-}
-
-.form-hero__title {
-  margin-top: 8rpx;
-  font-size: 36rpx;
-  font-weight: 850;
-}
-
-.form-hero__desc {
-  margin-top: 8rpx;
-  color: var(--sl-muted);
-  font-size: 24rpx;
-  line-height: 1.55;
-}
-
-.quick-summary {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 14rpx;
-  margin-top: 20rpx;
-}
-
-.summary-pill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  padding: 12rpx 10rpx;
-  border-radius: 999rpx;
-  background: #edf4ea;
-  color: var(--sl-muted);
-  font-size: 24rpx;
-  font-weight: 800;
-}
-
-.summary-pill.done {
-  background: rgb(18 107 79 / 12%);
-  color: var(--sl-brand);
-}
-
-.summary-dot {
-  width: 34rpx;
-  height: 34rpx;
-  border-radius: 999rpx;
-  background: #fff;
-  line-height: 34rpx;
-  text-align: center;
 }
 
 .form-content {

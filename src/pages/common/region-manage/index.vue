@@ -322,12 +322,6 @@ onPullDownRefresh(loadData)
 
 <template>
   <view class="sl-page region-page">
-    <view class="sl-hero">
-      <text class="sl-eyebrow">Geo Boundary</text>
-      <text class="sl-title">区域管理</text>
-      <text class="sl-subtitle">维护片区层级与中心点，地图找房、楼盘归属和统计看板都会依赖这里。</text>
-    </view>
-
     <view class="map-card sl-card">
       <map
         class="region-map"

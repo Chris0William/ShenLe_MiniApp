@@ -48,7 +48,6 @@ onLoad(loadStats)
 <template>
   <view class="sl-page">
     <view class="sl-hero home-hero">
-      <text class="sl-eyebrow">ShenLe Rental Console</text>
       <text class="sl-title">深乐租</text>
       <text class="sl-subtitle">把房源、楼栋、销控和出租状态收进一个更顺手的小程序。</text>
     </view>

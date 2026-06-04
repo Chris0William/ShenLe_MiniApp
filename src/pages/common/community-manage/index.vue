@@ -581,12 +581,6 @@ onReachBottom(() => loadData())
 
 <template>
   <view class="sl-page manage-page">
-    <view class="sl-hero manage-hero">
-      <text class="sl-eyebrow">Estate Library</text>
-      <text class="sl-title">楼盘管理</text>
-      <text class="sl-subtitle">维护区域、地址、坐标与楼栋入口，地图找房会直接使用这里的坐标。</text>
-    </view>
-
     <view class="toolbar sl-card">
       <view class="search-row">
         <input v-model="keyword" class="search-input" placeholder="搜索楼盘名称" confirm-type="search" @confirm="loadData(true)">
@@ -812,9 +806,6 @@ onReachBottom(() => loadData())
   padding-bottom: calc(150rpx + env(safe-area-inset-bottom));
 }
 
-.manage-hero {
-  margin-top: 10rpx;
-}
 
 .toolbar {
   margin-top: 22rpx;

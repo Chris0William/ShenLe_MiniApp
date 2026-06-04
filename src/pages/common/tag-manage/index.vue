@@ -213,12 +213,6 @@ onReachBottom(() => loadData())
 
 <template>
   <view class="sl-page tag-page">
-    <view class="sl-hero">
-      <text class="sl-eyebrow">House Vocabulary</text>
-      <text class="sl-title">标签管理</text>
-      <text class="sl-subtitle">管理房源标签、配套设施和特色卖点，表单与筛选都会复用这些字典。</text>
-    </view>
-
     <view class="toolbar sl-card">
       <view class="search-row">
         <input v-model="keyword" class="search-input" placeholder="搜索标签名称" confirm-type="search" @confirm="loadData(true)">

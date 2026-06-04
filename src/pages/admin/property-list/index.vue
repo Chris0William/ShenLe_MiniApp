@@ -123,7 +123,6 @@ onReachBottom(() => {
   <view class="sl-page property-page">
     <view class="admin-head">
       <view>
-        <text class="admin-head__eyebrow">Admin · Property</text>
         <text class="admin-head__title">房源管理</text>
       </view>
     </view>
@@ -217,15 +216,10 @@ onReachBottom(() => {
   padding-top: 28rpx;
 }
 
-.admin-head__eyebrow,
 .admin-head__title {
   display: block;
 }
 
-.admin-head__eyebrow {
-  color: var(--sl-muted);
-  font-size: 24rpx;
-}
 
 .admin-head__title {
   margin-top: 8rpx;

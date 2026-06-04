@@ -280,7 +280,6 @@ onPullDownRefresh(refreshCurrent)
           <wd-icon name="arrow-left" size="18px" color="#ffffff" />
         </view>
         <view class="sales-hero__text">
-          <text class="sales-hero__eyebrow">Admin Console</text>
           <text class="sales-hero__title">楼栋销控</text>
         </view>
         <wd-button size="small" plain custom-class="hero-refresh" @click="refreshCurrent">
@@ -483,15 +482,10 @@ onPullDownRefresh(refreshCurrent)
   flex: 1;
 }
 
-.sales-hero__eyebrow,
 .sales-hero__title {
   display: block;
 }
 
-.sales-hero__eyebrow {
-  color: rgb(255 255 255 / 72%);
-  font-size: 23rpx;
-}
 
 .sales-hero__title {
   margin-top: 6rpx;

@@ -332,7 +332,6 @@ onPullDownRefresh(reloadAll)
 <template>
   <view class="sl-page building-page">
     <view class="sl-hero">
-      <text class="sl-eyebrow">Building Stack</text>
       <text class="sl-title">楼栋管理</text>
       <text class="sl-subtitle">{{ headerTitle }} · 共 {{ list.length }} 栋，{{ totalRooms }} 套房源</text>
     </view>

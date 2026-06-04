@@ -124,7 +124,6 @@ onReachBottom(() => {
   <view class="sl-page community-page">
     <view class="head-card sl-card">
       <view>
-        <text class="head-card__eyebrow">Community Stock</text>
         <text class="head-card__title">{{ communityName || '楼盘房源' }}</text>
         <text class="head-card__desc">{{ canManage ? '查看并维护该楼盘下的所有房间。' : '查看该楼盘可出租房源，管理操作登录后显示。' }}</text>
       </view>
@@ -219,16 +218,11 @@ onReachBottom(() => {
   padding: 28rpx;
 }
 
-.head-card__eyebrow,
 .head-card__title,
 .head-card__desc {
   display: block;
 }
 
-.head-card__eyebrow {
-  color: var(--sl-muted);
-  font-size: 23rpx;
-}
 
 .head-card__title {
   margin-top: 8rpx;

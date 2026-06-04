@@ -62,7 +62,6 @@ onPullDownRefresh(load)
 <template>
   <view class="sl-page">
     <view class="sl-hero dashboard-hero">
-      <text class="sl-eyebrow">Admin Console</text>
       <text class="sl-title">今日房源状态</text>
       <text class="sl-subtitle">先把统计、房源列表和销控链路迁入新骨架。</text>
     </view>

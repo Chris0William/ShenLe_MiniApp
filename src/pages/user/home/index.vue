@@ -96,7 +96,6 @@ onReachBottom(() => {
   <view class="sl-page home-page">
     <view class="home-top">
       <view>
-        <text class="home-top__eyebrow">ShenLe Rent</text>
         <text class="home-top__title">找一套刚刚好的房子</text>
       </view>
     </view>
@@ -191,15 +190,10 @@ onReachBottom(() => {
   padding-top: 28rpx;
 }
 
-.home-top__eyebrow,
 .home-top__title {
   display: block;
 }
 
-.home-top__eyebrow {
-  color: var(--sl-muted);
-  font-size: 24rpx;
-}
 
 .home-top__title {
   margin-top: 8rpx;

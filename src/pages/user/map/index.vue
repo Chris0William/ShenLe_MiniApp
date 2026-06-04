@@ -267,7 +267,6 @@ onPullDownRefresh(loadCommunities)
   <view class="map-page">
     <view class="map-head">
       <view>
-        <text class="map-head__eyebrow">Map View</text>
         <text class="map-head__title">{{ '\u5730\u56fe\u627e\u623f' }}</text>
       </view>
       <view class="map-head__actions">
@@ -363,15 +362,10 @@ onPullDownRefresh(loadCommunities)
   padding-top: 18rpx;
 }
 
-.map-head__eyebrow,
 .map-head__title {
   display: block;
 }
 
-.map-head__eyebrow {
-  color: var(--sl-muted);
-  font-size: 24rpx;
-}
 
 .map-head__title {
   margin-top: 8rpx;
