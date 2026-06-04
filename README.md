@@ -70,12 +70,12 @@ pnpm lint src
 
 当前接口基础地址：
 
-- `https://fmcs.deerservice.com/api/sl/`
+- `https://shenzuyk.com`
 
 说明：
 
 - 前端请求里保留完整业务路由，如 `/api/slProperty/page`
-- baseURL 只负责域名和 `/api/sl/` 前缀
+- baseURL 只负责域名，业务路由由 `src/api` 里的 `/api/...` 路径提供
 - 接口封装主要在 `src/api`
 
 环境变量相关目录：

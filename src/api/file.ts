@@ -52,7 +52,8 @@ export function downloadFile(fileId: string | number): Promise<string> {
       url: getPreviewUrl(key),
       header: token ? { Authorization: `Bearer ${token}` } : {},
       success(res) {
-        if (res.statusCode === 200 && res.tempFilePath) {
+        const tempPath = res.tempFilePath || ''
+        if (res.statusCode === 200 && tempPath && !tempPath.toLowerCase().endsWith('.json')) {
           fileCache.set(key, res.tempFilePath)
           resolve(res.tempFilePath)
           return

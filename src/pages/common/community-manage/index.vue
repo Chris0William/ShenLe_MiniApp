@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AddSlCommunityInput, ShenLeId, SlCommunityOutput, SlRegionTreeOutput } from '@/types/shenle'
+import type { AddSlCommunityInput, ImageOutput, ShenLeId, SlCommunityOutput, SlRegionTreeOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, updateCommunity } from '@/api/community'
@@ -20,6 +20,17 @@ interface RegionOption {
   level: number
 }
 
+type MediaKind = 'image' | 'video' | 'file'
+
+interface CommunityMedia {
+  id: ShenLeId
+  url: string
+  kind: MediaKind
+  fileName?: string | null
+  fileType?: string | null
+  suffix?: string | null
+}
+
 interface CommunityForm {
   id: string
   name: string
@@ -31,8 +42,7 @@ interface CommunityForm {
   orderNo: string
   status: number
   remark: string
-  imageIds: ShenLeId[]
-  imageUrls: string[]
+  media: CommunityMedia[]
   coverImageId: string
 }
 
@@ -51,6 +61,7 @@ const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
 const uploading = ref(false)
+const previewVideo = ref<CommunityMedia | null>(null)
 
 const form = reactive<CommunityForm>({
   id: '',
@@ -63,8 +74,7 @@ const form = reactive<CommunityForm>({
   orderNo: '100',
   status: 0,
   remark: '',
-  imageIds: [],
-  imageUrls: [],
+  media: [],
   coverImageId: '',
 })
 
@@ -79,6 +89,8 @@ const statusOptions = [
   { value: 1, label: '禁用' },
 ] as const
 const DEFAULT_MAP_CENTER = { lng: 113.936, lat: 22.769 }
+const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
+const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
 
 const regionOptions = computed<RegionOption[]>(() => {
   const result: RegionOption[] = []
@@ -111,17 +123,76 @@ const formCoordinate = computed(() => {
   return { lng, lat }
 })
 const formLocationLabel = computed(() => form.address || (formCoordinate.value ? '已选择地图位置' : '还未选择位置'))
+const videoPreviewVisible = computed({
+  get: () => !!previewVideo.value,
+  set: (visible: boolean) => {
+    if (!visible)
+      previewVideo.value = null
+  },
+})
 
 function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
   return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
+}
+
+function extensionOf(value?: string | null) {
+  const clean = String(value || '').split('?')[0].toLowerCase()
+  const index = clean.lastIndexOf('.')
+  return index >= 0 ? clean.slice(index) : ''
+}
+
+function mediaKind(media?: Partial<ImageOutput> | null): MediaKind {
+  const fileType = String(media?.fileType || '').toLowerCase()
+  const suffix = extensionOf(media?.suffix || media?.url)
+  if (fileType.startsWith('video') || VIDEO_SUFFIXES.includes(suffix))
+    return 'video'
+  if (fileType.startsWith('image') || IMAGE_SUFFIXES.includes(suffix))
+    return 'image'
+  return 'file'
+}
+
+function isVideoMedia(media?: Partial<ImageOutput> | null) {
+  return mediaKind(media) === 'video'
+}
+
+function normalizeMedia(media: ImageOutput, url?: string): CommunityMedia {
+  return {
+    id: media.id,
+    url: url || resolveAssetUrl(media.url),
+    kind: mediaKind(media),
+    fileName: media.fileName,
+    fileType: media.fileType,
+    suffix: media.suffix,
+  }
+}
+
+function coverMedia(item: SlCommunityOutput): Partial<ImageOutput> | null {
+  const matched = item.images?.find(image => sameId(image.id, item.coverImageId))
+  if (matched)
+    return matched
+  if (item.coverImageId || item.coverImage) {
+    return {
+      id: item.coverImageId || 0,
+      url: item.coverImage,
+      suffix: extensionOf(item.coverImage),
+    }
+  }
+  return item.images?.[0] || null
 }
 
 function coverUrl(item: SlCommunityOutput) {
   const cached = coverMap.value[String(item.id)]
   if (cached)
     return cached
-  const url = item.coverImage || item.images?.[0]?.url
+  const media = coverMedia(item)
+  if (isVideoMedia(media))
+    return ''
+  const url = media?.url
   return url ? resolveAssetUrl(url) : ''
+}
+
+function hasVideoCover(item: SlCommunityOutput) {
+  return isVideoMedia(coverMedia(item))
 }
 
 async function hydrateCoverImages(items: SlCommunityOutput[]) {
@@ -129,6 +200,8 @@ async function hydrateCoverImages(items: SlCommunityOutput[]) {
   await Promise.all(items.map(async (item) => {
     const key = String(item.id)
     if (!item.coverImageId || coverMap.value[key])
+      return
+    if (hasVideoCover(item))
       return
     try {
       next[key] = await downloadFile(item.coverImageId)
@@ -222,37 +295,30 @@ function resetForm(item?: SlCommunityOutput) {
   form.orderNo = String(item?.orderNo ?? 100)
   form.status = item?.status ?? 0
   form.remark = item?.remark || ''
-  form.imageIds = item?.images?.map(image => image.id) || []
-  form.imageUrls = item?.images?.map(image => resolveAssetUrl(image.url)) || []
-  if (!form.imageIds.length && item?.coverImageId && item.coverImage) {
-    form.imageIds = [item.coverImageId]
-    form.imageUrls = [resolveAssetUrl(item.coverImage)]
+  form.media = item?.images?.map(image => normalizeMedia(image)) || []
+  if (!form.media.length && item?.coverImageId && item.coverImage) {
+    form.media = [normalizeMedia({
+      id: item.coverImageId,
+      url: item.coverImage,
+      suffix: extensionOf(item.coverImage),
+    })]
   }
-  form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
+  form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.media[0]?.id || '')
 }
 
 async function loadFormImages(item: SlCommunityOutput) {
   const images = item.images || []
-  form.imageIds = images.map(image => image.id)
-  form.imageUrls = await Promise.all(images.map(async (image) => {
-    try {
-      return await downloadFile(image.id)
-    }
-    catch {
-      return resolveAssetUrl(image.url)
-    }
-  }))
+  form.media = images.map(image => normalizeMedia(image))
 
-  if (!form.imageIds.length && item.coverImageId && item.coverImage) {
-    form.imageIds = [item.coverImageId]
-    try {
-      form.imageUrls = [await downloadFile(item.coverImageId)]
+  if (!form.media.length && item.coverImageId && item.coverImage) {
+    const cover = {
+      id: item.coverImageId,
+      url: item.coverImage,
+      suffix: extensionOf(item.coverImage),
     }
-    catch {
-      form.imageUrls = [resolveAssetUrl(item.coverImage)]
-    }
+    form.media = [normalizeMedia(cover)]
   }
-  form.coverImageId = item.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
+  form.coverImageId = item.coverImageId ? String(item.coverImageId) : String(form.media[0]?.id || '')
 }
 
 function openAdd() {
@@ -277,9 +343,9 @@ async function openEdit(item: SlCommunityOutput) {
 async function chooseImages() {
   if (uploading.value)
     return
-  const remain = 9 - form.imageIds.length
+  const remain = 9 - form.media.length
   if (remain <= 0) {
-    uni.showToast({ title: '最多上传 9 张', icon: 'none' })
+    uni.showToast({ title: '最多上传 9 个媒体', icon: 'none' })
     return
   }
   uni.chooseImage({
@@ -290,8 +356,7 @@ async function chooseImages() {
       try {
         for (const tempPath of res.tempFilePaths) {
           const file = await uploadFile(tempPath)
-          form.imageIds.push(file.id)
-          form.imageUrls.push(tempPath)
+          form.media.push(normalizeMedia({ ...file, fileType: file.fileType || 'image', suffix: file.suffix || extensionOf(tempPath) }, tempPath))
           if (!form.coverImageId)
             form.coverImageId = String(file.id)
         }
@@ -303,24 +368,72 @@ async function chooseImages() {
   })
 }
 
-function removeImage(index: number) {
-  const removed = form.imageIds[index]
-  form.imageIds.splice(index, 1)
-  form.imageUrls.splice(index, 1)
+async function chooseVideo() {
+  if (uploading.value)
+    return
+  if (form.media.length >= 9) {
+    uni.showToast({ title: '最多上传 9 个媒体', icon: 'none' })
+    return
+  }
+
+  uni.chooseVideo({
+    compressed: true,
+    success: async (res) => {
+      uploading.value = true
+      try {
+        const file = await uploadFile(res.tempFilePath)
+        form.media.push(normalizeMedia({ ...file, fileType: file.fileType || 'video', suffix: file.suffix || extensionOf(res.tempFilePath) }, res.tempFilePath))
+        if (!form.coverImageId)
+          form.coverImageId = String(file.id)
+      }
+      finally {
+        uploading.value = false
+      }
+    },
+  })
+}
+
+function removeMedia(index: number) {
+  const removed = form.media[index]?.id
+  form.media.splice(index, 1)
   if (sameId(form.coverImageId, removed))
-    form.coverImageId = String(form.imageIds[0] || '')
+    form.coverImageId = String(form.media[0]?.id || '')
 }
 
 function setCover(index: number) {
-  form.coverImageId = String(form.imageIds[index] || '')
+  form.coverImageId = String(form.media[index]?.id || '')
 }
 
-function previewImage(index: number) {
-  if (!form.imageUrls.length)
+function previewMedia(index: number) {
+  const media = form.media[index]
+  if (!media)
     return
+
+  const wxApi = (globalThis as any).wx
+  if (wxApi?.previewMedia) {
+    wxApi.previewMedia({
+      current: index,
+      sources: form.media.map(item => ({
+        url: item.url,
+        type: item.kind === 'video' ? 'video' : 'image',
+      })),
+      fail: () => {
+        if (media.kind === 'video')
+          previewVideo.value = media
+      },
+    })
+    return
+  }
+
+  if (media.kind === 'video') {
+    previewVideo.value = media
+    return
+  }
+
+  const imageUrls = form.media.filter(item => item.kind === 'image').map(item => item.url)
   uni.previewImage({
-    current: form.imageUrls[index],
-    urls: form.imageUrls,
+    current: media.url,
+    urls: imageUrls,
   })
 }
 
@@ -347,6 +460,7 @@ function setCoordinate(longitude?: number, latitude?: number) {
 }
 
 function buildPayload(): AddSlCommunityInput {
+  const mediaIds = form.media.map(item => item.id)
   return {
     name: form.name.trim(),
     type: form.type,
@@ -358,7 +472,7 @@ function buildPayload(): AddSlCommunityInput {
     status: form.status,
     remark: form.remark.trim() || undefined,
     coverImageId: form.coverImageId || undefined,
-    imageIds: form.imageIds,
+    imageIds: mediaIds,
   }
 }
 
@@ -368,8 +482,8 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
     return
 
   const current = list.value[index]
-  const coverIndex = form.imageIds.findIndex(id => sameId(id, form.coverImageId))
-  const coverUrlValue = coverIndex >= 0 ? form.imageUrls[coverIndex] : ''
+  const cover = form.media.find(item => sameId(item.id, form.coverImageId))
+  const coverUrlValue = cover && cover.kind === 'image' ? cover.url : ''
   const coverKey = String(payload.id)
   if (coverUrlValue)
     coverMap.value = { ...coverMap.value, [coverKey]: coverUrlValue }
@@ -395,9 +509,12 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
     remark: payload.remark ?? null,
     coverImageId: payload.coverImageId ?? null,
     coverImage: coverUrlValue || current.coverImage,
-    images: form.imageIds.map((id, imageIndex) => ({
-      id,
-      url: form.imageUrls[imageIndex] || null,
+    images: form.media.map(item => ({
+      id: item.id,
+      fileName: item.fileName,
+      fileType: item.fileType,
+      suffix: item.suffix,
+      url: item.url || null,
     })),
   })
 }
@@ -509,6 +626,10 @@ onReachBottom(() => loadData())
       <view v-for="item in list" :key="String(item.id)" class="community-card sl-card">
         <view class="community-card__main">
           <image v-if="coverUrl(item)" class="card-cover" :src="coverUrl(item)" mode="aspectFill" />
+          <view v-else-if="hasVideoCover(item)" class="card-cover card-cover--video">
+            <wd-icon name="play-circle" size="26px" color="#fff" />
+            <text>视频</text>
+          </view>
           <view class="card-content">
             <view class="card-head">
               <view>
@@ -612,21 +733,29 @@ onReachBottom(() => loadData())
           </view>
           <view class="form-row form-row--images">
             <view class="image-head">
-              <text>楼盘图片</text>
-              <text>{{ form.imageIds.length }}/9</text>
+              <text>楼盘媒体</text>
+              <text>{{ form.media.length }}/9</text>
             </view>
             <view class="image-grid">
-              <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
-                <image :src="url" mode="aspectFill" @tap="previewImage(index)" />
-                <text v-if="sameId(form.coverImageId, form.imageIds[index])" class="cover-badge">封面</text>
+              <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
+                <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
+                <view v-else class="video-tile" @tap="previewMedia(index)">
+                  <wd-icon name="play-circle" size="32px" color="#fff" />
+                  <text>{{ media.fileName || '视频' }}</text>
+                </view>
+                <text v-if="sameId(form.coverImageId, media.id)" class="cover-badge">封面</text>
                 <view class="image-actions">
                   <text @tap="setCover(index)">设封面</text>
-                  <text @tap="removeImage(index)">删除</text>
+                  <text @tap="removeMedia(index)">删除</text>
                 </view>
               </view>
               <view class="image-add" @tap="chooseImages">
                 <wd-icon name="add" size="24px" color="#126b4f" />
                 <text>{{ uploading ? '上传中' : '上传图片' }}</text>
+              </view>
+              <view class="image-add image-add--video" @tap="chooseVideo">
+                <wd-icon name="play-circle" size="24px" color="#126b4f" />
+                <text>上传视频</text>
               </view>
             </view>
           </view>
@@ -663,6 +792,16 @@ onReachBottom(() => loadData())
             保存
           </wd-button>
         </view>
+      </view>
+    </wd-popup>
+
+    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
+      <view class="video-preview">
+        <view class="video-preview__head">
+          <text>{{ previewVideo?.fileName || '视频预览' }}</text>
+          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideo = null" />
+        </view>
+        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay />
       </view>
     </wd-popup>
   </view>
@@ -746,6 +885,18 @@ onReachBottom(() => loadData())
   flex: 0 0 154rpx;
   border-radius: 20rpx;
   background: #eef4ed;
+}
+
+.card-cover--video {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  background: linear-gradient(135deg, #0f6a4c, #163b32);
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 800;
 }
 
 .card-content {
@@ -934,6 +1085,33 @@ onReachBottom(() => loadData())
   height: 100%;
 }
 
+.image-item--video {
+  background: linear-gradient(135deg, #173f34, #0f6a4c);
+}
+
+.video-tile {
+  display: flex;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12rpx;
+  padding: 18rpx;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 800;
+  text-align: center;
+}
+
+.video-tile text {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .cover-badge {
   position: absolute;
   top: 8rpx;
@@ -970,6 +1148,31 @@ onReachBottom(() => loadData())
   color: var(--sl-brand);
   font-size: 24rpx;
   font-weight: 800;
+}
+
+.image-add--video {
+  background: #edf7f2;
+}
+
+.video-preview {
+  background: #fff;
+}
+
+.video-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 24rpx;
+  color: var(--sl-ink);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.video-preview__player {
+  display: block;
+  width: 680rpx;
+  height: 420rpx;
+  background: #10261f;
 }
 
 .form-row--picker {

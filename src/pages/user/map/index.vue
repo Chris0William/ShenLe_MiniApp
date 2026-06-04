@@ -26,6 +26,10 @@ const locationReady = ref(false)
 const locating = ref(false)
 let mapContext: UniApp.MapContext | null = null
 
+type LocationSettingResult = {
+  authSetting?: Partial<Record<'scope.userLocation', boolean>>
+}
+
 const markers = computed(() => communities.value.map((item, index) => ({
   id: index + 1,
   latitude: Number(item.lat),
@@ -81,9 +85,9 @@ function requestLocation() {
 }
 
 function checkLocationSetting() {
-  return new Promise<UniApp.GetSettingSuccess>((resolve, reject) => {
+  return new Promise<LocationSettingResult>((resolve, reject) => {
     uni.getSetting({
-      success: resolve,
+      success: result => resolve(result as LocationSettingResult),
       fail: reject,
     })
   })
@@ -100,9 +104,9 @@ function authorizeLocation() {
 }
 
 function openLocationSetting() {
-  return new Promise<UniApp.OpenSettingSuccess>((resolve, reject) => {
+  return new Promise<LocationSettingResult>((resolve, reject) => {
     uni.openSetting({
-      success: resolve,
+      success: result => resolve(result as LocationSettingResult),
       fail: reject,
     })
   })

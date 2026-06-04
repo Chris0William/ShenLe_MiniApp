@@ -32,6 +32,8 @@ export interface ImageOutput {
   id: ShenLeId
   fileName?: string | null
   url?: string | null
+  fileType?: string | null
+  suffix?: string | null
 }
 
 export enum PropertyStatus {
