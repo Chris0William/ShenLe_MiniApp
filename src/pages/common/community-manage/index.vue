@@ -21,6 +21,7 @@ interface RegionOption {
 }
 
 type MediaKind = 'image' | 'video' | 'file'
+type UploadMediaKind = Extract<MediaKind, 'image' | 'video'>
 
 interface CommunityMedia {
   id: ShenLeId
@@ -45,6 +46,32 @@ interface CommunityForm {
   media: CommunityMedia[]
   coverImageId: string
 }
+
+interface LocalUploadMedia {
+  tempPath: string
+  kind: UploadMediaKind
+}
+
+interface WechatChooseMediaFile {
+  tempFilePath?: string
+  fileType?: UploadMediaKind
+}
+
+interface WechatChooseMediaResult {
+  tempFiles?: WechatChooseMediaFile[]
+}
+
+interface WechatChooseMediaOption {
+  count: number
+  mediaType: ('image' | 'video' | 'mix')[]
+  sourceType: ('album' | 'camera')[]
+  sizeType: string[]
+  maxDuration: number
+  success: (res: WechatChooseMediaResult) => void
+  fail?: (error: unknown) => void
+}
+
+type WechatChooseMedia = (option: WechatChooseMediaOption) => void
 
 const page = ref(1)
 const pageSize = 12
@@ -340,7 +367,51 @@ async function openEdit(item: SlCommunityOutput) {
   }
 }
 
-async function chooseImages() {
+function wxChooseMedia() {
+  return (globalThis as unknown as { wx?: { chooseMedia?: WechatChooseMedia } }).wx?.chooseMedia
+}
+
+function localMediaKind(tempPath: string, fileType?: UploadMediaKind): UploadMediaKind {
+  if (fileType === 'video')
+    return 'video'
+  if (fileType === 'image')
+    return 'image'
+  return VIDEO_SUFFIXES.includes(extensionOf(tempPath)) ? 'video' : 'image'
+}
+
+async function uploadSelectedMedia(files: LocalUploadMedia[]) {
+  if (!files.length)
+    return
+
+  uploading.value = true
+  try {
+    for (const item of files) {
+      const file = await uploadFile(item.tempPath)
+      form.media.push(normalizeMedia({ ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) }, item.tempPath))
+      if (!form.coverImageId)
+        form.coverImageId = String(file.id)
+    }
+  }
+  catch (error) {
+    console.error('upload community media failed', error)
+  }
+  finally {
+    uploading.value = false
+  }
+}
+
+function chooseImageFallback(remain: number) {
+  uni.chooseImage({
+    count: remain,
+    sizeType: ['compressed'],
+    success: (res) => {
+      const paths = Array.isArray(res.tempFilePaths) ? res.tempFilePaths : [res.tempFilePaths].filter(Boolean)
+      void uploadSelectedMedia(paths.map(tempPath => ({ tempPath, kind: 'image' })))
+    },
+  })
+}
+
+function chooseMedia() {
   if (uploading.value)
     return
   const remain = 9 - form.media.length
@@ -348,47 +419,32 @@ async function chooseImages() {
     uni.showToast({ title: '最多上传 9 个媒体', icon: 'none' })
     return
   }
-  uni.chooseImage({
-    count: remain,
-    sizeType: ['compressed'],
-    success: async (res) => {
-      uploading.value = true
-      try {
-        for (const tempPath of res.tempFilePaths) {
-          const file = await uploadFile(tempPath)
-          form.media.push(normalizeMedia({ ...file, fileType: file.fileType || 'image', suffix: file.suffix || extensionOf(tempPath) }, tempPath))
-          if (!form.coverImageId)
-            form.coverImageId = String(file.id)
-        }
-      }
-      finally {
-        uploading.value = false
-      }
-    },
-  })
-}
 
-async function chooseVideo() {
-  if (uploading.value)
-    return
-  if (form.media.length >= 9) {
-    uni.showToast({ title: '最多上传 9 个媒体', icon: 'none' })
+  const chooseMediaApi = wxChooseMedia()
+  if (!chooseMediaApi) {
+    chooseImageFallback(remain)
     return
   }
 
-  uni.chooseVideo({
-    compressed: true,
-    success: async (res) => {
-      uploading.value = true
-      try {
-        const file = await uploadFile(res.tempFilePath)
-        form.media.push(normalizeMedia({ ...file, fileType: file.fileType || 'video', suffix: file.suffix || extensionOf(res.tempFilePath) }, res.tempFilePath))
-        if (!form.coverImageId)
-          form.coverImageId = String(file.id)
-      }
-      finally {
-        uploading.value = false
-      }
+  chooseMediaApi({
+    count: remain,
+    mediaType: ['mix'],
+    sourceType: ['album', 'camera'],
+    sizeType: ['compressed'],
+    maxDuration: 60,
+    success: (res) => {
+      const files = (res.tempFiles || [])
+        .filter(item => !!item.tempFilePath)
+        .map(item => ({
+          tempPath: item.tempFilePath!,
+          kind: localMediaKind(item.tempFilePath!, item.fileType),
+        }))
+      void uploadSelectedMedia(files)
+    },
+    fail: (error) => {
+      const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
+      if (!message.includes('cancel'))
+        chooseImageFallback(remain)
     },
   })
 }
@@ -743,13 +799,9 @@ onReachBottom(() => loadData())
                   <text @tap="removeMedia(index)">删除</text>
                 </view>
               </view>
-              <view class="image-add" @tap="chooseImages">
+              <view class="image-add" @tap="chooseMedia">
                 <wd-icon name="add" size="24px" color="#126b4f" />
-                <text>{{ uploading ? '上传中' : '上传图片' }}</text>
-              </view>
-              <view class="image-add image-add--video" @tap="chooseVideo">
-                <wd-icon name="play-circle" size="24px" color="#126b4f" />
-                <text>上传视频</text>
+                <text>{{ uploading ? '上传中' : '上传媒体' }}</text>
               </view>
             </view>
           </view>
@@ -1139,10 +1191,6 @@ onReachBottom(() => loadData())
   color: var(--sl-brand);
   font-size: 24rpx;
   font-weight: 800;
-}
-
-.image-add--video {
-  background: #edf7f2;
 }
 
 .video-preview {
