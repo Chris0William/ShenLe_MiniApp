@@ -52,8 +52,6 @@ interface FormState {
   coverImageId: string
 }
 
-const steps = ['位置', '信息', '图片']
-const currentStep = ref(0)
 const isEdit = ref(false)
 const editId = ref('')
 const submitting = ref(false)
@@ -218,42 +216,32 @@ function previewImage(index: number) {
   })
 }
 
-function validateStep(step = currentStep.value) {
-  if (step === 0) {
-    if (!form.communityId) {
-      uni.showToast({ title: '请选择楼盘', icon: 'none' })
-      return false
-    }
-    if (!form.buildingId) {
-      uni.showToast({ title: '请选择楼栋', icon: 'none' })
-      return false
-    }
-    if (!form.floor) {
-      uni.showToast({ title: '请输入楼层', icon: 'none' })
-      return false
-    }
+function validateForm() {
+  if (!form.communityId) {
+    uni.showToast({ title: '请选择楼盘', icon: 'none' })
+    return false
   }
-  if (step === 1) {
-    if (!form.title.trim()) {
-      uni.showToast({ title: '请输入房源标题', icon: 'none' })
-      return false
-    }
-    if (!form.rentPrice) {
-      uni.showToast({ title: '请输入月租金', icon: 'none' })
-      return false
-    }
+  if (!form.buildingId) {
+    uni.showToast({ title: '请选择楼栋', icon: 'none' })
+    return false
+  }
+  if (!form.floor) {
+    uni.showToast({ title: '请输入楼层', icon: 'none' })
+    return false
+  }
+  if (!form.title.trim()) {
+    uni.showToast({ title: '请输入房源标题', icon: 'none' })
+    return false
+  }
+  if (!form.rentPrice) {
+    uni.showToast({ title: '请输入月租金', icon: 'none' })
+    return false
   }
   return true
 }
 
-function nextStep() {
-  if (!validateStep())
-    return
-  currentStep.value = Math.min(currentStep.value + 1, steps.length - 1)
-}
-
-function prevStep() {
-  currentStep.value = Math.max(currentStep.value - 1, 0)
+function cancel() {
+  uni.navigateBack()
 }
 
 function buildSubmitData(): AddSlPropertyInput {
@@ -288,7 +276,7 @@ function buildSubmitData(): AddSlPropertyInput {
 }
 
 async function submit() {
-  if (!validateStep(0) || !validateStep(1) || submitting.value)
+  if (!validateForm() || submitting.value)
     return
   submitting.value = true
   try {
@@ -388,17 +376,25 @@ onLoad(async (query) => {
       <view>
         <text class="form-hero__eyebrow">{{ isEdit ? 'Edit Property' : 'Create Property' }}</text>
         <text class="form-hero__title">{{ form.title || '完善房源信息' }}</text>
-        <text class="form-hero__desc">按楼盘、房间、价格和图片三步录入，保存后可进入销控表。</text>
+        <text class="form-hero__desc">楼盘、房间、价格、图片和标签都在一页完成，保存后可进入销控表。</text>
       </view>
       <wd-tag :type="isEdit ? 'warning' : 'success'" plain>
         {{ isEdit ? '编辑' : '新增' }}
       </wd-tag>
     </view>
 
-    <view class="steps sl-card">
-      <view v-for="(step, index) in steps" :key="step" class="step" :class="{ active: currentStep === index, done: currentStep > index }" @tap="currentStep = index">
-        <text class="step__dot">{{ currentStep > index ? '✓' : index + 1 }}</text>
-        <text class="step__text">{{ step }}</text>
+    <view class="quick-summary sl-card">
+      <view class="summary-pill" :class="{ done: !!form.communityId && !!form.buildingId }">
+        <text class="summary-dot">1</text>
+        <text>归属</text>
+      </view>
+      <view class="summary-pill" :class="{ done: !!form.title && !!form.rentPrice }">
+        <text class="summary-dot">2</text>
+        <text>信息</text>
+      </view>
+      <view class="summary-pill" :class="{ done: form.imageIds.length > 0 }">
+        <text class="summary-dot">3</text>
+        <text>图片</text>
       </view>
     </view>
 
@@ -406,8 +402,8 @@ onLoad(async (query) => {
       房源加载中...
     </view>
 
-    <scroll-view v-else scroll-y class="form-scroll">
-      <view v-if="currentStep === 0" class="form-card sl-card">
+    <view v-else class="form-content">
+      <view class="form-card sl-card">
         <text class="form-card__title">位置归属</text>
         <view class="form-item">
           <text class="form-label">楼盘 *</text>
@@ -441,7 +437,7 @@ onLoad(async (query) => {
         </view>
       </view>
 
-      <view v-if="currentStep === 1" class="form-card sl-card">
+      <view class="form-card sl-card">
         <text class="form-card__title">基础信息</text>
         <view class="form-item">
           <text class="form-label">标题 *</text>
@@ -537,7 +533,7 @@ onLoad(async (query) => {
         </view>
       </view>
 
-      <view v-if="currentStep === 2" class="form-card sl-card">
+      <view class="form-card sl-card">
         <text class="form-card__title">图片与标签</text>
         <view class="image-grid">
           <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
@@ -574,16 +570,13 @@ onLoad(async (query) => {
           <textarea v-model="form.remark" class="form-textarea" placeholder="仅管理端可见" />
         </view>
       </view>
-    </scroll-view>
+    </view>
 
     <view class="bottom-bar sl-safe-bottom">
-      <wd-button v-if="currentStep > 0" plain type="default" @click="prevStep">
-        上一步
+      <wd-button plain type="default" @click="cancel">
+        取消
       </wd-button>
-      <wd-button v-if="currentStep < steps.length - 1" block type="primary" @click="nextStep">
-        下一步
-      </wd-button>
-      <wd-button v-else block type="primary" :loading="submitting" @click="submit">
+      <wd-button block type="primary" :loading="submitting" @click="submit">
         {{ isEdit ? '保存修改' : '发布房源' }}
       </wd-button>
     </view>
@@ -596,7 +589,7 @@ onLoad(async (query) => {
 }
 
 .form-hero,
-.steps,
+.quick-summary,
 .form-card,
 .loading {
   padding: 26rpx;
@@ -630,49 +623,47 @@ onLoad(async (query) => {
   margin-top: 8rpx;
   color: var(--sl-muted);
   font-size: 24rpx;
+  line-height: 1.55;
 }
 
-.steps {
+.quick-summary {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14rpx;
   margin-top: 20rpx;
 }
 
-.step {
+.summary-pill {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8rpx;
-  color: var(--sl-muted);
-}
-
-.step.active,
-.step.done {
-  color: var(--sl-brand);
-  font-weight: 850;
-}
-
-.step__dot {
-  width: 40rpx;
-  height: 40rpx;
+  padding: 12rpx 10rpx;
   border-radius: 999rpx;
   background: #edf4ea;
-  line-height: 40rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.summary-pill.done {
+  background: rgb(18 107 79 / 12%);
+  color: var(--sl-brand);
+}
+
+.summary-dot {
+  width: 34rpx;
+  height: 34rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  line-height: 34rpx;
   text-align: center;
 }
 
-.step.active .step__dot,
-.step.done .step__dot {
-  background: var(--sl-brand);
-  color: #fff;
-}
-
-.step__text {
-  font-size: 25rpx;
-}
-
-.form-scroll {
+.form-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
   margin-top: 20rpx;
 }
 
