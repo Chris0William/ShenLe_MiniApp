@@ -485,22 +485,6 @@ function previewMedia(index: number) {
   if (!media)
     return
 
-  const wxApi = (globalThis as any).wx
-  if (wxApi?.previewMedia) {
-    wxApi.previewMedia({
-      current: index,
-      sources: form.media.map(item => ({
-        url: item.url,
-        type: item.kind === 'video' ? 'video' : 'image',
-      })),
-      fail: () => {
-        if (media.kind === 'video')
-          previewVideo.value = media
-      },
-    })
-    return
-  }
-
   if (media.kind === 'video') {
     previewVideo.value = media
     return
@@ -519,18 +503,6 @@ function previewCommunityCover(item: SlCommunityOutput) {
     return
 
   if (media.kind === 'video') {
-    const wxApi = (globalThis as any).wx
-    if (wxApi?.previewMedia) {
-      wxApi.previewMedia({
-        current: 0,
-        sources: [{ url: media.url, type: 'video' }],
-        fail: () => {
-          previewVideo.value = media
-        },
-      })
-      return
-    }
-
     previewVideo.value = media
     return
   }
