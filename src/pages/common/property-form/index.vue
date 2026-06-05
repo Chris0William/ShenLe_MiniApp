@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { AddSlPropertyInput, ShenLeId, SlBuildingOutput, SlCommunitySelectOutput, SlPropertyOutput, SlTagOutput } from '@/types/shenle'
+import type { AddSlPropertyInput, ImageOutput, ShenLeId, SlBuildingOutput, SlCommunitySelectOutput, SlPropertyImageOutput, SlPropertyOutput, SlTagOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { getBuildingList } from '@/api/building'
-import { getCommunityList } from '@/api/community'
+import { getCommunityDetail, getCommunityList } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
 import { addProperty, getPropertyDetail, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
@@ -47,16 +47,62 @@ interface FormState {
   status: number
   tagIds: ShenLeId[]
   facilityIds: ShenLeId[]
-  imageIds: ShenLeId[]
-  imageUrls: string[]
+  media: PropertyMedia[]
   coverImageId: string
 }
+
+type MediaKind = 'image' | 'video' | 'file'
+type UploadMediaKind = Extract<MediaKind, 'image' | 'video'>
+type MediaSource = 'property' | 'community' | 'upload'
+
+interface PropertyMedia {
+  id: ShenLeId
+  url: string
+  remoteUrl?: string | null
+  kind: MediaKind
+  fileName?: string | null
+  fileType?: string | null
+  suffix?: string | null
+  source?: MediaSource
+  originId?: ShenLeId
+}
+
+interface LocalUploadMedia {
+  tempPath: string
+  kind: UploadMediaKind
+}
+
+interface WechatChooseMediaFile {
+  tempFilePath?: string
+  fileType?: UploadMediaKind
+}
+
+interface WechatChooseMediaResult {
+  tempFiles?: WechatChooseMediaFile[]
+}
+
+interface WechatChooseMediaOption {
+  count: number
+  mediaType: ('image' | 'video' | 'mix')[]
+  sourceType: ('album' | 'camera')[]
+  sizeType: string[]
+  maxDuration: number
+  success: (res: WechatChooseMediaResult) => void
+  fail?: (error: unknown) => void
+}
+
+type WechatChooseMedia = (option: WechatChooseMediaOption) => void
 
 const isEdit = ref(false)
 const editId = ref('')
 const submitting = ref(false)
 const loading = ref(false)
 const uploading = ref(false)
+const communityMediaLoading = ref(false)
+const communityMediaVisible = ref(false)
+const communityMediaPool = ref<PropertyMedia[]>([])
+const selectedCommunityMediaIds = ref<string[]>([])
+const previewVideo = ref<PropertyMedia | null>(null)
 const communities = ref<SlCommunitySelectOutput[]>([])
 const buildings = ref<SlBuildingOutput[]>([])
 const houseTags = ref<SlTagOutput[]>([])
@@ -89,8 +135,7 @@ const form = reactive<FormState>({
   status: 0,
   tagIds: [],
   facilityIds: [],
-  imageIds: [],
-  imageUrls: [],
+  media: [],
   coverImageId: '',
 })
 
@@ -98,6 +143,17 @@ const communityNames = computed(() => communities.value.map(item => item.name))
 const buildingNames = computed(() => buildings.value.map(item => item.name))
 const selectedCommunity = computed(() => communities.value[communityPickerIdx.value])
 const selectedBuilding = computed(() => buildings.value[buildingPickerIdx.value])
+const effectiveCoverId = computed(() => String(form.coverImageId || form.media[0]?.id || ''))
+const videoPreviewVisible = computed({
+  get: () => !!previewVideo.value,
+  set: (visible: boolean) => {
+    if (!visible)
+      previewVideo.value = null
+  },
+})
+
+const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
+const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
 
 function toNumber(value: string, fallback = 0) {
   const num = Number(value)
@@ -106,6 +162,60 @@ function toNumber(value: string, fallback = 0) {
 
 function idEquals(left?: ShenLeId | string, right?: ShenLeId | string) {
   return left !== undefined && right !== undefined && String(left) === String(right)
+}
+
+function extensionOf(value?: string | null) {
+  const clean = String(value || '').split('?')[0].toLowerCase()
+  const index = clean.lastIndexOf('.')
+  return index >= 0 ? clean.slice(index) : ''
+}
+
+function mediaKind(media?: Partial<ImageOutput> | null): MediaKind {
+  const fileType = String(media?.fileType || '').toLowerCase()
+  const suffix = extensionOf(media?.suffix || media?.url)
+  if (fileType.startsWith('video') || VIDEO_SUFFIXES.includes(suffix))
+    return 'video'
+  if (fileType.startsWith('image') || IMAGE_SUFFIXES.includes(suffix))
+    return 'image'
+  return 'file'
+}
+
+function normalizeMedia(media: ImageOutput | SlPropertyImageOutput, url?: string, source: MediaSource = 'property'): PropertyMedia {
+  const remoteUrl = resolveAssetUrl(media.url)
+  return {
+    id: media.id,
+    url: url || remoteUrl,
+    remoteUrl,
+    kind: mediaKind(media),
+    fileName: media.fileName,
+    fileType: media.fileType,
+    suffix: media.suffix,
+    source,
+  }
+}
+
+function sameMediaUrl(left?: string | null, right?: string | null) {
+  const normalize = (value?: string | null) => resolveAssetUrl(value).split('?')[0]
+  return !!left && !!right && normalize(left) === normalize(right)
+}
+
+function sameMediaAsset(left: PropertyMedia, right: PropertyMedia) {
+  const leftUrls = [left.remoteUrl, left.url].filter(Boolean)
+  const rightUrls = [right.remoteUrl, right.url].filter(Boolean)
+  return leftUrls.some(leftUrl => rightUrls.some(rightUrl => sameMediaUrl(leftUrl, rightUrl)))
+}
+
+function wxChooseMedia() {
+  return (globalThis as unknown as { wx?: { chooseMedia?: WechatChooseMedia } }).wx?.chooseMedia
+    || (uni as unknown as { chooseMedia?: WechatChooseMedia }).chooseMedia
+}
+
+function localMediaKind(tempPath: string, fileType?: UploadMediaKind): UploadMediaKind {
+  if (fileType === 'video')
+    return 'video'
+  if (fileType === 'image')
+    return 'image'
+  return VIDEO_SUFFIXES.includes(extensionOf(tempPath)) ? 'video' : 'image'
 }
 
 function optionIndex(options: readonly { value: string, label: string }[], value?: string | null) {
@@ -144,6 +254,8 @@ async function onCommunityChange(event: any) {
   communityPickerIdx.value = idx
   form.communityId = String(communities.value[idx]?.id || '')
   form.buildingId = ''
+  communityMediaPool.value = []
+  selectedCommunityMediaIds.value = []
   await loadBuildings(form.communityId)
 }
 
@@ -168,52 +280,181 @@ function hasId(list: ShenLeId[], id: ShenLeId) {
   return list.some(item => idEquals(item, id))
 }
 
-async function chooseImages() {
-  const remain = 9 - form.imageIds.length
-  if (remain <= 0) {
-    uni.showToast({ title: '最多上传 9 张', icon: 'none' })
+async function uploadSelectedMedia(files: LocalUploadMedia[]) {
+  if (!files.length)
     return
+
+  uploading.value = true
+  try {
+    for (const item of files) {
+      const file = await uploadFile(item.tempPath)
+      form.media.push(normalizeMedia({ ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) }, item.tempPath, 'upload'))
+      if (!form.coverImageId)
+        form.coverImageId = String(file.id)
+    }
   }
+  finally {
+    uploading.value = false
+  }
+}
+
+function chooseImageFallback(remain: number) {
   uni.chooseImage({
     count: remain,
     sizeType: ['compressed'],
-    success: async (res) => {
-      uploading.value = true
-      try {
-        for (const tempPath of res.tempFilePaths) {
-          const file = await uploadFile(tempPath)
-          form.imageIds.push(file.id)
-          form.imageUrls.push(tempPath)
-          if (!form.coverImageId)
-            form.coverImageId = String(file.id)
-        }
-      }
-      finally {
-        uploading.value = false
-      }
+    success: (res) => {
+      const paths = Array.isArray(res.tempFilePaths) ? res.tempFilePaths : []
+      void uploadSelectedMedia(paths.map(tempPath => ({ tempPath, kind: 'image' })))
     },
   })
 }
 
-function removeImage(index: number) {
-  const removed = form.imageIds[index]
-  form.imageIds.splice(index, 1)
-  form.imageUrls.splice(index, 1)
+function chooseMedia() {
+  const remain = 9 - form.media.length
+  if (remain <= 0) {
+    uni.showToast({ title: 'Media limit is 9', icon: 'none' })
+    return
+  }
+
+  const chooseMediaApi = wxChooseMedia()
+  if (!chooseMediaApi) {
+    chooseImageFallback(remain)
+    return
+  }
+
+  chooseMediaApi({
+    count: remain,
+    mediaType: ['mix'],
+    sourceType: ['album', 'camera'],
+    sizeType: ['compressed'],
+    maxDuration: 60,
+    success: (res) => {
+      const files = (res.tempFiles || [])
+        .filter(item => !!item.tempFilePath)
+        .map(item => ({
+          tempPath: item.tempFilePath!,
+          kind: localMediaKind(item.tempFilePath!, item.fileType),
+        }))
+      void uploadSelectedMedia(files)
+    },
+    fail: (error) => {
+      const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
+      if (!message.includes('cancel'))
+        chooseImageFallback(remain)
+    },
+  })
+}
+
+function removeMedia(index: number) {
+  const removed = form.media[index]?.id
+  form.media.splice(index, 1)
   if (idEquals(form.coverImageId, removed))
-    form.coverImageId = String(form.imageIds[0] || '')
+    form.coverImageId = String(form.media[0]?.id || '')
 }
 
 function setCover(index: number) {
-  form.coverImageId = String(form.imageIds[index] || '')
+  form.coverImageId = String(form.media[index]?.id || '')
 }
 
-function previewImage(index: number) {
-  if (!form.imageUrls.length)
+function isCoverMedia(media: PropertyMedia) {
+  return idEquals(effectiveCoverId.value, media.id)
+}
+
+function previewMedia(index: number) {
+  const media = form.media[index]
+  if (!media)
     return
+
+  if (media.kind === 'video') {
+    previewVideo.value = media
+    return
+  }
+
+  const imageUrls = form.media.filter(item => item.kind === 'image').map(item => item.url)
   uni.previewImage({
-    current: form.imageUrls[index],
-    urls: form.imageUrls,
+    current: media.url,
+    urls: imageUrls,
   })
+}
+
+async function openCommunityMediaPicker() {
+  if (!form.communityId) {
+    uni.showToast({ title: 'Select community first', icon: 'none' })
+    return
+  }
+  communityMediaVisible.value = true
+  selectedCommunityMediaIds.value = []
+  await loadCommunityMediaPool()
+}
+
+async function loadCommunityMediaPool() {
+  if (!form.communityId)
+    return
+
+  communityMediaLoading.value = true
+  try {
+    const community = await getCommunityDetail(form.communityId)
+    const medias = (community.images || []).map(item => normalizeMedia(item, resolveAssetUrl(item.url), 'community'))
+    if (community.coverImageId && community.coverImage) {
+      const cover = normalizeMedia({
+        id: community.coverImageId,
+        url: community.coverImage,
+        fileType: community.coverFileType,
+        suffix: community.coverSuffix || extensionOf(community.coverImage),
+      }, resolveAssetUrl(community.coverImage), 'community')
+
+      if (!medias.some(media => idEquals(media.id, cover.id) || sameMediaAsset(media, cover)))
+        medias.unshift(cover)
+    }
+    communityMediaPool.value = medias
+  }
+  finally {
+    communityMediaLoading.value = false
+  }
+}
+
+function isCommunityMediaAdded(media: PropertyMedia) {
+  return form.media.some(item =>
+    idEquals(item.id, media.id)
+    || idEquals(item.originId, media.id)
+    || sameMediaAsset(item, media),
+  )
+}
+
+function isCommunityMediaSelected(media: PropertyMedia) {
+  return selectedCommunityMediaIds.value.some(id => idEquals(id, media.id))
+}
+
+function toggleCommunityMedia(media: PropertyMedia) {
+  if (isCommunityMediaAdded(media))
+    return
+  const id = String(media.id)
+  const index = selectedCommunityMediaIds.value.findIndex(item => idEquals(item, id))
+  if (index >= 0)
+    selectedCommunityMediaIds.value.splice(index, 1)
+  else
+    selectedCommunityMediaIds.value.push(id)
+}
+
+function confirmCommunityMedia() {
+  const remain = 9 - form.media.length
+  if (remain <= 0) {
+    uni.showToast({ title: 'Media limit is 9', icon: 'none' })
+    return
+  }
+
+  const selected = communityMediaPool.value
+    .filter(item => selectedCommunityMediaIds.value.some(id => idEquals(id, item.id)))
+    .slice(0, remain)
+
+  for (const media of selected) {
+    form.media.push({ ...media, source: 'community', originId: media.id })
+    if (!form.coverImageId)
+      form.coverImageId = String(media.id)
+  }
+
+  communityMediaVisible.value = false
+  selectedCommunityMediaIds.value = []
 }
 
 function validateForm() {
@@ -245,6 +486,7 @@ function cancel() {
 }
 
 function buildSubmitData(): AddSlPropertyInput {
+  const mediaIds = form.media.map(item => item.id)
   return {
     title: form.title.trim(),
     communityId: form.communityId,
@@ -268,10 +510,13 @@ function buildSubmitData(): AddSlPropertyInput {
     description: form.description || undefined,
     remark: form.remark || undefined,
     status: form.status,
-    coverImageId: form.coverImageId || undefined,
+    coverImageId: effectiveCoverId.value || undefined,
     tagIds: form.tagIds,
     facilityIds: form.facilityIds,
-    images: form.imageIds.map(id => ({ fileId: id, fileType: 'image' })),
+    images: mediaIds.map((id) => {
+      const media = form.media.find(item => idEquals(item.id, id))
+      return { fileId: id, fileType: media?.fileType || media?.kind || 'image' }
+    }),
   }
 }
 
@@ -321,25 +566,26 @@ async function fillDetail(detail: SlPropertyOutput) {
   form.status = detail.status ?? 0
   form.tagIds = detail.tags?.map(item => item.id) || []
   form.facilityIds = detail.facilities?.map(item => item.id) || []
-  form.imageIds = detail.images?.map(item => item.id) || []
-  form.imageUrls = await Promise.all((detail.images || []).map(async (image) => {
-    try {
-      return await downloadFile(image.id)
+  form.media = await Promise.all((detail.images || []).map(async (image) => {
+    const kind = mediaKind(image)
+    if (kind === 'image') {
+      try {
+        return normalizeMedia(image, await downloadFile(image.id))
+      }
+      catch {}
     }
-    catch {
-      return resolveAssetUrl(image.url)
-    }
+    return normalizeMedia(image)
   }))
-  if (!form.imageIds.length && detail.coverImageId && detail.coverImage) {
-    form.imageIds = [detail.coverImageId]
-    try {
-      form.imageUrls = [await downloadFile(detail.coverImageId)]
+  if (!form.media.length && detail.coverImageId && detail.coverImage) {
+    const cover = {
+      id: detail.coverImageId,
+      url: detail.coverImage,
+      fileType: detail.coverFileType,
+      suffix: detail.coverSuffix || extensionOf(detail.coverImage),
     }
-    catch {
-      form.imageUrls = [resolveAssetUrl(detail.coverImage)]
-    }
+    form.media = [normalizeMedia(cover)]
   }
-  form.coverImageId = detail.coverImageId ? String(detail.coverImageId) : String(form.imageIds[0] || '')
+  form.coverImageId = detail.coverImageId ? String(detail.coverImageId) : String(form.media[0]?.id || '')
 }
 
 onLoad(async (query) => {
@@ -508,19 +754,36 @@ onLoad(async (query) => {
       </view>
 
       <view class="form-card sl-card">
-        <text class="form-card__title">图片与标签</text>
+        <view class="media-head">
+          <text class="form-card__title">媒体与标签</text>
+          <text class="media-count">{{ form.media.length }}/9</text>
+        </view>
+        <view class="media-actions">
+          <wd-button size="small" plain @click="openCommunityMediaPicker">
+            从楼盘选择
+          </wd-button>
+          <wd-button size="small" type="primary" plain :loading="uploading" @click="chooseMedia">
+            {{ uploading ? '上传中' : '上传媒体' }}
+          </wd-button>
+        </view>
         <view class="image-grid">
-          <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
-            <image :src="url" mode="aspectFill" @tap="previewImage(index)" />
-            <text v-if="idEquals(form.coverImageId, form.imageIds[index])" class="cover-badge">封面</text>
-            <view class="image-actions">
-              <text @tap="setCover(index)">设封面</text>
-              <text @tap="removeImage(index)">删除</text>
+          <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
+            <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
+            <view v-else class="video-tile" @tap="previewMedia(index)">
+              <wd-icon name="play-circle" size="32px" color="#fff" />
+              <text>{{ media.fileName || '视频' }}</text>
+            </view>
+            <text v-if="isCoverMedia(media)" class="cover-badge">封面</text>
+            <view class="image-remove" @tap.stop="removeMedia(index)">
+              <wd-icon name="close" size="14px" color="#fff" />
+            </view>
+            <view v-if="!isCoverMedia(media)" class="image-cover-action" @tap.stop="setCover(index)">
+              设为封面
             </view>
           </view>
-          <view class="image-add" @tap="chooseImages">
+          <view class="image-add" @tap="chooseMedia">
             <wd-icon name="add" size="24px" color="#126b4f" />
-            <text>{{ uploading ? '上传中' : '上传图片' }}</text>
+            <text>{{ uploading ? '上传中' : '上传媒体' }}</text>
           </view>
         </view>
         <view v-if="houseTags.length" class="tag-section">
@@ -545,6 +808,59 @@ onLoad(async (query) => {
         </view>
       </view>
     </view>
+
+    <wd-popup v-model="communityMediaVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
+      <view class="media-picker">
+        <view class="media-picker__head">
+          <view>
+            <text class="media-picker__title">楼盘媒体池</text>
+            <text class="media-picker__sub">选择图片或视频加入当前房源</text>
+          </view>
+          <wd-icon name="close" size="22px" color="#72817b" @click="communityMediaVisible = false" />
+        </view>
+        <view v-if="communityMediaLoading" class="media-picker__empty">
+          媒体加载中...
+        </view>
+        <view v-else-if="!communityMediaPool.length" class="media-picker__empty">
+          当前楼盘暂无媒体
+        </view>
+        <view v-else class="media-picker__grid">
+          <view
+            v-for="media in communityMediaPool"
+            :key="String(media.id)"
+            class="pool-media"
+            :class="{ selected: isCommunityMediaSelected(media), disabled: isCommunityMediaAdded(media) }"
+            @tap="toggleCommunityMedia(media)"
+          >
+            <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
+            <view v-else class="pool-media__video">
+              <wd-icon name="play-circle" size="30px" color="#fff" />
+              <text>视频</text>
+            </view>
+            <text v-if="isCommunityMediaAdded(media)" class="pool-media__badge">已加入</text>
+            <text v-else-if="isCommunityMediaSelected(media)" class="pool-media__badge">已选</text>
+          </view>
+        </view>
+        <view class="media-picker__actions">
+          <wd-button plain block @click="communityMediaVisible = false">
+            取消
+          </wd-button>
+          <wd-button block type="primary" @click="confirmCommunityMedia">
+            加入房源
+          </wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
+    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
+      <view class="video-preview" @tap.stop>
+        <view class="video-preview__head">
+          <text>{{ previewVideo?.fileName || '视频预览' }}</text>
+          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideo = null" />
+        </view>
+        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay />
+      </view>
+    </wd-popup>
 
     <view class="bottom-bar sl-safe-bottom">
       <wd-button plain type="default" @click="cancel">
@@ -671,6 +987,31 @@ onLoad(async (query) => {
   gap: 12rpx;
 }
 
+.media-head,
+.media-actions,
+.media-picker__head,
+.media-picker__actions {
+  display: flex;
+  align-items: center;
+}
+
+.media-head,
+.media-picker__head {
+  justify-content: space-between;
+}
+
+.media-count,
+.media-picker__sub,
+.media-picker__empty {
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.media-actions {
+  gap: 14rpx;
+  margin-bottom: 18rpx;
+}
+
 .image-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -691,31 +1032,72 @@ onLoad(async (query) => {
   height: 100%;
 }
 
+.image-item--video {
+  background: linear-gradient(135deg, #173f34, #0f6a4c);
+}
+
+.video-tile,
+.pool-media__video {
+  display: flex;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  padding: 16rpx;
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 800;
+  text-align: center;
+}
+
+.video-tile text {
+  display: -webkit-box;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .cover-badge {
   position: absolute;
   top: 8rpx;
   left: 8rpx;
   padding: 4rpx 10rpx;
   border-radius: 999rpx;
-  background: var(--sl-brand);
+  background: #2f7ef7;
   color: #fff;
   font-size: 20rpx;
+  font-weight: 800;
 }
 
-.image-actions {
+.image-remove {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  display: flex;
+  width: 34rpx;
+  height: 34rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgb(15 35 28 / 66%);
+}
+
+.image-cover-action {
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
   display: flex;
-  justify-content: space-around;
+  align-items: center;
+  justify-content: center;
+  padding: 10rpx 0;
   background: rgb(0 0 0 / 48%);
   color: #fff;
   font-size: 20rpx;
-}
-
-.image-actions text {
-  padding: 8rpx 0;
+  font-weight: 800;
 }
 
 .image-add {
@@ -731,6 +1113,101 @@ onLoad(async (query) => {
 
 .tag-section {
   margin-top: 24rpx;
+}
+
+.media-picker {
+  max-height: 82vh;
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+.media-picker__title {
+  display: block;
+  color: var(--sl-ink);
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.media-picker__sub {
+  display: block;
+  margin-top: 8rpx;
+}
+
+.media-picker__empty {
+  padding: 64rpx 20rpx;
+  text-align: center;
+}
+
+.media-picker__grid {
+  display: grid;
+  max-height: 52vh;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14rpx;
+  margin-top: 24rpx;
+  overflow-y: auto;
+}
+
+.pool-media {
+  position: relative;
+  height: 176rpx;
+  overflow: hidden;
+  border: 3rpx solid transparent;
+  border-radius: 18rpx;
+  background: #f3f7f1;
+}
+
+.pool-media image {
+  width: 100%;
+  height: 100%;
+}
+
+.pool-media.selected {
+  border-color: var(--sl-brand);
+}
+
+.pool-media.disabled {
+  opacity: .52;
+}
+
+.pool-media__video {
+  background: linear-gradient(135deg, #173f34, #0f6a4c);
+}
+
+.pool-media__badge {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: var(--sl-brand);
+  color: #fff;
+  font-size: 20rpx;
+}
+
+.media-picker__actions {
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.video-preview {
+  background: #fff;
+}
+
+.video-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 24rpx;
+  color: var(--sl-ink);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.video-preview__player {
+  display: block;
+  width: 680rpx;
+  height: 420rpx;
+  background: #10261f;
 }
 
 .loading {

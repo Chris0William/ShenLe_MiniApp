@@ -62,6 +62,7 @@ const communityPickerIndex = computed(() => Math.max(0, communities.value.findIn
 const formCommunityIndex = computed(() => Math.max(0, communities.value.findIndex(item => String(item.id) === String(form.communityId))))
 const headerTitle = computed(() => selectedCommunity.value?.name || communityNameFromQuery.value || '请选择楼盘')
 const totalRooms = computed(() => list.value.reduce((sum, item) => sum + (item.propertyCount || 0), 0))
+const effectiveCoverId = computed(() => String(form.coverImageId || form.imageIds[0] || ''))
 
 function toNumber(value: string, fallback?: number) {
   if (value === '')
@@ -252,6 +253,10 @@ function setCover(index: number) {
   form.coverImageId = String(form.imageIds[index] || '')
 }
 
+function isCoverImage(index: number) {
+  return idEquals(effectiveCoverId.value, form.imageIds[index])
+}
+
 function previewImage(index: number) {
   if (!form.imageUrls.length)
     return
@@ -269,7 +274,7 @@ function buildPayload(): AddSlBuildingInput {
     orderNo: toNumber(form.orderNo, 100),
     status: form.status,
     remark: form.remark.trim() || undefined,
-    coverImageId: form.coverImageId || undefined,
+    coverImageId: effectiveCoverId.value || null,
     imageIds: form.imageIds,
   }
 }
@@ -450,10 +455,12 @@ onPullDownRefresh(reloadAll)
             <view class="image-grid">
               <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
                 <image :src="url" mode="aspectFill" @tap="previewImage(index)" />
-                <text v-if="idEquals(form.coverImageId, form.imageIds[index])" class="cover-badge">封面</text>
-                <view class="image-actions">
-                  <text @tap="setCover(index)">设封面</text>
-                  <text @tap="removeImage(index)">删除</text>
+                <text v-if="isCoverImage(index)" class="cover-badge">封面</text>
+                <view class="image-remove" @tap.stop="removeImage(index)">
+                  <wd-icon name="close" size="14px" color="#fff" />
+                </view>
+                <view v-if="!isCoverImage(index)" class="image-cover-action" @tap.stop="setCover(index)">
+                  设为封面
                 </view>
               </view>
               <view class="image-add" @tap="chooseImages">
@@ -668,7 +675,7 @@ onPullDownRefresh(reloadAll)
 
 .image-head,
 .image-grid,
-.image-actions,
+.image-cover-action,
 .image-add {
   display: flex;
 }
@@ -714,24 +721,37 @@ onPullDownRefresh(reloadAll)
   left: 8rpx;
   padding: 4rpx 10rpx;
   border-radius: 999rpx;
-  background: var(--sl-brand);
+  background: #2f7ef7;
   color: #fff;
   font-size: 20rpx;
+  font-weight: 800;
 }
 
-.image-actions {
+.image-remove {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  display: flex;
+  width: 34rpx;
+  height: 34rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgb(15 35 28 / 66%);
+}
+
+.image-cover-action {
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
-  justify-content: space-around;
+  align-items: center;
+  justify-content: center;
+  padding: 10rpx 0;
   background: rgb(0 0 0 / 48%);
   color: #fff;
   font-size: 20rpx;
-}
-
-.image-actions text {
-  padding: 8rpx 0;
+  font-weight: 800;
 }
 
 .image-add {

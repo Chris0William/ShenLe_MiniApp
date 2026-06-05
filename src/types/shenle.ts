@@ -98,6 +98,8 @@ export interface SlPropertyListOutput {
   rentPrice: number
   coverImageId?: ShenLeId | null
   coverImage?: string | null
+  coverFileType?: string | null
+  coverSuffix?: string | null
   status: number
   statusName: string
   createTime: string
@@ -173,7 +175,7 @@ export interface AddSlPropertyInput {
   depositRule?: string
   minLease?: number
   status?: number
-  coverImageId?: ShenLeId
+  coverImageId?: ShenLeId | null
   tagIds?: ShenLeId[]
   facilityIds?: ShenLeId[]
   description?: string
@@ -249,7 +251,7 @@ export interface AddSlCommunityInput {
   orderNo?: number
   status?: number
   remark?: string
-  coverImageId?: ShenLeId
+  coverImageId?: ShenLeId | null
   imageIds?: ShenLeId[]
 }
 
@@ -275,6 +277,8 @@ export interface SlCommunityOutput {
   buildingCount: number
   coverImageId?: ShenLeId | null
   coverImage?: string | null
+  coverFileType?: string | null
+  coverSuffix?: string | null
   propertyCount: number
   minRentPrice?: number | null
   maxRentPrice?: number | null
@@ -369,7 +373,7 @@ export interface AddSlBuildingInput {
   orderNo?: number
   status?: number
   remark?: string
-  coverImageId?: ShenLeId
+  coverImageId?: ShenLeId | null
   imageIds?: ShenLeId[]
 }
 

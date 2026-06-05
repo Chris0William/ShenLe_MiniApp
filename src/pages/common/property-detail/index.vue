@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SlPropertyOutput } from '@/types/shenle'
+import type { ImageOutput, SlPropertyImageOutput, SlPropertyOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { downloadFile } from '@/api/file'
@@ -15,30 +15,108 @@ definePage({
 const id = ref('')
 const detail = ref<SlPropertyOutput | null>(null)
 const loading = ref(true)
-const gallery = ref<string[]>([])
+const gallery = ref<PropertyDetailMedia[]>([])
+const previewVideo = ref<PropertyDetailMedia | null>(null)
 const status = computed(() => getStatusMeta(detail.value?.status))
+const videoPreviewVisible = computed({
+  get: () => !!previewVideo.value,
+  set: (visible: boolean) => {
+    if (!visible)
+      previewVideo.value = null
+  },
+})
+
+type MediaKind = 'image' | 'video' | 'file'
+
+interface PropertyDetailMedia {
+  id?: string | number | null
+  url: string
+  kind: MediaKind
+  fileName?: string | null
+  fileType?: string | null
+  suffix?: string | null
+}
+
+const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
+const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
+
+function extensionOf(value?: string | null) {
+  const clean = String(value || '').split('?')[0].toLowerCase()
+  const index = clean.lastIndexOf('.')
+  return index >= 0 ? clean.slice(index) : ''
+}
+
+function mediaKind(media?: Partial<ImageOutput> | null): MediaKind {
+  const fileType = String(media?.fileType || '').toLowerCase()
+  const suffix = extensionOf(media?.suffix || media?.url)
+  if (fileType.startsWith('video') || VIDEO_SUFFIXES.includes(suffix))
+    return 'video'
+  if (fileType.startsWith('image') || IMAGE_SUFFIXES.includes(suffix))
+    return 'image'
+  return 'file'
+}
+
+function normalizeMedia(media: ImageOutput | SlPropertyImageOutput, url?: string): PropertyDetailMedia {
+  return {
+    id: media.id,
+    url: url || resolveAssetUrl(media.url),
+    kind: mediaKind(media),
+    fileName: media.fileName,
+    fileType: media.fileType,
+    suffix: media.suffix,
+  }
+}
+
+function mediaKey(media: PropertyDetailMedia, index: number) {
+  return `${String(media.id || media.url)}-${index}`
+}
 
 async function loadGallery(nextDetail: SlPropertyOutput) {
   const images = nextDetail.images || []
-  const urls = await Promise.all(images.map(async (image) => {
-    try {
-      return await downloadFile(image.id)
+  const medias = await Promise.all(images.map(async (image) => {
+    if (mediaKind(image) === 'image') {
+      try {
+        return normalizeMedia(image, await downloadFile(image.id))
+      }
+      catch {}
     }
-    catch {
-      return resolveAssetUrl(image.url)
-    }
+    return normalizeMedia(image)
   }))
 
-  if (!urls.length && nextDetail.coverImageId) {
-    try {
-      urls.push(await downloadFile(nextDetail.coverImageId))
+  if (!medias.length && nextDetail.coverImageId) {
+    const cover = {
+      id: nextDetail.coverImageId,
+      url: nextDetail.coverImage,
+      fileType: nextDetail.coverFileType,
+      suffix: nextDetail.coverSuffix || extensionOf(nextDetail.coverImage),
     }
-    catch {
-      urls.push(resolveAssetUrl(nextDetail.coverImage))
+    if (mediaKind(cover) === 'image') {
+      try {
+        medias.push(normalizeMedia(cover, await downloadFile(nextDetail.coverImageId)))
+      }
+      catch {
+        medias.push(normalizeMedia(cover))
+      }
+    }
+    else {
+      medias.push(normalizeMedia(cover))
     }
   }
 
-  gallery.value = urls.length ? urls : [resolveAssetUrl(nextDetail.coverImage)]
+  gallery.value = medias.length ? medias : [{ url: resolveAssetUrl(nextDetail.coverImage), kind: 'image' }]
+}
+
+function previewGalleryMedia(media: PropertyDetailMedia) {
+  if (media.kind === 'video') {
+    previewVideo.value = media
+    return
+  }
+
+  if (media.kind !== 'image')
+    return
+
+  const urls = gallery.value.filter(item => item.kind === 'image').map(item => item.url)
+  uni.previewImage({ current: media.url, urls })
 }
 
 async function loadDetail() {
@@ -77,8 +155,22 @@ onLoad((query) => {
     </view>
     <template v-else-if="detail">
       <swiper class="gallery" indicator-dots circular>
-        <swiper-item v-for="img in gallery" :key="img">
-          <image class="gallery__image" :src="img" mode="aspectFill" />
+        <swiper-item v-for="(media, index) in gallery" :key="mediaKey(media, index)">
+          <image
+            v-if="media.kind === 'image'"
+            class="gallery__image"
+            :src="media.url"
+            mode="aspectFill"
+            @tap="previewGalleryMedia(media)"
+          />
+          <view v-else-if="media.kind === 'video'" class="gallery__video" @tap="previewGalleryMedia(media)">
+            <wd-icon name="play-circle" size="46px" color="#fff" />
+            <text>{{ media.fileName || '视频预览' }}</text>
+          </view>
+          <view v-else class="gallery__file">
+            <wd-icon name="file" size="34px" color="#7d8e86" />
+            <text>{{ media.fileName || '附件' }}</text>
+          </view>
         </swiper-item>
       </swiper>
 
@@ -139,6 +231,16 @@ onLoad((query) => {
           联系房东
         </wd-button>
       </view>
+
+      <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
+        <view class="video-preview" @tap.stop>
+          <view class="video-preview__head">
+            <text>{{ previewVideo?.fileName || '视频预览' }}</text>
+            <wd-icon name="close" size="20px" color="#72817b" @click.stop="previewVideo = null" />
+          </view>
+          <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay />
+        </view>
+      </wd-popup>
     </template>
   </view>
 </template>
@@ -164,6 +266,34 @@ onLoad((query) => {
 .gallery__image {
   width: 100%;
   height: 100%;
+}
+
+.gallery__video,
+.gallery__file {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18rpx;
+  padding: 40rpx;
+  text-align: center;
+}
+
+.gallery__video {
+  background: linear-gradient(135deg, #0f6a4c, #163b32);
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.gallery__file {
+  background: #edf2eb;
+  color: var(--sl-muted);
+  font-size: 26rpx;
+  font-weight: 800;
 }
 
 .detail-main,
@@ -272,5 +402,26 @@ onLoad((query) => {
   padding: 18rpx 28rpx 22rpx;
   border-top: 1rpx solid rgb(18 107 79 / 10%);
   background: rgb(255 255 255 / 96%);
+}
+
+.video-preview {
+  background: #fff;
+}
+
+.video-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 24rpx;
+  color: var(--sl-ink);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.video-preview__player {
+  display: block;
+  width: 680rpx;
+  height: 420rpx;
+  background: #10261f;
 }
 </style>

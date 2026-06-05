@@ -150,6 +150,7 @@ const formCoordinate = computed(() => {
   return { lng, lat }
 })
 const formLocationLabel = computed(() => form.address || (formCoordinate.value ? '已选择地图位置' : '还未选择位置'))
+const effectiveCoverId = computed(() => String(form.coverImageId || form.media[0]?.id || ''))
 const videoPreviewVisible = computed({
   get: () => !!previewVideo.value,
   set: (visible: boolean) => {
@@ -480,6 +481,10 @@ function setCover(index: number) {
   form.coverImageId = String(form.media[index]?.id || '')
 }
 
+function isCoverMedia(media: CommunityMedia) {
+  return sameId(effectiveCoverId.value, media.id)
+}
+
 function previewMedia(index: number) {
   const media = form.media[index]
   if (!media)
@@ -547,7 +552,7 @@ function buildPayload(): AddSlCommunityInput {
     orderNo: toNumber(form.orderNo, 100),
     status: form.status,
     remark: form.remark.trim() || undefined,
-    coverImageId: form.coverImageId || undefined,
+    coverImageId: effectiveCoverId.value || null,
     imageIds: mediaIds,
   }
 }
@@ -558,10 +563,10 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
     return
 
   const current = list.value[index]
-  const cover = form.media.find(item => sameId(item.id, form.coverImageId))
-  const coverUrlValue = cover && cover.kind === 'image' ? cover.url : ''
+  const cover = form.media.find(item => sameId(item.id, effectiveCoverId.value))
+  const coverUrlValue = cover?.url || ''
   const coverKey = String(payload.id)
-  if (coverUrlValue)
+  if (coverUrlValue && cover?.kind === 'image')
     coverMap.value = { ...coverMap.value, [coverKey]: coverUrlValue }
   else if (coverMap.value[coverKey]) {
     const { [coverKey]: _removed, ...nextCoverMap } = coverMap.value
@@ -584,7 +589,7 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
     status: payload.status ?? current.status,
     remark: payload.remark ?? null,
     coverImageId: payload.coverImageId ?? null,
-    coverImage: coverUrlValue || current.coverImage,
+    coverImage: coverUrlValue || null,
     images: form.media.map(item => ({
       id: item.id,
       fileName: item.fileName,
@@ -813,10 +818,12 @@ onReachBottom(() => loadData())
                   <wd-icon name="play-circle" size="32px" color="#fff" />
                   <text>{{ media.fileName || '视频' }}</text>
                 </view>
-                <text v-if="sameId(form.coverImageId, media.id)" class="cover-badge">封面</text>
-                <view class="image-actions">
-                  <text @tap="setCover(index)">设封面</text>
-                  <text @tap="removeMedia(index)">删除</text>
+                <text v-if="isCoverMedia(media)" class="cover-badge">封面</text>
+                <view class="image-remove" @tap.stop="removeMedia(index)">
+                  <wd-icon name="close" size="14px" color="#fff" />
+                </view>
+                <view v-if="!isCoverMedia(media)" class="image-cover-action" @tap.stop="setCover(index)">
+                  设为封面
                 </view>
               </view>
               <view class="image-add" @tap="chooseMedia">
@@ -1186,25 +1193,38 @@ onReachBottom(() => loadData())
   left: 8rpx;
   padding: 4rpx 10rpx;
   border-radius: 999rpx;
-  background: var(--sl-brand);
+  background: #2f7ef7;
   color: #fff;
   font-size: 20rpx;
+  font-weight: 800;
 }
 
-.image-actions {
+.image-remove {
+  position: absolute;
+  top: 8rpx;
+  right: 8rpx;
+  display: flex;
+  width: 34rpx;
+  height: 34rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgb(15 35 28 / 66%);
+}
+
+.image-cover-action {
   position: absolute;
   right: 0;
   bottom: 0;
   left: 0;
   display: flex;
-  justify-content: space-around;
+  align-items: center;
+  justify-content: center;
+  padding: 10rpx 0;
   background: rgb(0 0 0 / 48%);
   color: #fff;
   font-size: 20rpx;
-}
-
-.image-actions text {
-  padding: 8rpx 0;
+  font-weight: 800;
 }
 
 .image-add {
