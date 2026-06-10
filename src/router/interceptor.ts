@@ -11,7 +11,9 @@ export const FG_LOG_ENABLE = false
 
 const PROTECTED_PATHS = [
   '/pages/admin/',
+  '/pages/user/map/index',
   '/pages/common/building-manage/index',
+  '/pages/common/community-properties/index',
   '/pages/common/community-manage/index',
   '/pages/common/property-form/index',
   '/pages/common/region-manage/index',

@@ -763,7 +763,7 @@ onReachBottom(() => loadData())
         <view class="sheet-head">
           <view>
             <text class="sheet-title">{{ isEdit ? '编辑楼盘' : '新增楼盘' }}</text>
-            <text class="sheet-sub">坐标会用于地图找房和附近排序</text>
+            <text class="sheet-sub">坐标会用于地图展示和附近排序</text>
           </view>
           <wd-icon name="close" size="22px" color="#72817b" @click="formVisible = false" />
         </view>

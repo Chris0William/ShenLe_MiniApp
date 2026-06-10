@@ -1,0 +1,397 @@
+
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ShenLe MiniApp UI Mockups</title>
+  <style>
+    :root {
+      --brand: #126b4f;
+      --brand-2: #1f805f;
+      --gold: #e4a11b;
+      --gold-deep: #b46d08;
+      --ink: #18241f;
+      --muted: #718179;
+      --paper: #fbfcf7;
+      --mist: #edf4ea;
+      --line: rgba(18,107,79,.11);
+      --shadow: 0 26px 60px rgba(28,47,39,.16);
+      --soft-shadow: 0 14px 34px rgba(18,107,79,.10);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 12% 8%, rgba(228,161,27,.18), transparent 260px),
+        radial-gradient(circle at 88% 12%, rgba(18,107,79,.16), transparent 300px),
+        linear-gradient(135deg, #eef5e9 0%, #fffaf0 46%, #e9f3ed 100%);
+      color: var(--ink);
+      font-family: "TsangerYuYangT", "LXGW WenKai", "FZLanTingHei", "Microsoft YaHei UI", sans-serif;
+    }
+    .board {
+      width: 1480px;
+      min-height: 1810px;
+      padding: 56px;
+    }
+    .board-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 34px;
+    }
+    .board-kicker {
+      color: var(--gold-deep);
+      font-size: 18px;
+      font-weight: 900;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+    }
+    .board-title {
+      margin-top: 12px;
+      font-size: 52px;
+      font-weight: 950;
+      letter-spacing: -0.05em;
+    }
+    .board-sub {
+      max-width: 550px;
+      color: var(--muted);
+      font-size: 19px;
+      line-height: 1.55;
+      text-align: right;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 26px;
+      align-items: start;
+    }
+    .phone-wrap { position: relative; }
+    .phone-label {
+      margin: 0 0 14px 16px;
+      color: var(--muted);
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: .04em;
+    }
+    .phone {
+      position: relative;
+      width: 320px;
+      height: 692px;
+      overflow: hidden;
+      border: 10px solid #18241f;
+      border-radius: 44px;
+      background: var(--paper);
+      box-shadow: var(--shadow);
+    }
+    .phone::before {
+      position: absolute;
+      top: 8px;
+      left: 50%;
+      z-index: 8;
+      width: 92px;
+      height: 22px;
+      border-radius: 999px;
+      background: #18241f;
+      content: "";
+      transform: translateX(-50%);
+    }
+    .screen {
+      position: relative;
+      width: 300px;
+      height: 672px;
+      overflow: hidden;
+      border-radius: 34px;
+      background:
+        linear-gradient(180deg, rgba(18,107,79,.10), rgba(18,107,79,0) 210px),
+        var(--paper);
+    }
+    .statusbar {
+      display: flex;
+      height: 36px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px 0;
+      font-size: 11px;
+      font-weight: 900;
+    }
+    .battery {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+    }
+    .content { padding: 18px 16px 88px; }
+    .hero {
+      position: relative;
+      overflow: hidden;
+      margin-top: 4px;
+      padding: 18px;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 90% 0%, rgba(228,161,27,.33), transparent 112px),
+        linear-gradient(135deg, #125e47, #1e7c5e);
+      color: #fff;
+      box-shadow: 0 20px 42px rgba(18,107,79,.27);
+    }
+    .hero::after {
+      position: absolute;
+      right: -30px;
+      bottom: -40px;
+      width: 132px;
+      height: 132px;
+      border: 18px solid rgba(255,255,255,.10);
+      border-radius: 50%;
+      content: "";
+    }
+    .kicker {
+      opacity: .78;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .title {
+      margin-top: 8px;
+      font-size: 25px;
+      font-weight: 950;
+      letter-spacing: -0.04em;
+    }
+    .subtitle { margin-top: 8px; font-size: 12px; line-height: 1.45; opacity: .82; }
+    .hero-row { display: flex; gap: 10px; margin-top: 18px; }
+    .hero-stat {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 18px;
+      background: rgba(255,255,255,.12);
+      backdrop-filter: blur(10px);
+    }
+    .hero-stat b { display: block; font-size: 20px; }
+    .hero-stat span { display: block; margin-top: 2px; font-size: 10px; opacity: .78; }
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin: 18px 2px 10px;
+    }
+    .section-title { font-size: 17px; font-weight: 950; letter-spacing: -.03em; }
+    .section-extra { color: var(--muted); font-size: 11px; font-weight: 800; }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: rgba(255,255,255,.92);
+      box-shadow: var(--soft-shadow);
+    }
+    .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
+    .metric { padding: 14px; }
+    .metric span { display: block; color: var(--muted); font-size: 11px; font-weight: 800; }
+    .metric b { display: block; margin-top: 6px; font-size: 24px; font-weight: 950; letter-spacing: -.04em; }
+    .metric.gold b { color: var(--gold-deep); }
+    .quick-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; padding: 12px 6px; }
+    .quick { display: grid; place-items: center; gap: 8px; min-height: 72px; font-size: 11px; font-weight: 900; text-align: center; }
+    .quick i, .entry-icon, .icon-round {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 15px;
+      background: #ecf5ee;
+      color: var(--brand);
+      font-style: normal;
+      font-size: 18px;
+    }
+    .quick.gold i, .icon-round.gold { background: #fff2d7; color: var(--gold-deep); }
+    .list { display: grid; gap: 10px; }
+    .community { display: flex; align-items: center; justify-content: space-between; padding: 13px; }
+    .community b, .property-name { display: block; font-size: 14px; font-weight: 950; }
+    .community span, .property-meta, .tiny { display: block; color: var(--muted); font-size: 10px; margin-top: 4px; }
+    .bubble-num { color: var(--brand); font-size: 22px; font-weight: 950; text-align: right; }
+    .tabbar {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      display: grid;
+      grid-template-columns: repeat(5,1fr);
+      height: 72px;
+      padding: 8px 10px 12px;
+      border-top: 1px solid rgba(18,107,79,.10);
+      background: rgba(251,252,247,.96);
+      box-shadow: 0 -14px 30px rgba(28,47,39,.08);
+    }
+    .tab { display: grid; place-items: center; gap: 2px; color: #718179; font-size: 10px; font-weight: 900; }
+    .tab.active { border-radius: 19px; background: rgba(18,107,79,.11); color: var(--brand); }
+    .tab i { font-style: normal; font-size: 18px; }
+    .searchbar { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 8px; }
+    .input {
+      min-height: 39px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: #f2f6f0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 39px;
+    }
+    .btn {
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
+      background: var(--brand);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 38px;
+      text-align: center;
+    }
+    .btn.ghost { border: 1px solid rgba(18,107,79,.14); background: #fff; color: var(--brand); }
+    .chips { display: flex; gap: 8px; margin: 12px 0; overflow: hidden; }
+    .chip { flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; background: #edf4ea; color: #50635a; font-size: 11px; font-weight: 900; }
+    .chip.active { background: var(--brand); color: #fff; box-shadow: 0 10px 20px rgba(18,107,79,.18); }
+    .property { display: flex; gap: 11px; padding: 12px; }
+    .cover {
+      width: 82px;
+      height: 80px;
+      flex: 0 0 82px;
+      border-radius: 18px;
+      background:
+        linear-gradient(135deg, rgba(18,107,79,.18), rgba(228,161,27,.20)),
+        repeating-linear-gradient(45deg, #e8efe5 0 8px, #f7faf4 8px 16px);
+    }
+    .property-body { min-width: 0; flex: 1; }
+    .price { margin-top: 8px; color: #c26916; font-size: 17px; font-weight: 950; }
+    .tag { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #e7f4ec; color: var(--brand); font-size: 10px; font-weight: 900; }
+    .filter-sheet {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      height: 462px;
+      overflow: hidden;
+      border-radius: 28px 28px 0 0;
+      background: #fff;
+      box-shadow: 0 -24px 50px rgba(28,47,39,.20);
+    }
+    .sheet-head { display: flex; justify-content: space-between; padding: 18px 18px 12px; border-bottom: 1px solid rgba(18,107,79,.08); }
+    .sheet-title { font-size: 18px; font-weight: 950; }
+    .sheet-desc { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .sheet-body { display: grid; grid-template-columns: 82px 1fr; height: 335px; }
+    .cats { background: #edf4ea; padding-top: 6px; }
+    .cat { position: relative; padding: 14px 8px; color: #63746c; font-size: 12px; font-weight: 850; text-align: center; }
+    .cat.active { background: #fff; color: var(--brand); }
+    .cat.active::before { position:absolute; left:0; top:12px; bottom:12px; width:4px; border-radius: 0 999px 999px 0; background: var(--brand); content:""; }
+    .opts { padding: 16px; }
+    .opt-title { margin-bottom: 10px; font-size: 13px; font-weight: 950; }
+    .opt-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .opt { padding: 9px 12px; border-radius: 999px; background: #f1f6ef; font-size: 11px; font-weight: 850; }
+    .opt.active { background: linear-gradient(135deg, #126b4f, #1f805f); color: #fff; }
+    .sheet-actions { display: grid; grid-template-columns: 1fr 1.45fr; gap: 10px; padding: 12px 16px; border-top: 1px solid rgba(18,107,79,.08); }
+    .steps { display: flex; gap: 8px; margin-top: 12px; }
+    .step { flex: 1; height: 5px; border-radius: 999px; background: #dbe7dc; }
+    .step.active { background: var(--brand); }
+    .form-card { padding: 13px; margin-top: 10px; }
+    .field { margin-top: 9px; padding: 11px 12px; border-radius: 16px; background: #f5f8f3; }
+    .field:first-child { margin-top: 0; }
+    .field label { display: block; color: var(--muted); font-size: 10px; font-weight: 900; }
+    .field div { margin-top: 5px; font-size: 14px; font-weight: 900; }
+    .seg { display: inline-flex; margin-top: 6px; overflow: hidden; border-radius: 999px; background: #eaf2e8; }
+    .seg span { padding: 8px 12px; color: var(--muted); font-size: 11px; font-weight: 900; }
+    .seg span.active { background: var(--brand); color: #fff; }
+    .image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 9px; }
+    .image-tile { height: 58px; border-radius: 15px; background: linear-gradient(135deg, #e3eddf, #fff6e0); position: relative; overflow: hidden; }
+    .image-tile::after { content:"??"; position:absolute; top:5px; left:5px; padding:3px 6px; border-radius:999px; background:var(--brand); color:#fff; font-size:8px; font-weight:900; }
+    .image-add { display:grid; place-items:center; height:58px; border:1px dashed rgba(18,107,79,.28); border-radius:15px; color:var(--brand); font-size:20px; font-weight:900; background:#f7faf4; }
+    .footer-actions { position:absolute; left:16px; right:16px; bottom:88px; display:grid; grid-template-columns:1fr 1.4fr; gap:10px; }
+    .sales-hero { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:8px; padding:16px; border-radius:28px; background:linear-gradient(135deg,#fff,#f2f7ef); box-shadow:var(--soft-shadow); }
+    .building-tabs { display:flex; gap:8px; margin:12px 0; overflow:hidden; }
+    .building { padding:8px 12px; border-radius:999px; background:#edf4ea; color:#52645b; font-size:11px; font-weight:900; }
+    .building.active { background:var(--brand); color:#fff; }
+    .floor-matrix { display:grid; gap:8px; }
+    .floor { display:grid; grid-template-columns:34px 1fr; gap:8px; align-items:center; }
+    .floor-no { color:var(--muted); font-size:11px; font-weight:900; text-align:center; }
+    .rooms { display:grid; grid-template-columns:repeat(4,1fr); gap:7px; }
+    .room { min-height:45px; padding:6px; border-radius:13px; background:#edf4ea; border:1px solid rgba(18,107,79,.10); }
+    .room b { display:block; font-size:11px; }
+    .room span { display:block; margin-top:3px; font-size:8px; color:var(--muted); }
+    .room.free { background:#e4f6ec; color:#126b4f; }
+    .room.rented { background:#eef0ed; color:#5f6f67; }
+    .room.reserve { background:#fff3da; color:#a16005; }
+    .room.offline { background:#f8e6df; color:#bd4b35; }
+    .drawer {
+      position:absolute; left:15px; right:15px; bottom:85px; padding:14px; border-radius:24px;
+      background:rgba(255,255,255,.96); box-shadow:0 18px 46px rgba(28,47,39,.22); border:1px solid rgba(18,107,79,.10);
+    }
+    .drawer-head { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .drawer b { font-size:16px; }
+    .drawer-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:12px; }
+  </style>
+</head>
+<body>
+  <main class="board">
+    <header class="board-head">
+      <div>
+        <div class="board-kicker">ShenLe Rent ? Mini Program Admin</div>
+        <div class="board-title">?????? UI ???</div>
+      </div>
+      <div class="board-sub">??/??????????????????????? unibest + wot-design-uni?</div>
+    </header>
+    <section class="grid">
+      <div class="phone-wrap">
+        <div class="phone-label">01 / ?????</div>
+        <div class="phone"><div class="screen" data-shot="dashboard">
+          <div class="statusbar"><span>9:41</span><span class="battery">5G ???</span></div>
+          <div class="content">
+            <div class="hero">
+              <div class="kicker">Admin Console</div><div class="title">??????</div>
+              <div class="subtitle">????????????????????</div>
+              <div class="hero-row"><div class="hero-stat"><b>161</b><span>??</span></div><div class="hero-stat"><b>42</b><span>???</span></div><div class="hero-stat"><b>?8.6w</b><span>????</span></div></div>
+            </div>
+            <div class="metrics"><div class="metric card"><span>????</span><b>286</b></div><div class="metric card gold"><span>???</span><b>18%</b></div><div class="metric card"><span>????</span><b>7</b></div><div class="metric card"><span>????</span><b>23</b></div></div>
+            <div class="section-head"><div class="section-title">????</div><div class="section-extra">??</div></div>
+            <div class="quick-grid card"><div class="quick"><i>?</i>????</div><div class="quick gold"><i>?</i>???</div><div class="quick"><i>?</i>????</div><div class="quick"><i>?</i>????</div><div class="quick gold"><i>?</i>????</div><div class="quick"><i>?</i>????</div></div>
+            <div class="section-head"><div class="section-title">????</div><div class="section-extra">Top 3</div></div>
+            <div class="list"><div class="community card"><div><b>????</b><span>0 ? ? 12 ? ? ?????</span></div><div class="bubble-num">12</div></div><div class="community card"><div><b>??????</b><span>2 ? ? 28 ? ? ????</span></div><div class="bubble-num">28</div></div></div>
+          </div><div class="tabbar"><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>??</div><div class="tab active"><i>?</i>???</div><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>??</div></div>
+        </div></div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">02 / ???? + ????</div>
+        <div class="phone"><div class="screen" data-shot="property-list">
+          <div class="statusbar"><span>9:41</span><span class="battery">5G ???</span></div>
+          <div class="content">
+            <div class="section-head" style="margin-top:4px"><div><div class="kicker" style="color:var(--gold-deep)">Admin ? Property</div><div class="title" style="color:var(--ink);font-size:24px">????</div></div><div class="btn">??</div></div>
+            <div class="searchbar"><div class="input">?????? / ?? / ??</div><div class="btn">?? 3</div></div>
+            <div class="chips"><div class="chip">??</div><div class="chip active">??</div><div class="chip">??</div><div class="chip">??</div><div class="chip">??</div></div>
+            <div class="section-head"><div class="section-title">????</div><div class="section-extra">86 ?</div></div>
+            <div class="list"><div class="property card"><div class="cover"></div><div class="property-body"><div class="property-name">???? 8? 502</div><span class="property-meta">???? ? 68? ? ??</span><div><span class="tag">??</span> <span class="tag">??</span></div><div class="price">?2,800/?</div></div></div><div class="property card"><div class="cover"></div><div class="property-body"><div class="property-name">??? A? 1206</div><span class="property-meta">?? ? 36? ? ??</span><div><span class="tag">??</span> <span class="tag">???</span></div><div class="price">?1,650/?</div></div></div></div>
+          </div>
+          <div class="filter-sheet"><div class="sheet-head"><div><div class="sheet-title">????</div><div class="sheet-desc">????????????????</div></div><div>?</div></div><div class="sheet-body"><div class="cats"><div class="cat active">??</div><div class="cat">??</div><div class="cat">??</div><div class="cat">??</div><div class="cat">??</div><div class="cat">??</div><div class="cat">??</div></div><div class="opts"><div class="opt-title">??</div><div class="opt-grid"><div class="opt active">????</div><div class="opt">??</div><div class="opt">??</div><div class="opt">??</div><div class="opt">???</div><div class="opt">???</div></div><div class="opt-title" style="margin-top:18px">??????</div><div class="opt-grid"><div class="opt">??</div><div class="opt active">??</div><div class="opt">??+</div><div class="opt active">1000-2000</div><div class="opt">???</div></div></div></div><div class="sheet-actions"><div class="btn ghost">??</div><div class="btn">??(3)</div></div></div>
+          <div class="tabbar"><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>???</div><div class="tab active"><i>?</i>??</div><div class="tab"><i>?</i>??</div></div>
+        </div></div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">03 / ??????</div>
+        <div class="phone"><div class="screen" data-shot="property-form">
+          <div class="statusbar"><span>9:41</span><span class="battery">5G ???</span></div>
+          <div class="content">
+            <div class="section-head" style="margin-top:2px"><div><div class="kicker" style="color:var(--gold-deep)">Property Form</div><div class="title" style="color:var(--ink);font-size:24px">????</div></div><div class="tag">?? 2/4</div></div>
+            <div class="steps"><div class="step active"></div><div class="step active"></div><div class="step"></div><div class="step"></div></div>
+            <div class="form-card card"><div class="field"><label>?? / ??</label><div>???? ? 8?</div></div><div class="field"><label>??</label><div>5? ? 502</div></div><div class="field"><label>??</label><div class="seg"><span>??</span><span class="active">??</span><span>??</span><span>??+</span></div></div></div>
+            <div class="form-card card"><div class="field"><label>??</label><div>? 2,800 / ?</div></div><div class="field"><label>????</label><div class="seg"><span>???</span><span class="active">???</span><span>??</span></div></div><div class="field"><label>?? / ??</label><div>?? ? ??</div></div></div>
+            <div class="form-card card"><div class="field"><label>????</label><div class="image-grid"><div class="image-tile"></div><div class="image-tile" style="filter:hue-rotate(30deg)"></div><div class="image-add">?</div></div></div></div>
+          </div><div class="footer-actions"><div class="btn ghost">???</div><div class="btn">????????</div></div><div class="tabbar"><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>??</div><div class="tab active"><i>?</i>???</div><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>??</div></div>
+        </div></div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone-label">04 / ???</div>
+        <div class="phone"><div class="screen" data-shot="sales-control">
+          <div class="statusbar"><span>9:41</span><span class="battery">5G ???</span></div>
+          <div class="content">
+            <div class="sales-hero"><div><div class="kicker" style="color:var(--gold-deep)">Sales Matrix</div><div class="title" style="color:var(--ink);font-size:23px">???</div><div class="tiny">?? ? ?? ? ?? ? ??</div></div><div class="icon-round gold">?</div></div>
+            <div class="chips"><div class="chip active">??</div><div class="chip">???</div><div class="chip">??</div></div>
+            <div class="building-tabs"><div class="building active">8?</div><div class="building">A?</div><div class="building">B?</div><div class="building">??152</div></div>
+            <div class="section-head"><div class="section-title">???? ? 8?</div><div class="section-extra">34/68 ??</div></div>
+            <div class="floor-matrix card" style="padding:10px"><div class="floor"><div class="floor-no">6F</div><div class="rooms"><div class="room free"><b>601</b><span>??</span></div><div class="room rented"><b>602</b><span>??</span></div><div class="room reserve"><b>603</b><span>??</span></div><div class="room free"><b>604</b><span>??</span></div></div></div><div class="floor"><div class="floor-no">5F</div><div class="rooms"><div class="room rented"><b>501</b><span>??</span></div><div class="room free"><b>502</b><span>??</span></div><div class="room offline"><b>503</b><span>??</span></div><div class="room rented"><b>504</b><span>??</span></div></div></div><div class="floor"><div class="floor-no">4F</div><div class="rooms"><div class="room free"><b>401</b><span>??</span></div><div class="room rented"><b>402</b><span>??</span></div><div class="room rented"><b>403</b><span>??</span></div><div class="room reserve"><b>404</b><span>??</span></div></div></div><div class="floor"><div class="floor-no">3F</div><div class="rooms"><div class="room rented"><b>301</b><span>??</span></div><div class="room free"><b>302</b><span>??</span></div><div class="room free"><b>303</b><span>??</span></div><div class="room rented"><b>304</b><span>??</span></div></div></div></div>
+          </div><div class="drawer"><div class="drawer-head"><div><b>502 ? ????</b><span class="tiny">68? ? ?? ? ?? ? ???</span></div><span class="tag">??</span></div><div class="drawer-actions"><div class="btn ghost">????</div><div class="btn">????</div></div></div><div class="tabbar"><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>??</div><div class="tab active"><i>?</i>???</div><div class="tab"><i>?</i>??</div><div class="tab"><i>?</i>??</div></div>
+        </div></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

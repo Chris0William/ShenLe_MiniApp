@@ -80,6 +80,7 @@ export default defineConfig({
     'i-carbon-dashboard',
     'i-carbon-building',
     'i-carbon-user',
+    'i-carbon-table-split',
     'i-carbon-ibm-watson-language-translator',
     'i-carbon-menu',
   ],

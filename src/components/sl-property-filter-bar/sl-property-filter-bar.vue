@@ -2,10 +2,10 @@
 import type { PropertyFilterState, ShenLeId, SlRegionTreeOutput } from '@/types/shenle'
 import { computed, getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue'
 import { getRegionTree } from '@/api/region'
-import { BEDROOM_OPTIONS, DISTANCE_OPTIONS } from '@/constants/shenle'
+import { DISTANCE_OPTIONS } from '@/constants/shenle'
 import { clonePropertyFilters, sameId } from '@/utils/property-filter'
 
-type DropdownName = 'location' | 'bedrooms' | 'price'
+type DropdownName = 'location' | 'price'
 
 interface RegionHit {
   node: SlRegionTreeOutput
@@ -46,7 +46,6 @@ let trackLeft = 0
 let trackWidth = 0
 
 const locationActive = computed(() => !!props.filters.regionId || props.filters.distanceKm !== undefined)
-const bedroomActive = computed(() => props.filters.bedrooms !== undefined)
 const priceActive = computed(() => props.filters.minPrice !== undefined || props.filters.maxPrice !== undefined)
 const keywordActive = computed(() => !!props.keyword?.trim())
 
@@ -59,12 +58,6 @@ const locationLabel = computed(() => {
   if (props.filters.distanceKm !== undefined)
     parts.push(distanceLabel(props.filters.distanceKm))
   return parts.length ? parts.join(' ') : '位置'
-})
-
-const bedroomLabel = computed(() => {
-  if (props.filters.bedrooms === undefined)
-    return '户型'
-  return BEDROOM_OPTIONS.find(item => item.value === props.filters.bedrooms)?.label || `${props.filters.bedrooms}室`
 })
 
 const priceLabel = computed(() => priceRangeLabel(props.filters, '租金'))
@@ -284,13 +277,6 @@ function getLocationOnce(): Promise<{ longitude: number, latitude: number }> {
   })
 }
 
-function setBedroom(value?: number) {
-  draft.value.bedrooms = value
-}
-
-function clearBedrooms() {
-  draft.value.bedrooms = undefined
-}
 
 function setPriceRange(min: number, max: number) {
   const boundedMin = Math.max(0, Math.min(PRICE_MAX, min))
@@ -309,8 +295,6 @@ function clearPrice() {
 function resetCurrent() {
   if (activeDropdown.value === 'location')
     clearLocation()
-  if (activeDropdown.value === 'bedrooms')
-    clearBedrooms()
   if (activeDropdown.value === 'price')
     clearPrice()
   confirmCurrent()
@@ -423,14 +407,6 @@ function onThumbTouchEnd() {
       </view>
       <view
         class="filter-tab"
-        :class="{ active: bedroomActive, open: activeDropdown === 'bedrooms' }"
-        @tap="toggleDropdown('bedrooms')"
-      >
-        <text class="filter-tab__label">{{ bedroomLabel }}</text>
-        <text class="filter-tab__arrow">▾</text>
-      </view>
-      <view
-        class="filter-tab"
         :class="{ active: priceActive, open: activeDropdown === 'price' }"
         @tap="toggleDropdown('price')"
       >
@@ -500,19 +476,6 @@ function onThumbTouchEnd() {
         </view>
       </view>
 
-      <view v-if="activeDropdown === 'bedrooms'" class="dropdown-section dropdown-section--short">
-        <view class="chip-row chip-row--large">
-          <view
-            v-for="item in BEDROOM_OPTIONS"
-            :key="item.label"
-            class="filter-chip"
-            :class="{ active: draft.bedrooms === item.value }"
-            @tap="setBedroom(item.value)"
-          >
-            <text>{{ item.label }}</text>
-          </view>
-        </view>
-      </view>
 
       <view v-if="activeDropdown === 'price'" class="dropdown-section dropdown-section--short">
         <view class="range-title">

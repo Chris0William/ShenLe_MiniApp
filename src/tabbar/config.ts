@@ -13,30 +13,18 @@ export const nativeTabbarList: NativeTabBarItem[] = [
   {
     iconPath: 'static/tabbar/home.png',
     selectedIconPath: 'static/tabbar/homeHL.png',
-    pagePath: 'pages/user/home/index',
-    text: '找房',
+    pagePath: 'pages/admin/dashboard/index',
+    text: '工作台',
   },
   {
     iconPath: 'static/tabbar/personal.png',
     selectedIconPath: 'static/tabbar/personalHL.png',
-    pagePath: 'pages/user/mine/index',
+    pagePath: 'pages/admin/mine/index',
     text: '我的',
   },
 ]
 
 export const customTabbarList: CustomTabBarItem[] = [
-  {
-    text: '找房',
-    pagePath: 'pages/user/home/index',
-    iconType: 'unocss',
-    icon: 'i-carbon-home',
-  },
-  {
-    text: '地图',
-    pagePath: 'pages/user/map/index',
-    iconType: 'unocss',
-    icon: 'i-carbon-location',
-  },
   {
     text: '工作台',
     pagePath: 'pages/admin/dashboard/index',
@@ -50,8 +38,20 @@ export const customTabbarList: CustomTabBarItem[] = [
     icon: 'i-carbon-building',
   },
   {
+    text: '地图',
+    pagePath: 'pages/user/map/index',
+    iconType: 'unocss',
+    icon: 'i-carbon-location',
+  },
+  {
+    text: '销控',
+    pagePath: 'pages/admin/sales-control/index',
+    iconType: 'unocss',
+    icon: 'i-carbon-table-split',
+  },
+  {
     text: '我的',
-    pagePath: 'pages/user/mine/index',
+    pagePath: 'pages/admin/mine/index',
     iconType: 'unocss',
     icon: 'i-carbon-user',
   },

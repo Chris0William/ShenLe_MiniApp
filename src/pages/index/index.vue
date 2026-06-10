@@ -65,13 +65,13 @@ onLoad(loadStats)
     </view>
 
     <view class="entry-list">
-      <view class="entry sl-card" @tap="go('/pages/user/home/index', true)">
+      <view class="entry sl-card" @tap="go('/pages/admin/property-list/index', true)">
         <view class="entry__icon entry__icon--green">
           <wd-icon name="home" size="25px" color="#126b4f" />
         </view>
         <view class="entry__body">
-          <text class="entry__title">用户端找房</text>
-          <text class="entry__desc">筛选、房源卡片、详情页先迁移到新契约。</text>
+          <text class="entry__title">房源管理</text>
+          <text class="entry__desc">按楼盘筛选房源，查看楼盘下的房源列表。</text>
         </view>
         <wd-button size="small" type="primary">
           进入

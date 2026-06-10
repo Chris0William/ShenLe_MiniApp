@@ -1,40 +1,66 @@
 <script setup lang="ts">
-import type { PageSlPropertyInput, PropertyFilterState, SlPropertyListOutput } from '@/types/shenle'
+import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/property'
-import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
-import { buildPropertyFilterQuery, countPropertyFilters, getPropertyFilterLabels } from '@/utils/property-filter'
+import { getCommunityPage } from '@/api/community'
+import { buildCommunityCandidateFilterQuery, buildCommunityFilterQuery, countCommunityFilters, filterCommunitiesByClientDistance, getCommunityFilterLabels } from '@/utils/property-filter'
 import { idToQuery } from '@/utils/shenle'
 
 definePage({
   style: {
     navigationStyle: 'custom',
-    navigationBarTitleText: '房源管理',
+    navigationBarTitleText: '房源',
     enablePullDownRefresh: true,
   },
 })
 
+const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
+
 const keyword = ref('')
-const filters = ref<PropertyFilterState>({})
+const filters = ref<PropertyFilterState>({
+  userLng: DEFAULT_LOCATION.longitude,
+  userLat: DEFAULT_LOCATION.latitude,
+})
 const page = ref(1)
 const pageSize = 10
 const total = ref(0)
-const items = ref<SlPropertyListOutput[]>([])
+const items = ref<SlCommunityOutput[]>([])
+const filteredItems = ref<SlCommunityOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
-const finished = computed(() => total.value > 0 && items.value.length >= total.value)
-const filterCount = computed(() => countPropertyFilters(filters.value))
-const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
-const filterLabels = computed(() => getPropertyFilterLabels(filters.value))
+const locating = ref(false)
+const locationReady = ref(false)
+const locationLabel = ref('点击选择位置')
 
-function buildQuery(): PageSlPropertyInput {
+const finished = computed(() => total.value > 0 && items.value.length >= total.value)
+const filterCount = computed(() => countCommunityFilters(filters.value))
+const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
+const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
+
+function buildQuery(pageNumber = page.value, size = pageSize, includeDistance = true): PageSlCommunityInput {
   return {
-    page: page.value,
-    pageSize,
-    title: keyword.value.trim() || undefined,
-    ...buildPropertyFilterQuery(filters.value),
+    page: pageNumber,
+    pageSize: size,
+    name: keyword.value.trim() || undefined,
+    status: 0,
+    ...(includeDistance ? buildCommunityFilterQuery(filters.value) : buildCommunityCandidateFilterQuery(filters.value)),
   }
+}
+
+async function fetchAllCandidateCommunities() {
+  const fetchSize = 100
+  const candidates: SlCommunityOutput[] = []
+  let currentPage = 1
+  let totalCount = Number.POSITIVE_INFINITY
+  while (candidates.length < totalCount) {
+    const result = await getCommunityPage(buildQuery(currentPage, fetchSize, false))
+    candidates.push(...result.items)
+    totalCount = result.total
+    if (!result.items.length)
+      break
+    currentPage += 1
+  }
+  return filterCommunitiesByClientDistance(candidates, filters.value)
 }
 
 async function load(reset = false) {
@@ -47,7 +73,16 @@ async function load(reset = false) {
   }
   loading.value = true
   try {
-    const result = await getPropertyPage(buildQuery())
+    if (filters.value.distanceKm !== undefined) {
+      if (reset)
+        filteredItems.value = await fetchAllCandidateCommunities()
+      total.value = filteredItems.value.length
+      items.value = filteredItems.value.slice(0, page.value * pageSize)
+      hasLoaded.value = true
+      return
+    }
+    filteredItems.value = []
+    const result = await getCommunityPage(buildQuery())
     total.value = result.total
     items.value = reset ? result.items : [...items.value, ...result.items]
     hasLoaded.value = true
@@ -58,58 +93,117 @@ async function load(reset = false) {
   }
 }
 
-async function changeStatus(item: SlPropertyListOutput, nextStatus: number) {
-  if (item.status === nextStatus)
+function setReferencePoint(longitude: number, latitude: number, label: string) {
+  filters.value = {
+    ...filters.value,
+    userLng: longitude,
+    userLat: latitude,
+  }
+  locationReady.value = true
+  locationLabel.value = label
+}
+
+function requestLocation() {
+  return new Promise<UniApp.GetLocationSuccess>((resolve, reject) => {
+    uni.getLocation({
+      type: 'gcj02',
+      isHighAccuracy: true,
+      highAccuracyExpireTime: 4000,
+      success: resolve,
+      fail: reject,
+    })
+  })
+}
+
+async function autoLocate() {
+  if (locating.value)
     return
-  await updatePropertyStatus({ id: item.id, status: nextStatus })
-  uni.showToast({ title: '状态已更新', icon: 'success' })
-  await load(true)
+  locating.value = true
+  try {
+    const res = await requestLocation()
+    setReferencePoint(res.longitude, res.latitude, '当前位置')
+    await load(true)
+  }
+  catch {
+    // 定位失败时继续使用深圳中心点，避免距离筛选缺少参考点。
+    setReferencePoint(DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude, '深圳市中心')
+    await load(true)
+  }
+  finally {
+    locating.value = false
+  }
+}
+
+async function chooseReferencePoint() {
+  if (locating.value)
+    return
+  locating.value = true
+  try {
+    const res = await new Promise<UniApp.ChooseLocationSuccess>((resolve, reject) => {
+      uni.chooseLocation({ success: resolve, fail: reject })
+    })
+    const label = res.name || res.address || '选定位置'
+    setReferencePoint(res.longitude, res.latitude, label)
+    await load(true)
+  }
+  catch {
+    uni.showToast({ title: '未选择位置', icon: 'none' })
+  }
+  finally {
+    locating.value = false
+  }
 }
 
 function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string) {
-  filters.value = nextFilters
+  filters.value = {
+    ...nextFilters,
+    userLng: filters.value.userLng,
+    userLat: filters.value.userLat,
+  }
   if (nextKeyword !== undefined)
     keyword.value = nextKeyword
   load(true)
 }
 
 function resetFilters() {
-  filters.value = {}
+  const userLng = filters.value.userLng
+  const userLat = filters.value.userLat
+  filters.value = { userLng, userLat }
   keyword.value = ''
   load(true)
 }
 
 function clearAllFilters() {
-  keyword.value = ''
-  filters.value = {}
-  load(true)
+  resetFilters()
 }
 
-function openDetail(item: SlPropertyListOutput) {
-  uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(item.id)}` })
-}
-
-function openForm(item?: SlPropertyListOutput) {
-  const query = item ? `?id=${idToQuery(item.id)}` : ''
-  uni.navigateTo({ url: `/pages/common/property-form/index${query}` })
-}
-
-function removeItem(item: SlPropertyListOutput) {
-  uni.showModal({
-    title: '删除房源',
-    content: '确定删除 ' + (item.title || '该房源') + '？',
-    confirmColor: '#c94832',
-    success: async (res) => {
-      if (!res.confirm)
-        return
-      await deleteProperty({ id: item.id })
-      uni.showToast({ title: '删除成功', icon: 'success' })
-      await load(true)
-    },
+function goProperties(item: SlCommunityOutput) {
+  uni.navigateTo({
+    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`,
   })
 }
 
-onLoad(() => load(true))
+function openForm() {
+  uni.navigateTo({ url: '/pages/common/property-form/index' })
+}
+
+function openNavigation(item: SlCommunityOutput) {
+  if (!item.lat || !item.lng) {
+    uni.showToast({ title: '暂无坐标', icon: 'none' })
+    return
+  }
+  uni.openLocation({
+    latitude: Number(item.lat),
+    longitude: Number(item.lng),
+    name: item.name,
+    address: item.address || item.name,
+  })
+}
+
+onLoad(() => {
+  load(true)
+  autoLocate()
+})
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
   if (!finished.value) {
@@ -124,13 +218,31 @@ onReachBottom(() => {
     <view class="admin-head">
       <view>
         <text class="admin-head__title">房源管理</text>
+        <text class="admin-head__desc">先筛选楼盘，再进入楼盘管理房源</text>
+      </view>
+      <wd-button size="small" type="primary" icon="add" @click="openForm">
+        新增
+      </wd-button>
+    </view>
+
+    <view class="location-card sl-card" @tap="chooseReferencePoint">
+      <view class="location-card__main">
+        <wd-icon name="location" size="18px" color="#126b4f" />
+        <view>
+          <text class="location-card__label">当前位置 / 距离参考点</text>
+          <text class="location-card__value">{{ locating ? '定位中...' : locationLabel }}</text>
+        </view>
+      </view>
+      <view class="location-card__actions">
+        <text class="location-card__action" @tap.stop="autoLocate">定位</text>
+        <text class="location-card__action">选点</text>
       </view>
     </view>
 
     <sl-property-filter-bar
       :filters="filters"
       :keyword="keyword"
-      mount-key="admin-property-list"
+      mount-key="admin-community-filter"
       @confirm="onFilterConfirm"
       @reset="resetFilters"
     />
@@ -138,7 +250,7 @@ onReachBottom(() => {
     <view v-if="activeCount" class="active-summary sl-card">
       <view class="active-summary__body">
         <wd-tag v-if="keyword" plain type="primary">
-          搜索：{{ keyword }}
+          楼盘：{{ keyword }}
         </wd-tag>
         <wd-tag v-for="label in filterLabels" :key="label" plain type="success">
           {{ label }}
@@ -149,41 +261,21 @@ onReachBottom(() => {
 
     <view class="result-head">
       <view>
-        <text class="result-head__title">房源列表</text>
-        <text class="result-head__desc">下拉刷新 · 触底加载 · 状态快捷维护</text>
+        <text class="result-head__title">匹配楼盘</text>
+        <text class="result-head__desc">点击楼盘进入房源列表</text>
       </view>
-      <view class="result-head__actions">
-        <text class="result-head__total">{{ total }} 套</text>
-        <wd-button size="small" type="primary" icon="add" @click="openForm()">
-          新增
-        </wd-button>
-      </view>
+      <text class="result-head__total">{{ total }} 个</text>
     </view>
 
     <view class="list">
-      <view v-for="item in items" :key="String(item.id)" class="admin-card sl-card">
-        <sl-property-card :item="item" compact @tap="openDetail" />
-        <view class="manage-actions">
-          <wd-button size="small" type="primary" plain @click="openForm(item)">
-            编辑
-          </wd-button>
-          <wd-button size="small" type="danger" plain @click="removeItem(item)">
-            删除
-          </wd-button>
-        </view>
-        <view class="status-actions">
-          <wd-button
-            v-for="option in PROPERTY_STATUS_OPTIONS"
-            :key="option.value"
-            size="small"
-            :type="item.status === option.value ? 'primary' : 'default'"
-            plain
-            @click="changeStatus(item, option.value)"
-          >
-            {{ option.label }}
-          </wd-button>
-        </view>
-      </view>
+      <sl-community-card
+        v-for="item in items"
+        :key="String(item.id)"
+        :item="item"
+        show-navigate
+        @tap="goProperties"
+        @navigate="openNavigation"
+      />
     </view>
 
     <view v-if="loading" class="loading sl-card">
@@ -192,14 +284,14 @@ onReachBottom(() => {
     </view>
     <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
       <wd-icon name="home" size="42px" color="#8ea099" />
-      <text class="empty__title">暂无房源数据</text>
-      <text class="empty__desc">换个筛选条件，或先新增一套房源。</text>
-      <wd-button size="small" type="primary" @click="openForm()">
-        新增房源
+      <text class="empty__title">暂无匹配楼盘</text>
+      <text class="empty__desc">调整楼盘名称、区域、租金或距离后再试</text>
+      <wd-button size="small" type="primary" @click="resetFilters">
+        重置筛选
       </wd-button>
     </view>
     <view v-else-if="finished" class="loading">
-      已经到底了
+      已加载全部
     </view>
   </view>
 </template>
@@ -211,19 +303,76 @@ onReachBottom(() => {
 
 .admin-head {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
+  gap: 18rpx;
   padding-top: 28rpx;
 }
 
-.admin-head__title {
+.admin-head__title,
+.admin-head__desc {
   display: block;
 }
 
-
 .admin-head__title {
-  margin-top: 8rpx;
   font-size: 42rpx;
+  font-weight: 850;
+}
+
+.admin-head__desc {
+  margin-top: 8rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+.location-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-top: 22rpx;
+  padding: 18rpx 20rpx;
+}
+
+.location-card__main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.location-card__label,
+.location-card__value {
+  display: block;
+}
+
+.location-card__label {
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.location-card__value {
+  max-width: 460rpx;
+  overflow: hidden;
+  margin-top: 4rpx;
+  color: var(--sl-ink);
+  font-size: 27rpx;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-card__actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 14rpx;
+}
+
+.location-card__action {
+  flex-shrink: 0;
+  color: var(--sl-brand);
+  font-size: 24rpx;
   font-weight: 850;
 }
 
@@ -264,13 +413,6 @@ onReachBottom(() => {
   display: block;
 }
 
-.result-head__actions {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 12rpx;
-}
-
 .result-head__title {
   font-size: 32rpx;
   font-weight: 850;
@@ -292,30 +434,6 @@ onReachBottom(() => {
   display: flex;
   flex-direction: column;
   gap: 18rpx;
-}
-
-.admin-card {
-  overflow: hidden;
-}
-
-.admin-card :deep(.property) {
-  border: 0;
-  box-shadow: none;
-}
-
-.manage-actions,
-.status-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12rpx;
-}
-
-.manage-actions {
-  padding: 0 18rpx 12rpx;
-}
-
-.status-actions {
-  padding: 0 18rpx 18rpx;
 }
 
 .loading,

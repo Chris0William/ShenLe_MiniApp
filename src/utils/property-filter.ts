@@ -1,4 +1,4 @@
-import type { PageSlPropertyInput, PropertyFilterState, ShenLeId } from '@/types/shenle'
+import type { PageSlCommunityInput, PageSlPropertyInput, PropertyFilterState, ShenLeId, SlCommunityOutput } from '@/types/shenle'
 import {
   AREA_SEGMENTS,
   BEDROOM_OPTIONS,
@@ -37,6 +37,17 @@ export function countPropertyFilters(filters: PropertyFilterState) {
   return count
 }
 
+export function countCommunityFilters(filters: PropertyFilterState) {
+  let count = 0
+  if (filters.regionId || filters.distanceKm !== undefined)
+    count += 1
+  if (filters.minPrice !== undefined || filters.maxPrice !== undefined)
+    count += 1
+  if (filters.communityId)
+    count += 1
+  return count
+}
+
 export function hasPropertyFilter(filters: PropertyFilterState, key: string) {
   switch (key) {
     case 'region': return !!filters.regionId || filters.distanceKm !== undefined
@@ -67,6 +78,31 @@ export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<Pag
     maxArea: filters.maxArea,
     depositRule: filters.depositRule,
   }
+}
+
+export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<PageSlCommunityInput, 'page' | 'pageSize'> {
+  return {
+    regionId: filters.regionId,
+    userLng: filters.userLng,
+    userLat: filters.userLat,
+    distanceKm: filters.distanceKm,
+    minPrice: filters.minPrice,
+    maxPrice: filters.maxPrice,
+  }
+}
+
+export function buildCommunityCandidateFilterQuery(filters: PropertyFilterState): Omit<PageSlCommunityInput, 'page' | 'pageSize'> {
+  const { distanceKm: _distanceKm, ...query } = buildCommunityFilterQuery(filters)
+  return query
+}
+
+export function filterCommunitiesByClientDistance(items: SlCommunityOutput[], filters: PropertyFilterState) {
+  if (filters.distanceKm === undefined)
+    return items
+  return items.filter((item) => {
+    const distance = Number(item.distance)
+    return Number.isFinite(distance) && distance <= filters.distanceKm!
+  })
 }
 
 export function sameId(left?: ShenLeId, right?: ShenLeId) {
@@ -124,5 +160,25 @@ export function getPropertyFilterLabels(filters: PropertyFilterState, maps: {
   }
   if (filters.depositRule)
     labels.push(optionLabel(DEPOSIT_RULE_OPTIONS, filters.depositRule) || filters.depositRule)
+  return labels
+}
+
+export function getCommunityFilterLabels(filters: PropertyFilterState, maps: {
+  regionName?: string
+  communityName?: string
+} = {}) {
+  const labels: string[] = []
+  if (filters.regionId || filters.distanceKm !== undefined) {
+    const parts: string[] = []
+    if (filters.regionId)
+      parts.push(maps.regionName || filters.regionName || '已选区域')
+    if (filters.distanceKm !== undefined)
+      parts.push(`附近${distanceLabel(filters.distanceKm)}`)
+    labels.push(parts.join(' · '))
+  }
+  if (filters.communityId)
+    labels.push(maps.communityName || filters.communityName || '已选楼盘')
+  if (filters.minPrice !== undefined || filters.maxPrice !== undefined)
+    labels.push(PRICE_SEGMENTS.find(item => item.min === filters.minPrice && item.max === filters.maxPrice)?.label || rangeLabel(filters.minPrice, filters.maxPrice, '元'))
   return labels
 }
