@@ -566,8 +566,9 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
   const cover = form.media.find(item => sameId(item.id, effectiveCoverId.value))
   const coverUrlValue = cover?.url || ''
   const coverKey = String(payload.id)
-  if (coverUrlValue && cover?.kind === 'image')
+  if (coverUrlValue && cover?.kind === 'image') {
     coverMap.value = { ...coverMap.value, [coverKey]: coverUrlValue }
+  }
   else if (coverMap.value[coverKey]) {
     const { [coverKey]: _removed, ...nextCoverMap } = coverMap.value
     coverMap.value = nextCoverMap
@@ -652,9 +653,13 @@ function goProperties(item: SlCommunityOutput) {
   uni.navigateTo({ url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}` })
 }
 
-onLoad(async () => {
+onLoad(async (query) => {
   await loadRegions()
   await loadData(true)
+  // 支持从地图楼盘卡片深链直达编辑表单
+  const editId = typeof query?.editId === 'string' ? query.editId : ''
+  if (editId)
+    openEdit({ id: editId } as SlCommunityOutput)
 })
 onPullDownRefresh(() => loadData(true))
 onReachBottom(() => loadData())
@@ -884,7 +889,6 @@ onReachBottom(() => loadData())
 .manage-page {
   padding-bottom: calc(150rpx + env(safe-area-inset-bottom));
 }
-
 
 .toolbar {
   margin-top: 22rpx;
@@ -1321,7 +1325,6 @@ onReachBottom(() => loadData())
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 
 .segmented {
   display: inline-flex;

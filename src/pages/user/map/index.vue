@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput } from '@/types/shenle'
+import type { CommunityCluster, MapRegionBounds } from '@/utils/map-cluster'
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { useShenleAuthStore } from '@/store/auth'
+import { clusterCalloutText, clusterCommunities, isClusterUnsplittable } from '@/utils/map-cluster'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
@@ -40,14 +42,91 @@ const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
 
-const markers = computed(() => communities.value.map((item, index) => ({
-  id: index + 1,
-  latitude: Number(item.lat),
-  longitude: Number(item.lng),
-  iconPath: '/static/images/dot-red.png',
-  width: 26,
-  height: 26,
-})))
+// ===== 聚合 marker 体系 =====
+type MarkerMeta = { type: 'single', community: SlCommunityOutput } | { type: 'cluster', cluster: CommunityCluster }
+const markers = ref<any[]>([])
+const selected = ref<SlCommunityOutput | null>(null)
+const pickerVisible = ref(false)
+const pickerItems = ref<SlCommunityOutput[]>([])
+const pickerActions = computed(() => pickerItems.value.map(item => ({ name: item.name })))
+let markerMeta: MarkerMeta[] = []
+let regionBounds: MapRegionBounds | null = null
+let regionTimer: ReturnType<typeof setTimeout> | null = null
+const windowWidthPx = (() => {
+  try {
+    return (uni.getWindowInfo?.() ?? uni.getSystemInfoSync()).windowWidth || 375
+  }
+  catch {
+    return 375
+  }
+})()
+
+function rentText(item: SlCommunityOutput) {
+  const min = Number(item.minRentPrice)
+  const max = Number(item.maxRentPrice)
+  if (min > 0 && max > 0 && max !== min)
+    return `¥${min}-${max}`
+  if (min > 0)
+    return `¥${min}起`
+  return ''
+}
+
+const CALLOUT_BASE = { display: 'ALWAYS', fontSize: 11, borderRadius: 8, padding: 6, color: '#ffffff', textAlign: 'center' } as const
+
+function rebuildMarkers() {
+  const { singles, clusters } = clusterCommunities(communities.value, regionBounds, windowWidthPx)
+  const list: any[] = []
+  markerMeta = []
+  for (const item of singles) {
+    markerMeta.push({ type: 'single', community: item })
+    const rent = rentText(item)
+    list.push({
+      id: markerMeta.length,
+      latitude: Number(item.lat),
+      longitude: Number(item.lng),
+      iconPath: '/static/images/dot-red.png',
+      width: 26,
+      height: 26,
+      callout: { ...CALLOUT_BASE, content: rent ? `${item.name}\n${rent}` : item.name, bgColor: '#126b4f' },
+    })
+  }
+  for (const cluster of clusters) {
+    markerMeta.push({ type: 'cluster', cluster })
+    list.push({
+      id: markerMeta.length,
+      latitude: cluster.lat,
+      longitude: cluster.lng,
+      iconPath: '/static/images/dot-red.png',
+      width: 34,
+      height: 34,
+      callout: { ...CALLOUT_BASE, content: clusterCalloutText(cluster), bgColor: '#b46d08' },
+    })
+  }
+  markers.value = list
+}
+
+function refreshRegionAndMarkers() {
+  if (!mapContext) {
+    rebuildMarkers()
+    return
+  }
+  mapContext.getRegion({
+    success: (res: any) => {
+      regionBounds = { southwest: res.southwest, northeast: res.northeast }
+      rebuildMarkers()
+    },
+    fail: () => rebuildMarkers(),
+  })
+}
+
+function onRegionChange(event: any) {
+  // 仅在拖动/缩放结束后重算聚合，防抖避免频繁刷新
+  if (event?.type !== 'end')
+    return
+  if (regionTimer)
+    clearTimeout(regionTimer)
+  regionTimer = setTimeout(refreshRegionAndMarkers, 250)
+}
 
 function buildQuery(pageNumber = 1, size = 200): PageSlCommunityInput {
   return {
@@ -80,6 +159,8 @@ async function loadCommunities() {
       currentPage += 1
     }
     communities.value = candidates.filter(hasCoordinate)
+    selected.value = null
+    refreshRegionAndMarkers()
   }
   finally {
     loading.value = false
@@ -175,13 +256,41 @@ function resetFilters() {
   loadCommunities()
 }
 
-function markerToCommunity(markerId: number) {
-  return communities.value[markerId - 1] || null
+function onMarkerTap(event: any) {
+  const meta = markerMeta[Number(event.detail?.markerId) - 1]
+  if (!meta)
+    return
+  if (meta.type === 'single') {
+    selected.value = meta.community
+    return
+  }
+  expandCluster(meta.cluster)
 }
 
-function onMarkerTap(event: any) {
-  const item = markerToCommunity(Number(event.detail?.markerId))
-  goProperties(item)
+function expandCluster(cluster: CommunityCluster) {
+  // 坐标几乎重合的聚合放大也拆不开，改为弹出楼盘选择列表
+  if (isClusterUnsplittable(cluster)) {
+    pickerItems.value = cluster.items
+    pickerVisible.value = true
+    return
+  }
+  const points = cluster.items.map(item => ({ latitude: Number(item.lat), longitude: Number(item.lng) }))
+  mapContext?.includePoints({ points, padding: [80, 80, 80, 80] })
+  // includePoints 在部分环境不触发 regionchange，兜底延时重算聚合
+  setTimeout(refreshRegionAndMarkers, 600)
+}
+
+function onPickCommunity(event: any) {
+  const item = pickerItems.value[Number(event?.index ?? -1)]
+  pickerVisible.value = false
+  if (item)
+    selected.value = item
+}
+
+function editSelected() {
+  if (!selected.value)
+    return
+  uni.navigateTo({ url: `/pages/common/community-manage/index?editId=${idToQuery(selected.value.id)}` })
 }
 
 function goProperties(item: SlCommunityOutput | null) {
@@ -206,6 +315,23 @@ onLoad(() => {
   mapContext = uni.createMapContext(mapId)
   loadCommunities()
   getLocation(false)
+
+  // 仅开发者工具：暴露调试桥，供自动化测试驱动 marker 点击链路（真机不生效）
+  try {
+    if (uni.getSystemInfoSync().platform === 'devtools') {
+      ;(getApp() as any).__mapDebug = {
+        tapMarker: (markerId: number) => onMarkerTap({ detail: { markerId } }),
+        state: () => ({
+          communities: communities.value.length,
+          markers: markers.value.length,
+          selectedName: selected.value?.name || null,
+          pickerVisible: pickerVisible.value,
+          markerKinds: markers.value.map((m, i) => markerMeta[i]?.type),
+        }),
+      }
+    }
+  }
+  catch {}
 })
 onPullDownRefresh(loadCommunities)
 </script>
@@ -265,12 +391,41 @@ onPullDownRefresh(loadCommunities)
         :markers="markers"
         show-location
         @markertap="onMarkerTap"
+        @callouttap="onMarkerTap"
+        @regionchange="onRegionChange"
       >
         <cover-view class="map-badge">
           <cover-view class="map-badge__text">{{ loading ? '加载中' : `${communities.length} 个楼盘` }}</cover-view>
         </cover-view>
       </map>
+
+      <view v-if="selected" class="map-card">
+        <view class="map-card__close" @tap="selected = null">
+          <wd-icon name="close" size="16px" color="#9aa3af" />
+        </view>
+        <view class="map-card__main" @tap="goProperties(selected)">
+          <text class="map-card__name">{{ selected.name }}</text>
+          <view class="map-card__meta">
+            <wd-tag v-if="selected.regionName" plain type="success">
+              {{ selected.regionName }}
+            </wd-tag>
+            <text v-if="selected.propertyCount">{{ selected.propertyCount }} 套房源</text>
+            <text v-if="rentText(selected)">{{ rentText(selected) }}</text>
+            <text v-if="selected.distance !== null && selected.distance !== undefined">距 {{ selected.distance }}km</text>
+          </view>
+        </view>
+        <view class="map-card__actions">
+          <wd-button size="small" plain @click="editSelected">
+            编辑楼盘
+          </wd-button>
+          <wd-button size="small" type="primary" @click="goProperties(selected)">
+            查看房源
+          </wd-button>
+        </view>
+      </view>
     </view>
+
+    <wd-action-sheet v-model="pickerVisible" title="选择楼盘" :actions="pickerActions" @select="onPickCommunity" />
   </view>
 </template>
 
@@ -361,6 +516,54 @@ onPullDownRefresh(loadCommunities)
   display: block;
   width: 100%;
   height: 100%;
+}
+
+.map-card {
+  position: absolute;
+  right: 16rpx;
+  bottom: 16rpx;
+  left: 16rpx;
+  z-index: 10;
+  padding: 22rpx 24rpx;
+  border: 1rpx solid rgb(18 107 79 / 12%);
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 10rpx 36rpx rgb(31 51 41 / 16%);
+}
+
+.map-card__close {
+  position: absolute;
+  top: 14rpx;
+  right: 14rpx;
+  display: flex;
+  width: 48rpx;
+  height: 48rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.map-card__name {
+  display: block;
+  padding-right: 48rpx;
+  font-size: 30rpx;
+  font-weight: 850;
+}
+
+.map-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14rpx;
+  margin-top: 12rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.map-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14rpx;
+  margin-top: 18rpx;
 }
 
 .map-badge {
