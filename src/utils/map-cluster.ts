@@ -18,15 +18,21 @@ export interface ClusterResult {
   clusters: CommunityCluster[]
 }
 
+/** 气泡（callout）在屏幕上的近似占位：横向 110px、纵向 60px。两个气泡近到会重叠时就合并 */
+const DEFAULT_THRESHOLD_X_PX = 110
+const DEFAULT_THRESHOLD_Y_PX = 60
+
 /**
- * 屏幕像素网格聚合：把当前可视区域按 thresholdPx 像素折算成经纬度网格，
- * 同格楼盘合并为一个聚合点。纯函数，便于独立验证。
+ * 贪心质心聚类：把经纬度按当前可视区域折算成屏幕像素，逐点并入「质心距离小于
+ * 气泡占位」的已有簇，否则自成一簇。相比网格法不存在“跨格不合并”的缝隙，
+ * 缩放后重算即可获得符合直觉的合并/拆分。纯函数，便于独立验证。
  */
 export function clusterCommunities(
   items: SlCommunityOutput[],
   region: MapRegionBounds | null,
   windowWidthPx: number,
-  thresholdPx = 60,
+  thresholdXPx = DEFAULT_THRESHOLD_X_PX,
+  thresholdYPx = DEFAULT_THRESHOLD_Y_PX,
 ): ClusterResult {
   const valid = items.filter((item) => {
     const lat = Number(item.lat)
@@ -39,23 +45,48 @@ export function clusterCommunities(
   if (!region || lngSpan <= 0 || windowWidthPx <= 0)
     return { singles: valid, clusters: [] }
 
-  const cellDeg = (thresholdPx * lngSpan) / windowWidthPx
-  const buckets = new Map<string, SlCommunityOutput[]>()
+  // 每像素对应的经度跨度；纬度跨度在小范围内近似一致
+  const degPerPx = lngSpan / windowWidthPx
+  const maxDx = thresholdXPx * degPerPx
+  const maxDy = thresholdYPx * degPerPx
+
+  interface WorkingCluster { latSum: number, lngSum: number, items: SlCommunityOutput[] }
+  const working: WorkingCluster[] = []
+
   for (const item of valid) {
-    const key = `${Math.floor(Number(item.lng) / cellDeg)}_${Math.floor(Number(item.lat) / cellDeg)}`
-    buckets.set(key, [...(buckets.get(key) || []), item])
+    const lat = Number(item.lat)
+    const lng = Number(item.lng)
+    let target: WorkingCluster | null = null
+    for (const cluster of working) {
+      const cLat = cluster.latSum / cluster.items.length
+      const cLng = cluster.lngSum / cluster.items.length
+      if (Math.abs(lng - cLng) < maxDx && Math.abs(lat - cLat) < maxDy) {
+        target = cluster
+        break
+      }
+    }
+    if (target) {
+      target.latSum += lat
+      target.lngSum += lng
+      target.items.push(item)
+    }
+    else {
+      working.push({ latSum: lat, lngSum: lng, items: [item] })
+    }
   }
 
   const singles: SlCommunityOutput[] = []
   const clusters: CommunityCluster[] = []
-  for (const group of buckets.values()) {
-    if (group.length === 1) {
-      singles.push(group[0])
+  for (const cluster of working) {
+    if (cluster.items.length === 1) {
+      singles.push(cluster.items[0])
       continue
     }
-    const lat = group.reduce((sum, x) => sum + Number(x.lat), 0) / group.length
-    const lng = group.reduce((sum, x) => sum + Number(x.lng), 0) / group.length
-    clusters.push({ lat, lng, items: group })
+    clusters.push({
+      lat: cluster.latSum / cluster.items.length,
+      lng: cluster.lngSum / cluster.items.length,
+      items: cluster.items,
+    })
   }
   return { singles, clusters }
 }

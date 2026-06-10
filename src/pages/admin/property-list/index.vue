@@ -5,7 +5,7 @@ import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
-import { idToQuery } from '@/utils/shenle'
+import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
   style: {
@@ -155,6 +155,20 @@ function clearAllFilters() {
   resetFilters()
 }
 
+const previewVideoItem = ref<SlCommunityOutput | null>(null)
+const videoPreviewVisible = computed({
+  get: () => !!previewVideoItem.value,
+  set: (visible: boolean) => {
+    if (!visible)
+      previewVideoItem.value = null
+  },
+})
+const previewVideoUrl = computed(() => previewVideoItem.value ? resolveAssetUrl(previewVideoItem.value.coverImage) : '')
+
+function openVideoPreview(item: SlCommunityOutput) {
+  previewVideoItem.value = item
+}
+
 function goProperties(item: SlCommunityOutput) {
   uni.navigateTo({
     url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`,
@@ -251,10 +265,21 @@ onReachBottom(() => {
         :key="String(item.id)"
         :item="item"
         show-navigate
-        @tap="goProperties"
+        @select="goProperties"
         @navigate="openNavigation"
+        @preview-video="openVideoPreview"
       />
     </view>
+
+    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
+      <view class="video-preview">
+        <view class="video-preview__head">
+          <text>{{ previewVideoItem?.name || '视频预览' }}</text>
+          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideoItem = null" />
+        </view>
+        <video v-if="previewVideoItem" class="video-preview__player" :src="previewVideoUrl" controls autoplay />
+      </view>
+    </wd-popup>
 
     <view v-if="loading" class="loading sl-card">
       <wd-icon name="loading" size="18px" color="#126b4f" />
@@ -446,5 +471,26 @@ onReachBottom(() => {
 .empty__desc {
   color: var(--sl-muted);
   font-size: 24rpx;
+}
+
+.video-preview {
+  background: #fff;
+}
+
+.video-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 24rpx;
+  color: var(--sl-ink);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.video-preview__player {
+  display: block;
+  width: 680rpx;
+  height: 420rpx;
+  background: #10261f;
 }
 </style>

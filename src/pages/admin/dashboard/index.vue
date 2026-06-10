@@ -117,7 +117,7 @@ onPullDownRefresh(load)
 
     <view class="sl-section-head">
       <text class="sl-section-title">楼盘概览</text>
-      <text class="sl-section-extra">{{ loading ? '刷新中' : 'Top 6' }}</text>
+      <text class="sl-section-extra sl-section-extra--link" @tap="go('/pages/common/community-manage/index')">{{ loading ? '刷新中' : '更多 ›' }}</text>
     </view>
 
     <view class="community-list">

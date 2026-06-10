@@ -10,9 +10,11 @@ const props = defineProps<{
   showNavigate?: boolean
 }>()
 
+// 注意：自定义事件不能叫 tap——mp-weixin 上会被原生 tap 事件遮蔽，handler 收到 TouchEvent 而非 item
 const emit = defineEmits<{
-  tap: [item: SlCommunityOutput]
+  select: [item: SlCommunityOutput]
   navigate: [item: SlCommunityOutput]
+  previewVideo: [item: SlCommunityOutput]
 }>()
 
 const cover = ref(resolveAssetUrl(props.item.coverImage))
@@ -85,9 +87,9 @@ watch(
 </script>
 
 <template>
-  <view class="community sl-card" :class="{ 'community--compact': compact }" @tap="emit('tap', item)">
+  <view class="community sl-card" :class="{ 'community--compact': compact }" @tap="emit('select', item)">
     <image v-if="coverKind === 'image' && cover" class="community__cover" :src="cover" mode="aspectFill" />
-    <view v-else-if="coverKind === 'video'" class="community__cover community__cover--video">
+    <view v-else-if="coverKind === 'video'" class="community__cover community__cover--video" @tap.stop="emit('previewVideo', item)">
       <wd-icon name="play-circle" size="28px" color="#fff" />
       <text>视频</text>
     </view>
@@ -98,7 +100,9 @@ watch(
     <view class="community__body">
       <view class="community__top">
         <text class="community__name">{{ item.name }}</text>
-        <wd-tag v-if="item.regionName" type="success" plain>{{ item.regionName }}</wd-tag>
+        <wd-tag v-if="item.regionName" type="success" plain>
+          {{ item.regionName }}
+        </wd-tag>
       </view>
       <text class="community__types">{{ item.houseTypes || '暂无户型信息' }}</text>
       <view class="community__meta">

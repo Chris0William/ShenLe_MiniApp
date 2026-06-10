@@ -119,10 +119,16 @@ function refreshRegionAndMarkers() {
   })
 }
 
+const regionDebug = { fired: 0, accepted: 0, lastEvent: null as any }
+
 function onRegionChange(event: any) {
-  // 仅在拖动/缩放结束后重算聚合，防抖避免频繁刷新
-  if (event?.type !== 'end')
+  regionDebug.fired += 1
+  regionDebug.lastEvent = { type: event?.type, detailType: event?.detail?.type, causedBy: event?.causedBy }
+  // 仅在拖动/缩放结束后重算聚合，防抖避免频繁刷新；
+  // mp-weixin 事件形态不统一：type 或 detail.type 任一为 end 都算结束
+  if (event?.type !== 'end' && event?.detail?.type !== 'end')
     return
+  regionDebug.accepted += 1
   if (regionTimer)
     clearTimeout(regionTimer)
   regionTimer = setTimeout(refreshRegionAndMarkers, 250)
@@ -327,6 +333,8 @@ onLoad(() => {
           selectedName: selected.value?.name || null,
           pickerVisible: pickerVisible.value,
           markerKinds: markers.value.map((m, i) => markerMeta[i]?.type),
+          regionDebug: { ...regionDebug },
+          regionBounds,
         }),
       }
     }
