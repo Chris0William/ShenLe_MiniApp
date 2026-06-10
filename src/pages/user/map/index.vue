@@ -99,15 +99,6 @@ function requestLocation() {
   })
 }
 
-function isDevToolsRuntime() {
-  try {
-    return uni.getSystemInfoSync().platform === 'devtools'
-  }
-  catch {
-    return false
-  }
-}
-
 function applyReferencePoint(longitude: number, latitude: number, label: string, moveMap = true) {
   filters.value = {
     ...filters.value,
@@ -214,8 +205,7 @@ onLoad(() => {
   }
   mapContext = uni.createMapContext(mapId)
   loadCommunities()
-  if (!isDevToolsRuntime())
-    getLocation(false)
+  getLocation(false)
 })
 onPullDownRefresh(loadCommunities)
 </script>
