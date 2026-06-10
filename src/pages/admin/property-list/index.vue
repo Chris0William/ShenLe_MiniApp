@@ -4,6 +4,7 @@ import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { buildCommunityCandidateFilterQuery, buildCommunityFilterQuery, countCommunityFilters, filterCommunitiesByClientDistance, getCommunityFilterLabels } from '@/utils/property-filter'
+import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
 
 definePage({
@@ -13,6 +14,8 @@ definePage({
     enablePullDownRefresh: true,
   },
 })
+
+const safeTop = useSafeTopStyle()
 
 const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
 
@@ -214,7 +217,7 @@ onReachBottom(() => {
 </script>
 
 <template>
-  <view class="sl-page property-page">
+  <view class="sl-page property-page" :style="safeTop">
     <view class="admin-head">
       <view>
         <text class="admin-head__title">房源管理</text>
@@ -303,10 +306,9 @@ onReachBottom(() => {
 
 .admin-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 18rpx;
-  padding-top: 28rpx;
 }
 
 .admin-head__title,
@@ -315,7 +317,7 @@ onReachBottom(() => {
 }
 
 .admin-head__title {
-  font-size: 42rpx;
+  font-size: 34rpx;
   font-weight: 850;
 }
 

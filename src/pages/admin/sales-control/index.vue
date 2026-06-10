@@ -14,6 +14,7 @@ import { getCommunityList } from '@/api/community'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
 import { getRegionStats, getRegionTree } from '@/api/region'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
+import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney, getStatusMeta, idToQuery } from '@/utils/shenle'
 
 definePage({
@@ -23,6 +24,8 @@ definePage({
     enablePullDownRefresh: true,
   },
 })
+
+const safeTop = useSafeTopStyle()
 
 interface RegionRow {
   id: ShenLeId
@@ -152,7 +155,7 @@ async function drillRegion(region: RegionRow) {
   loading.value = true
   try {
     const communities = await getCommunityList({ regionId: region.id })
-    communityRows.value = await mapLimit(communities, 6, async (community) => ({
+    communityRows.value = await mapLimit(communities, 6, async community => ({
       community,
       buildings: await getBuildingStats(community.id).catch(() => []),
     }))
@@ -273,7 +276,7 @@ onPullDownRefresh(refreshCurrent)
 </script>
 
 <template>
-  <view class="sales-page">
+  <view class="sales-page" :style="safeTop">
     <view class="sales-hero">
       <view class="sales-hero__top">
         <view v-if="level > 1" class="back-btn" @tap="goBack">
@@ -319,7 +322,9 @@ onPullDownRefresh(refreshCurrent)
           </view>
         </view>
 
-        <view v-if="loading && !regionList.length" class="loading sl-card">数据加载中...</view>
+        <view v-if="loading && !regionList.length" class="loading sl-card">
+          数据加载中...
+        </view>
         <view v-else class="region-list">
           <view v-for="region in regionList" :key="String(region.id)" class="region-card sl-card" @tap="drillRegion(region)">
             <view class="region-card__top">
@@ -332,13 +337,17 @@ onPullDownRefresh(refreshCurrent)
               <view><text>{{ region.stats?.propertyCount || 0 }}</text><text>房源</text></view>
               <view><text>{{ rate(region.stats?.rentedCount, region.stats?.propertyCount) }}%</text><text>出租率</text></view>
             </view>
-            <view class="progress"><view :style="{ width: `${rate(region.stats?.rentedCount, region.stats?.propertyCount)}%` }" /></view>
+            <view class="progress">
+              <view :style="{ width: `${rate(region.stats?.rentedCount, region.stats?.propertyCount)}%` }" />
+            </view>
           </view>
         </view>
       </view>
 
       <view v-if="level === 2" class="content-inner">
-        <view v-if="loading" class="loading sl-card">数据加载中...</view>
+        <view v-if="loading" class="loading sl-card">
+          数据加载中...
+        </view>
         <view v-else-if="!communityRows.length" class="empty sl-card">
           <wd-icon name="home" size="36px" color="#8ea099" />
           <text>暂无小区数据</text>
@@ -364,7 +373,9 @@ onPullDownRefresh(refreshCurrent)
                 <text class="building-card__meta">{{ building.propertyCount }}间 · {{ building.totalFloors || '-' }}层</text>
               </view>
             </view>
-            <view v-else class="no-building">暂无楼栋</view>
+            <view v-else class="no-building">
+              暂无楼栋
+            </view>
           </view>
         </view>
       </view>
@@ -381,17 +392,23 @@ onPullDownRefresh(refreshCurrent)
           </view>
         </view>
 
-        <view v-if="propertyLoading" class="loading sl-card">房间加载中...</view>
+        <view v-if="propertyLoading" class="loading sl-card">
+          房间加载中...
+        </view>
         <view v-else-if="!properties.length" class="empty sl-card">
           <wd-icon name="home" size="36px" color="#8ea099" />
           <text>暂无房源数据</text>
         </view>
         <view v-else class="floor-list">
           <view v-for="row in floorGrid" :key="row.label" class="floor-row">
-            <view class="floor-label">{{ row.label }}</view>
+            <view class="floor-label">
+              {{ row.label }}
+            </view>
             <scroll-view scroll-x class="room-scroll">
               <view class="room-list">
-                <view v-if="!row.rooms.length" class="room-empty">暂无房间</view>
+                <view v-if="!row.rooms.length" class="room-empty">
+                  暂无房间
+                </view>
                 <view
                   v-for="room in row.rooms"
                   :key="String(room.id)"
@@ -400,7 +417,9 @@ onPullDownRefresh(refreshCurrent)
                   @tap="openProperty(room)"
                 >
                   <text class="room-cell__no">{{ roomLabel(room) }}</text>
-                  <wd-tag :type="statusTone(room.status)" custom-class="room-cell__tag">{{ room.statusName || statusLabel(room.status) }}</wd-tag>
+                  <wd-tag :type="statusTone(room.status)" custom-class="room-cell__tag">
+                    {{ room.statusName || statusLabel(room.status) }}
+                  </wd-tag>
                   <text class="room-cell__price">¥{{ formatMoney(room.rentPrice) }}</text>
                 </view>
               </view>
@@ -417,7 +436,9 @@ onPullDownRefresh(refreshCurrent)
             <text class="action-sheet__title">{{ activeProperty?.title || '房源' }}</text>
             <text class="action-sheet__desc">{{ activeProperty?.houseType }} · ¥{{ formatMoney(activeProperty?.rentPrice) }}/月</text>
           </view>
-          <wd-tag v-if="activeProperty" :type="statusTone(activeProperty.status)">{{ activeProperty.statusName || statusLabel(activeProperty.status) }}</wd-tag>
+          <wd-tag v-if="activeProperty" :type="statusTone(activeProperty.status)">
+            {{ activeProperty.statusName || statusLabel(activeProperty.status) }}
+          </wd-tag>
         </view>
 
         <text class="action-sheet__label">快捷操作</text>
@@ -434,8 +455,12 @@ onPullDownRefresh(refreshCurrent)
         </view>
 
         <view class="action-buttons">
-          <wd-button block plain type="default" @click="goDetail">查看详情</wd-button>
-          <wd-button block type="primary" @click="goEdit">编辑房源</wd-button>
+          <wd-button plain block type="default" @click="goDetail">
+            查看详情
+          </wd-button>
+          <wd-button block type="primary" @click="goEdit">
+            编辑房源
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -486,7 +511,6 @@ onPullDownRefresh(refreshCurrent)
   display: block;
 }
 
-
 .sales-hero__title {
   margin-top: 6rpx;
   font-size: 42rpx;
@@ -521,10 +545,18 @@ onPullDownRefresh(refreshCurrent)
   border-radius: 999rpx;
 }
 
-.legend__dot--0 { background: #2fb06f; }
-.legend__dot--1 { background: #e4a11b; }
-.legend__dot--2 { background: #7d8b85; }
-.legend__dot--3 { background: #c94832; }
+.legend__dot--0 {
+  background: #2fb06f;
+}
+.legend__dot--1 {
+  background: #e4a11b;
+}
+.legend__dot--2 {
+  background: #7d8b85;
+}
+.legend__dot--3 {
+  background: #c94832;
+}
 
 .content-scroll {
   flex: 1;
@@ -759,9 +791,18 @@ onPullDownRefresh(refreshCurrent)
   text-align: center;
 }
 
-.room-cell--1 { background: #fff6df; border-color: rgb(228 161 27 / 22%); }
-.room-cell--2 { background: #eef2f0; border-color: rgb(125 139 133 / 18%); }
-.room-cell--3 { background: #fff0ed; border-color: rgb(201 72 50 / 18%); }
+.room-cell--1 {
+  background: #fff6df;
+  border-color: rgb(228 161 27 / 22%);
+}
+.room-cell--2 {
+  background: #eef2f0;
+  border-color: rgb(125 139 133 / 18%);
+}
+.room-cell--3 {
+  background: #fff0ed;
+  border-color: rgb(201 72 50 / 18%);
+}
 
 .room-cell__no {
   overflow: hidden;

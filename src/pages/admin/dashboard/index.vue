@@ -5,6 +5,7 @@ import { ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPropertyGlobalStats } from '@/api/property'
 import { useShenleAuthStore } from '@/store/auth'
+import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney } from '@/utils/shenle'
 
 definePage({
@@ -14,6 +15,8 @@ definePage({
     enablePullDownRefresh: true,
   },
 })
+
+const safeTop = useSafeTopStyle()
 
 const stats = ref<SlPropertyGlobalStatsOutput>({ totalCount: 0, vacantCount: 0, reservedCount: 0, rentedCount: 0, monthlyIncome: 0 })
 const communities = ref<SlCommunityOutput[]>([])
@@ -60,7 +63,7 @@ onPullDownRefresh(load)
 </script>
 
 <template>
-  <view class="sl-page">
+  <view class="sl-page" :style="safeTop">
     <view class="sl-hero dashboard-hero">
       <text class="sl-title">今日房源状态</text>
       <text class="sl-subtitle">先把统计、房源列表和销控链路迁入新骨架。</text>

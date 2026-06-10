@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { useShenleAuthStore } from '@/store/auth'
 import { buildCommunityCandidateFilterQuery, countCommunityFilters, filterCommunitiesByClientDistance, getCommunityFilterLabels } from '@/utils/property-filter'
+import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
 
 definePage({
@@ -18,6 +19,7 @@ definePage({
 
 const DEFAULT_CENTER = { latitude: 22.5431, longitude: 114.0579 }
 const mapId = 'property-map'
+const safeTop = useSafeTopStyle()
 
 const keyword = ref('')
 const filters = ref<PropertyFilterState>({
@@ -219,11 +221,10 @@ onPullDownRefresh(loadCommunities)
 </script>
 
 <template>
-  <view class="map-page">
+  <view class="map-page" :style="safeTop">
     <view class="map-head">
       <view>
         <text class="map-head__title">楼盘地图</text>
-        <text class="map-head__desc">按楼盘筛选，在地图上查看房源分布</text>
       </view>
       <view class="map-head__actions">
         <wd-button size="small" plain @click="chooseReferencePoint">
@@ -286,7 +287,7 @@ onPullDownRefresh(loadCommunities)
 <style scoped lang="scss">
 .map-page {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   flex-direction: column;
   box-sizing: border-box;
   padding: 28rpx 24rpx calc(132rpx + env(safe-area-inset-bottom));
@@ -298,26 +299,15 @@ onPullDownRefresh(loadCommunities)
 .map-head {
   display: flex;
   flex: 0 0 auto;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 18rpx;
-  padding-top: 18rpx;
-}
-
-.map-head__title,
-.map-head__desc {
-  display: block;
 }
 
 .map-head__title {
-  font-size: 38rpx;
+  display: block;
+  font-size: 34rpx;
   font-weight: 850;
-}
-
-.map-head__desc {
-  margin-top: 8rpx;
-  color: var(--sl-muted);
-  font-size: 22rpx;
 }
 
 .map-head__actions {
@@ -371,8 +361,8 @@ onPullDownRefresh(loadCommunities)
 
 .map-shell {
   position: relative;
-  height: calc(100vh - 430rpx - env(safe-area-inset-bottom));
-  min-height: 620rpx;
+  flex: 1;
+  min-height: 480rpx;
   overflow: hidden;
   margin-top: 20rpx;
 }
