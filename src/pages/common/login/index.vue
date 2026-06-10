@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
 import { useShenleAuthStore } from '@/store/auth'
 
 definePage({
@@ -12,13 +12,13 @@ definePage({
 const auth = useShenleAuthStore()
 const loading = ref(false)
 const step = ref<'login' | 'profile'>('login')
-const redirect = ref('/pages/admin/dashboard/index')
+const redirect = ref('/pages/user/map/index')
 const profileNickName = ref('')
 const profileAvatarTemp = ref('')
 const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
 
 function goAfterLogin() {
-  const target = redirect.value || '/pages/admin/dashboard/index'
+  const target = redirect.value || '/pages/user/map/index'
   uni.reLaunch({ url: target })
 }
 
@@ -125,7 +125,7 @@ onLoad((query) => {
         type="nickname"
         placeholder="请输入微信昵称"
         placeholder-class="nickname-placeholder"
-      />
+      >
 
       <wd-button block type="success" :loading="loading" :disabled="!canSubmitProfile" @click="onProfileSubmit">
         {{ loading ? '提交中...' : '完成并登录' }}

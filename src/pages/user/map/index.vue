@@ -7,6 +7,7 @@ import { buildCommunityCandidateFilterQuery, countCommunityFilters, filterCommun
 import { idToQuery } from '@/utils/shenle'
 
 definePage({
+  type: 'home',
   style: {
     navigationStyle: 'custom',
     navigationBarTitleText: '地图',
@@ -268,7 +269,6 @@ onPullDownRefresh(loadCommunities)
         </cover-view>
       </map>
     </view>
-
   </view>
 </template>
 
@@ -390,5 +390,4 @@ onPullDownRefresh(loadCommunities)
   font-size: 22rpx;
   font-weight: 800;
 }
-
 </style>

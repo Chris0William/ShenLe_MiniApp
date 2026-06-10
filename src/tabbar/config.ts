@@ -26,10 +26,10 @@ export const nativeTabbarList: NativeTabBarItem[] = [
 
 export const customTabbarList: CustomTabBarItem[] = [
   {
-    text: '工作台',
-    pagePath: 'pages/admin/dashboard/index',
+    text: '地图',
+    pagePath: 'pages/user/map/index',
     iconType: 'unocss',
-    icon: 'i-carbon-dashboard',
+    icon: 'i-carbon-location',
   },
   {
     text: '房源',
@@ -38,10 +38,10 @@ export const customTabbarList: CustomTabBarItem[] = [
     icon: 'i-carbon-building',
   },
   {
-    text: '地图',
-    pagePath: 'pages/user/map/index',
+    text: '工作台',
+    pagePath: 'pages/admin/dashboard/index',
     iconType: 'unocss',
-    icon: 'i-carbon-location',
+    icon: 'i-carbon-dashboard',
   },
   {
     text: '销控',
