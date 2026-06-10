@@ -12,14 +12,28 @@ definePage({
 const auth = useShenleAuthStore()
 const loading = ref(false)
 const step = ref<'login' | 'profile'>('login')
+const denied = ref(false)
 const redirect = ref('/pages/user/map/index')
 const profileNickName = ref('')
 const profileAvatarTemp = ref('')
 const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
 
-function goAfterLogin() {
+function goAfterLogin(showToast = true) {
+  // 管理端仅限 888 权限账号使用
+  if (!auth.isAdmin) {
+    denied.value = true
+    step.value = 'login'
+    auth.signOut()
+    return
+  }
+  if (showToast)
+    uni.showToast({ title: '登录成功', icon: 'success' })
   const target = redirect.value || '/pages/user/map/index'
-  uni.reLaunch({ url: target })
+  setTimeout(() => uni.reLaunch({ url: target }), showToast ? 300 : 0)
+}
+
+function retryLogin() {
+  denied.value = false
 }
 
 async function onWxLogin() {
@@ -34,8 +48,7 @@ async function onWxLogin() {
       return
     }
 
-    uni.showToast({ title: '登录成功', icon: 'success' })
-    setTimeout(goAfterLogin, 300)
+    goAfterLogin()
   }
   catch (error) {
     console.error('微信授权登录失败', error)
@@ -59,8 +72,7 @@ async function onProfileSubmit() {
   loading.value = true
   try {
     await auth.wxLoginStep2(profileNickName.value.trim(), profileAvatarTemp.value)
-    uni.showToast({ title: '登录成功', icon: 'success' })
-    setTimeout(goAfterLogin, 300)
+    goAfterLogin()
   }
   catch (error) {
     console.error('完善微信资料失败', error)
@@ -75,8 +87,14 @@ onLoad((query) => {
   if (typeof query?.redirect === 'string' && query.redirect.startsWith('/pages/'))
     redirect.value = decodeURIComponent(query.redirect)
 
+  if (query?.denied === '1') {
+    denied.value = true
+    auth.signOut()
+    return
+  }
+
   if (auth.isLogin)
-    setTimeout(goAfterLogin, 0)
+    setTimeout(() => goAfterLogin(false), 0)
 })
 </script>
 
@@ -90,7 +108,18 @@ onLoad((query) => {
       <text class="sl-subtitle">使用当前微信身份进入深乐租管理工作台，不再提供账号密码登录入口。</text>
     </view>
 
-    <view v-if="step === 'login'" class="login-card sl-card">
+    <view v-if="denied" class="login-card sl-card">
+      <view class="denied-mark">
+        <wd-icon name="warn-bold" size="46px" color="#d2691e" />
+      </view>
+      <text class="card-title">仅管理员可使用本小程序</text>
+      <text class="card-desc">当前微信账号没有管理员权限。如需使用，请联系管理员开通后重新授权登录。</text>
+      <wd-button plain block type="success" @click="retryLogin">
+        重新授权登录
+      </wd-button>
+    </view>
+
+    <view v-else-if="step === 'login'" class="login-card sl-card">
       <view class="wx-mark">
         <text>微</text>
       </view>
@@ -183,6 +212,16 @@ onLoad((query) => {
   gap: 24rpx;
   margin-top: 38rpx;
   padding: 42rpx 30rpx 34rpx;
+}
+
+.denied-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 34rpx;
+  background: rgba(210, 105, 30, 0.12);
 }
 
 .wx-mark {

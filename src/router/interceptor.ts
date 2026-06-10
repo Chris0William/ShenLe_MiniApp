@@ -1,3 +1,4 @@
+import { useShenleAuthStore } from '@/store/auth'
 /**
  * by 菲鸽 on 2025-08-19
  * 路由拦截，通常也是登录拦截
@@ -5,7 +6,6 @@
  */
 import { tabbarStore } from '@/tabbar/store'
 import { getLastPage, parseUrlToObj } from '@/utils/index'
-import { useShenleAuthStore } from '@/store/auth'
 
 export const FG_LOG_ENABLE = false
 
@@ -67,9 +67,16 @@ export const navigateToInterceptor = {
     // }
 
     const auth = useShenleAuthStore()
-    if (needsLogin(path) && !auth.isLogin) {
-      toLogin(path)
-      return false
+    if (needsLogin(path)) {
+      if (!auth.isLogin) {
+        toLogin(path)
+        return false
+      }
+      // 管理端仅限 888 权限账号使用
+      if (!auth.isAdmin && !path.startsWith('/pages/common/login/')) {
+        uni.reLaunch({ url: '/pages/common/login/index?denied=1' })
+        return false
+      }
     }
 
     // 处理直接进入路由非首页时，tabbarIndex 不正确的问题

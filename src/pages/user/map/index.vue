@@ -3,6 +3,7 @@ import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput } fro
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
+import { useShenleAuthStore } from '@/store/auth'
 import { buildCommunityCandidateFilterQuery, countCommunityFilters, filterCommunitiesByClientDistance, getCommunityFilterLabels } from '@/utils/property-filter'
 import { idToQuery } from '@/utils/shenle'
 
@@ -199,6 +200,16 @@ function goProperties(item: SlCommunityOutput | null) {
 }
 
 onLoad(() => {
+  // 冷启动直接落在本页时拦截器不生效，需自行守卫登录态与管理员权限
+  const auth = useShenleAuthStore()
+  if (!auth.isLogin) {
+    uni.navigateTo({ url: `/pages/common/login/index?redirect=${encodeURIComponent('/pages/user/map/index')}` })
+    return
+  }
+  if (!auth.isAdmin) {
+    uni.reLaunch({ url: '/pages/common/login/index?denied=1' })
+    return
+  }
   mapContext = uni.createMapContext(mapId)
   loadCommunities()
   if (!isDevToolsRuntime())
