@@ -4,7 +4,7 @@ import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { useShenleAuthStore } from '@/store/auth'
-import { buildCommunityCandidateFilterQuery, countCommunityFilters, filterCommunitiesByClientDistance, getCommunityFilterLabels } from '@/utils/property-filter'
+import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
 
@@ -55,7 +55,7 @@ function buildQuery(pageNumber = 1, size = 200): PageSlCommunityInput {
     pageSize: size,
     name: keyword.value.trim() || undefined,
     status: 0,
-    ...buildCommunityCandidateFilterQuery(filters.value),
+    ...buildCommunityFilterQuery(filters.value),
   }
 }
 
@@ -79,7 +79,7 @@ async function loadCommunities() {
         break
       currentPage += 1
     }
-    communities.value = filterCommunitiesByClientDistance(candidates, filters.value).filter(hasCoordinate)
+    communities.value = candidates.filter(hasCoordinate)
   }
   finally {
     loading.value = false

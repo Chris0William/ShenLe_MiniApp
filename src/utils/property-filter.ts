@@ -91,20 +91,6 @@ export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<Pa
   }
 }
 
-export function buildCommunityCandidateFilterQuery(filters: PropertyFilterState): Omit<PageSlCommunityInput, 'page' | 'pageSize'> {
-  const { distanceKm: _distanceKm, ...query } = buildCommunityFilterQuery(filters)
-  return query
-}
-
-export function filterCommunitiesByClientDistance(items: SlCommunityOutput[], filters: PropertyFilterState) {
-  if (filters.distanceKm === undefined)
-    return items
-  return items.filter((item) => {
-    const distance = Number(item.distance)
-    return Number.isFinite(distance) && distance <= filters.distanceKm!
-  })
-}
-
 export function sameId(left?: ShenLeId, right?: ShenLeId) {
   return left !== undefined && right !== undefined && String(left) === String(right)
 }

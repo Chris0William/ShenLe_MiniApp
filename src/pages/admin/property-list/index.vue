@@ -3,7 +3,7 @@ import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput } fro
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
-import { buildCommunityCandidateFilterQuery, buildCommunityFilterQuery, countCommunityFilters, filterCommunitiesByClientDistance, getCommunityFilterLabels } from '@/utils/property-filter'
+import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
 
@@ -28,7 +28,6 @@ const page = ref(1)
 const pageSize = 10
 const total = ref(0)
 const items = ref<SlCommunityOutput[]>([])
-const filteredItems = ref<SlCommunityOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
 const locating = ref(false)
@@ -40,32 +39,17 @@ const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
 
-function buildQuery(pageNumber = page.value, size = pageSize, includeDistance = true): PageSlCommunityInput {
+function buildQuery(pageNumber = page.value, size = pageSize): PageSlCommunityInput {
   return {
     page: pageNumber,
     pageSize: size,
     name: keyword.value.trim() || undefined,
     status: 0,
-    ...(includeDistance ? buildCommunityFilterQuery(filters.value) : buildCommunityCandidateFilterQuery(filters.value)),
+    ...buildCommunityFilterQuery(filters.value),
   }
 }
 
-async function fetchAllCandidateCommunities() {
-  const fetchSize = 100
-  const candidates: SlCommunityOutput[] = []
-  let currentPage = 1
-  let totalCount = Number.POSITIVE_INFINITY
-  while (candidates.length < totalCount) {
-    const result = await getCommunityPage(buildQuery(currentPage, fetchSize, false))
-    candidates.push(...result.items)
-    totalCount = result.total
-    if (!result.items.length)
-      break
-    currentPage += 1
-  }
-  return filterCommunitiesByClientDistance(candidates, filters.value)
-}
-
+// 距离排序与 DistanceKm 过滤均由服务端在分页前完成，前端只做标准分页
 async function load(reset = false) {
   if (loading.value)
     return
@@ -76,15 +60,6 @@ async function load(reset = false) {
   }
   loading.value = true
   try {
-    if (filters.value.distanceKm !== undefined) {
-      if (reset)
-        filteredItems.value = await fetchAllCandidateCommunities()
-      total.value = filteredItems.value.length
-      items.value = filteredItems.value.slice(0, page.value * pageSize)
-      hasLoaded.value = true
-      return
-    }
-    filteredItems.value = []
     const result = await getCommunityPage(buildQuery())
     total.value = result.total
     items.value = reset ? result.items : [...items.value, ...result.items]
