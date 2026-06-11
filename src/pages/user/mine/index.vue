@@ -33,7 +33,7 @@ async function logout() {
       <image class="avatar" :src="auth.user?.avatar || '/static/images/default-avatar.png'" mode="aspectFill" />
       <view>
         <text class="name">{{ auth.displayName }}</text>
-        <text class="meta">{{ auth.user?.orgName || (auth.isLogin ? '深乐租团队' : '登录后管理房源') }}</text>
+        <text class="meta">{{ auth.user?.orgName || (auth.isLogin ? '深租云科团队' : '登录后管理房源') }}</text>
       </view>
     </view>
 

@@ -128,7 +128,7 @@ onLoad(async (query) => {
 
     <view class="sl-hero login-hero">
       <text class="sl-title">管理端微信授权登录</text>
-      <text class="sl-subtitle">使用当前微信身份进入深乐租管理工作台，不再提供账号密码登录入口。</text>
+      <text class="sl-subtitle">使用当前微信身份进入深租宝典管理工作台，不再提供账号密码登录入口。</text>
     </view>
 
     <view v-if="denied" class="login-card sl-card">

@@ -4,7 +4,7 @@ import { tabBar } from './src/tabbar/config'
 export default defineUniPages({
   globalStyle: {
     navigationStyle: 'default',
-    navigationBarTitleText: '深乐租',
+    navigationBarTitleText: '深租宝典',
     navigationBarBackgroundColor: '#f7faf8',
     navigationBarTextStyle: 'black',
     backgroundColor: '#f4f7f2',

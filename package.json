@@ -5,7 +5,7 @@
     "unibest-version": "4.4.0",
     "unibest-update-time": "2026-04-25",
     "packageManager": "pnpm@10.10.0",
-    "description": "深乐租小程序重构版（unibest + wot-design-uni）",
+    "description": "深租宝典管理端小程序（unibest + wot-design-uni）",
     "generate-time": "用户创建项目时生成",
     "author": {
         "name": "feige996",

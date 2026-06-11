@@ -95,7 +95,7 @@ watch(
           {{ item.statusName || status.label }}
         </wd-tag>
       </view>
-      <text class="property__community">{{ item.communityName || '深乐租房源' }}</text>
+      <text class="property__community">{{ item.communityName || '深租宝典房源' }}</text>
       <view class="property__meta">
         <text class="property__meta-item">{{ item.houseType }}</text>
         <text class="property__meta-item">{{ formatArea(item.area) }}</text>
