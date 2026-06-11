@@ -23,10 +23,13 @@ function cleanQuery(data?: Record<string, unknown>) {
 function redirectToLogin() {
   if (redirectingLogin)
     return
-  redirectingLogin = true
   const pages = getCurrentPages()
   const current = pages[pages.length - 1]
-  const route = current?.route ? `/${current.route}` : '/pages/admin/dashboard/index'
+  // 已在登录页时不再跳转，避免登录页叠层或循环
+  if (current?.route?.includes('pages/common/login/'))
+    return
+  redirectingLogin = true
+  const route = current?.route ? `/${current.route}` : '/pages/user/map/index'
   uni.navigateTo({
     url: `/pages/common/login/index?redirect=${encodeURIComponent(route)}`,
     complete: () => {
@@ -59,6 +62,8 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
         if (body?.code === 401 || res.statusCode === 401) {
           uni.removeStorageSync(SHENLE_TOKEN_KEY)
           uni.removeStorageSync(SHENLE_USER_KEY)
+          // 通知 auth store 同步清理内存登录态（storage 与 pinia 不同步会造成登录页/业务页来回横跳）
+          uni.$emit('shenle:unauthorized')
           if (!silent) {
             uni.showToast({ title: '登录已过期', icon: 'none' })
             redirectToLogin()
@@ -84,8 +89,10 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
   })
 }
 
-export const get = <T>(url: string, data?: Record<string, unknown>, options?: Omit<RequestOptions, 'url' | 'data' | 'method'>) =>
-  request<T>({ url, data, method: 'GET', ...options })
+export function get<T>(url: string, data?: Record<string, unknown>, options?: Omit<RequestOptions, 'url' | 'data' | 'method'>) {
+  return request<T>({ url, data, method: 'GET', ...options })
+}
 
-export const post = <T>(url: string, data?: Record<string, unknown>, options?: Omit<RequestOptions, 'url' | 'data' | 'method'>) =>
-  request<T>({ url, data, method: 'POST', ...options })
+export function post<T>(url: string, data?: Record<string, unknown>, options?: Omit<RequestOptions, 'url' | 'data' | 'method'>) {
+  return request<T>({ url, data, method: 'POST', ...options })
+}

@@ -8,6 +8,14 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const token = ref<string>(uni.getStorageSync(SHENLE_TOKEN_KEY) || '')
   const openId = ref<string>(uni.getStorageSync(SHENLE_OPENID_KEY) || uni.getStorageSync('openId') || '')
   const user = ref<LoginUserOutput | null>(uni.getStorageSync(SHENLE_USER_KEY) || null)
+
+  // 请求层 401 时只能清 storage，这里同步清内存态；
+  // 否则 isLogin 仍为 true，登录页会把过期用户弹回业务页，形成来回横跳死循环
+  uni.$on('shenle:unauthorized', () => {
+    token.value = ''
+    user.value = null
+  })
+
   const isLogin = computed(() => !!token.value)
   const isAdmin = computed(() => (user.value?.accountType || 0) >= 888)
   const displayName = computed(() => user.value?.realName || user.value?.account || '未登录')
@@ -51,10 +59,10 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     setUser(toLoginUser(session))
   }
 
-  async function refreshUser() {
+  async function refreshUser(silent = false) {
     if (!token.value)
       return null
-    const profile = await getUserInfo()
+    const profile = await getUserInfo(silent)
     setUser(profile)
     return profile
   }

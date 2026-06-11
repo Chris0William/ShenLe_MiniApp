@@ -83,7 +83,7 @@ async function onProfileSubmit() {
   }
 }
 
-onLoad((query) => {
+onLoad(async (query) => {
   if (typeof query?.redirect === 'string' && query.redirect.startsWith('/pages/'))
     redirect.value = decodeURIComponent(query.redirect)
 
@@ -93,8 +93,31 @@ onLoad((query) => {
     return
   }
 
-  if (auth.isLogin)
-    setTimeout(() => goAfterLogin(false), 0)
+  // 不能盲信本地 token（可能已过期）：先向服务器验证，失效则尝试 openid 静默续期，
+  // 都不行就留在登录页等用户手动授权——否则会和业务页来回横跳
+  if (!auth.isLogin && !auth.openId)
+    return
+  loading.value = true
+  try {
+    if (auth.isLogin) {
+      await auth.refreshUser(true)
+      goAfterLogin(false)
+      return
+    }
+    if (await auth.autoLogin())
+      goAfterLogin(false)
+  }
+  catch {
+    // token 已失效（401 已同步清理登录态），尝试 openid 静默续期
+    try {
+      if (await auth.autoLogin())
+        goAfterLogin(false)
+    }
+    catch {}
+  }
+  finally {
+    loading.value = false
+  }
 })
 </script>
 

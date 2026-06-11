@@ -1,4 +1,3 @@
-import { get, post } from './request'
 import type {
   AdminResult,
   CompleteProfileInput,
@@ -8,21 +7,27 @@ import type {
   WxOpenIdOutput,
 } from '@/types/shenle'
 import { getApiBaseUrl } from '@/utils/shenle'
+import { get, post } from './request'
 
-export const getUserInfo = () =>
-  get<LoginUserOutput>('/api/sysAuth/getUserInfo')
+export function getUserInfo(silent = false) {
+  return get<LoginUserOutput>('/api/sysAuth/getUserInfo', undefined, { silent })
+}
 
-export const logout = () =>
-  post<void>('/api/sysAuth/logout')
+export function logout() {
+  return post<void>('/api/sysAuth/logout')
+}
 
-export const getWxOpenId = (jsCode: string) =>
-  get<WxOpenIdOutput>('/api/sysWxOpen/wxOpenId', { JsCode: jsCode }, { auth: false })
+export function getWxOpenId(jsCode: string) {
+  return get<WxOpenIdOutput>('/api/sysWxOpen/wxOpenId', { JsCode: jsCode }, { auth: false })
+}
 
-export const wxOpenIdLogin = (openId: string) =>
-  post<WxLoginOutput>('/api/sysWxOpen/wxOpenIdLogin', { openId }, { auth: false })
+export function wxOpenIdLogin(openId: string) {
+  return post<WxLoginOutput>('/api/sysWxOpen/wxOpenIdLogin', { openId }, { auth: false })
+}
 
-export const completeProfile = (input: CompleteProfileInput) =>
-  post<WxLoginOutput>('/api/sysWxOpen/completeProfile', input as unknown as Record<string, unknown>, { auth: false })
+export function completeProfile(input: CompleteProfileInput) {
+  return post<WxLoginOutput>('/api/sysWxOpen/completeProfile', input as unknown as Record<string, unknown>, { auth: false })
+}
 
 export function uploadAvatar(openId: string, tempFilePath: string): Promise<UploadAvatarOutput> {
   return new Promise((resolve, reject) => {
