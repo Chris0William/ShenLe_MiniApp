@@ -120,18 +120,28 @@ function refreshRegionAndMarkers() {
 }
 
 const regionDebug = { fired: 0, accepted: 0, lastEvent: null as any }
+let lastRebuildAt = 0
 
 function onRegionChange(event: any) {
   regionDebug.fired += 1
   regionDebug.lastEvent = { type: event?.type, detailType: event?.detail?.type, causedBy: event?.causedBy }
-  // 仅在拖动/缩放结束后重算聚合，防抖避免频繁刷新；
-  // mp-weixin 事件形态不统一：type 或 detail.type 任一为 end 都算结束
-  if (event?.type !== 'end' && event?.detail?.type !== 'end')
+  // mp-weixin 事件形态不统一：type 或 detail.type 任一为 end 都算手势结束
+  const isEnd = event?.type === 'end' || event?.detail?.type === 'end'
+  if (isEnd) {
+    regionDebug.accepted += 1
+    if (regionTimer) {
+      clearTimeout(regionTimer)
+      regionTimer = null
+    }
+    refreshRegionAndMarkers()
     return
-  regionDebug.accepted += 1
-  if (regionTimer)
-    clearTimeout(regionTimer)
-  regionTimer = setTimeout(refreshRegionAndMarkers, 250)
+  }
+  // 缩放/拖动过程中按 200ms 节流重算，让合并拆分跟手而不是等手势结束
+  const now = Date.now()
+  if (now - lastRebuildAt > 200) {
+    lastRebuildAt = now
+    refreshRegionAndMarkers()
+  }
 }
 
 function buildQuery(pageNumber = 1, size = 200): PageSlCommunityInput {
@@ -283,7 +293,7 @@ function expandCluster(cluster: CommunityCluster) {
   const points = cluster.items.map(item => ({ latitude: Number(item.lat), longitude: Number(item.lng) }))
   mapContext?.includePoints({ points, padding: [80, 80, 80, 80] })
   // includePoints 在部分环境不触发 regionchange，兜底延时重算聚合
-  setTimeout(refreshRegionAndMarkers, 600)
+  setTimeout(refreshRegionAndMarkers, 400)
 }
 
 function onPickCommunity(event: any) {

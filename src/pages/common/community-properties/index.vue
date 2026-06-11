@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import type { PageSlPropertyInput, ShenLeId, SlPropertyListOutput } from '@/types/shenle'
+import type { MediaKind } from '@/utils/media'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import { getCommunityDetail } from '@/api/community'
+import { downloadFile } from '@/api/file'
 import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
-import { idToQuery } from '@/utils/shenle'
+import { mediaKindOf } from '@/utils/media'
+import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
   style: {
@@ -64,6 +68,68 @@ function selectStatus(value?: number) {
   load(true)
 }
 
+// ===== 楼盘媒体横滑栏 =====
+interface CommunityMediaItem {
+  id: ShenLeId
+  name: string
+  kind: MediaKind
+  url: string
+}
+
+const mediaList = ref<CommunityMediaItem[]>([])
+const previewVideoMedia = ref<CommunityMediaItem | null>(null)
+const videoPreviewVisible = computed({
+  get: () => !!previewVideoMedia.value,
+  set: (visible: boolean) => {
+    if (!visible)
+      previewVideoMedia.value = null
+  },
+})
+
+async function loadMedia() {
+  if (!communityId.value)
+    return
+  try {
+    const detail = await getCommunityDetail(communityId.value)
+    const list: CommunityMediaItem[] = (detail.images || []).map(media => ({
+      id: media.id,
+      name: media.fileName || `文件${media.id}`,
+      kind: mediaKindOf(media.fileType, media.suffix || media.url),
+      url: resolveAssetUrl(media.url),
+    }))
+    // 部分导入批次媒体池绑定缺失：媒体池为空但有封面时至少展示封面
+    if (!list.length && detail.coverImageId && detail.coverImage) {
+      list.push({
+        id: detail.coverImageId,
+        name: detail.name || '封面',
+        kind: mediaKindOf(detail.coverFileType, detail.coverSuffix || detail.coverImage),
+        url: resolveAssetUrl(detail.coverImage),
+      })
+    }
+    mediaList.value = list
+    // 私有图需鉴权下载后才能显示缩略图，逐个替换为本地路径
+    for (const item of list) {
+      if (item.kind === 'image')
+        downloadFile(item.id).then((path) => { item.url = path }).catch(() => {})
+    }
+  }
+  catch {
+    mediaList.value = []
+  }
+}
+
+function openMedia(media: CommunityMediaItem) {
+  if (media.kind === 'video') {
+    previewVideoMedia.value = media
+    return
+  }
+  const images = mediaList.value.filter(item => item.kind === 'image')
+  uni.previewImage({
+    current: media.url,
+    urls: images.map(item => item.url),
+  })
+}
+
 function openDetail(item: SlPropertyListOutput) {
   uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(item.id)}` })
 }
@@ -110,6 +176,7 @@ onLoad((query) => {
   if (communityName.value)
     uni.setNavigationBarTitle({ title: communityName.value })
   load(true)
+  loadMedia()
 })
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
@@ -122,15 +189,17 @@ onReachBottom(() => {
 
 <template>
   <view class="sl-page community-page">
-    <view class="head-card sl-card">
-      <view>
-        <text class="head-card__title">{{ communityName || '楼盘房源' }}</text>
-        <text class="head-card__desc">{{ canManage ? '查看并维护该楼盘下的所有房间。' : '查看该楼盘可出租房源，管理操作登录后显示。' }}</text>
+    <scroll-view v-if="mediaList.length" scroll-x class="media-strip">
+      <view class="media-strip__inner">
+        <view v-for="media in mediaList" :key="String(media.id)" class="media-item" @tap="openMedia(media)">
+          <image v-if="media.kind === 'image'" class="media-item__thumb" :src="media.url" mode="aspectFill" />
+          <view v-else class="media-item__thumb media-item__thumb--video">
+            <wd-icon name="play-circle" size="26px" color="#fff" />
+          </view>
+          <text class="media-item__name">{{ media.name }}</text>
+        </view>
       </view>
-      <wd-button v-if="canManage" size="small" type="primary" icon="add" @click="openForm()">
-        新增
-      </wd-button>
-    </view>
+    </scroll-view>
 
     <view class="search sl-card">
       <wd-icon name="search" size="20px" color="#7a8780" />
@@ -142,17 +211,18 @@ onReachBottom(() => {
 
     <scroll-view scroll-x class="chips">
       <view class="chips__inner">
-        <wd-tag :type="status === undefined ? 'success' : 'default'" @click="selectStatus(undefined)">
+        <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
           全部
-        </wd-tag>
-        <wd-tag
+        </view>
+        <view
           v-for="item in PROPERTY_STATUS_OPTIONS"
           :key="item.value"
-          :type="status === item.value ? item.tone as any : 'default'"
-          @click="selectStatus(item.value)"
+          class="status-chip"
+          :class="{ 'status-chip--active': status === item.value }"
+          @tap="selectStatus(item.value)"
         >
           {{ item.label }}
-        </wd-tag>
+        </view>
       </view>
     </scroll-view>
 
@@ -202,38 +272,69 @@ onReachBottom(() => {
     <view v-else-if="finished" class="loading">
       已经到底了
     </view>
+
+    <view v-if="canManage" class="fab" @tap="openForm()">
+      <wd-icon name="add" size="26px" color="#fff" />
+    </view>
+
+    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
+      <view class="video-preview">
+        <view class="video-preview__head">
+          <text>{{ previewVideoMedia?.name || '视频预览' }}</text>
+          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideoMedia = null" />
+        </view>
+        <video v-if="previewVideoMedia" class="video-preview__player" :src="previewVideoMedia.url" controls autoplay />
+      </view>
+    </wd-popup>
   </view>
 </template>
 
 <style scoped lang="scss">
 .community-page {
-  padding-bottom: calc(88rpx + env(safe-area-inset-bottom));
+  padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
 }
 
-.head-card {
+.media-strip {
+  margin-top: 6rpx;
+  white-space: nowrap;
+}
+
+.media-strip__inner {
+  display: inline-flex;
+  gap: 16rpx;
+  padding: 4rpx 4rpx 8rpx;
+}
+
+.media-item {
+  display: inline-flex;
+  width: 180rpx;
+  flex-direction: column;
+  gap: 8rpx;
+}
+
+.media-item__thumb {
+  width: 180rpx;
+  height: 132rpx;
+  border: 1rpx solid rgb(18 107 79 / 10%);
+  border-radius: 18rpx;
+  background: #edf2eb;
+}
+
+.media-item__thumb--video {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 20rpx;
-  padding: 28rpx;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f6a4c, #173f34);
 }
 
-.head-card__title,
-.head-card__desc {
-  display: block;
-}
-
-
-.head-card__title {
-  margin-top: 8rpx;
-  font-size: 36rpx;
-  font-weight: 850;
-}
-
-.head-card__desc {
-  margin-top: 8rpx;
+.media-item__name {
+  overflow: hidden;
+  padding: 0 4rpx;
   color: var(--sl-muted);
-  font-size: 23rpx;
+  font-size: 21rpx;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .search {
@@ -258,7 +359,28 @@ onReachBottom(() => {
 .chips__inner {
   display: inline-flex;
   gap: 14rpx;
-  padding-right: 28rpx;
+  padding: 4rpx 28rpx 8rpx 4rpx;
+}
+
+.status-chip {
+  display: inline-flex;
+  height: 60rpx;
+  align-items: center;
+  padding: 0 30rpx;
+  border: 1rpx solid rgb(18 107 79 / 16%);
+  border-radius: 999rpx;
+  background: #fff;
+  color: #5e6c65;
+  font-size: 25rpx;
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+
+.status-chip--active {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--sl-brand, #126b4f), #24815f);
+  box-shadow: 0 8rpx 20rpx rgb(18 107 79 / 22%);
+  color: #fff;
 }
 
 .result-head {
@@ -329,5 +451,41 @@ onReachBottom(() => {
 .empty__desc {
   color: var(--sl-muted);
   font-size: 24rpx;
+}
+
+.fab {
+  position: fixed;
+  right: 34rpx;
+  bottom: calc(92rpx + env(safe-area-inset-bottom));
+  z-index: 8;
+  display: flex;
+  width: 96rpx;
+  height: 96rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: linear-gradient(135deg, var(--sl-brand, #126b4f), #24815f);
+  box-shadow: 0 18rpx 38rpx rgb(18 107 79 / 28%);
+}
+
+.video-preview {
+  background: #fff;
+}
+
+.video-preview__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22rpx 24rpx;
+  color: var(--sl-ink);
+  font-size: 28rpx;
+  font-weight: 900;
+}
+
+.video-preview__player {
+  display: block;
+  width: 680rpx;
+  height: 420rpx;
+  background: #10261f;
 }
 </style>
