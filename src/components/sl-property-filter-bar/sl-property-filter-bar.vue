@@ -757,7 +757,12 @@ function onThumbTouchEnd() {
   font-weight: 800;
 }
 
-.chip-row,
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18rpx;
+}
+
 .chip-row--large {
   padding-top: 8rpx;
 }
