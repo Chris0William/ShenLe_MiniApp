@@ -363,7 +363,7 @@ function onThumbTouchEnd() {
 </script>
 
 <template>
-  <view class="filter-shell" :class="{ open: activeDropdown || sheetVisible }">
+  <view class="filter-shell" :class="{ 'open': activeDropdown || sheetVisible, 'sheet-open': sheetVisible }">
     <view class="filter-bar">
       <view
         class="filter-tab"
@@ -493,17 +493,11 @@ function onThumbTouchEnd() {
       </view>
     </view>
 
-    <wd-popup
-      :model-value="sheetVisible"
-      position="bottom"
-      custom-style="height: 80vh; border-radius: 32rpx 32rpx 0 0; overflow: hidden; background: #ffffff;"
-      safe-area-inset-bottom
-      :z-index="2000"
-      @close="closeSheet"
-      @click-modal="closeSheet"
-    >
-      <!-- 固定 80vh 由面板自身撑起（不依赖 popup 包装层传高度）；catchtouchmove 防滚动穿透 -->
-      <view class="sheet-panel" @touchmove.stop.prevent>
+    <!-- 自实现底部弹层：wd-popup 在本组件环境下过渡状态机会卡死在屏幕外，弃用。
+         v-if + fixed 定位 + CSS 动画，行为确定；catchtouchmove 防滚动穿透 -->
+    <view v-if="sheetVisible" class="sheet-mask" @tap="closeSheet" @touchmove.stop.prevent />
+    <view v-if="sheetVisible" class="sheet-wrap" @touchmove.stop.prevent>
+      <view class="sheet-panel">
         <view class="sheet-head">
           <text class="sheet-title">筛选</text>
           <view class="sheet-close" @tap="closeSheet">
@@ -628,7 +622,7 @@ function onThumbTouchEnd() {
           </wd-button>
         </view>
       </view>
-    </wd-popup>
+    </view>
   </view>
 </template>
 
@@ -641,6 +635,12 @@ function onThumbTouchEnd() {
 
 .filter-shell.open {
   z-index: 80;
+}
+
+/* sheet 弹层必须盖过自定义 tabbar(z-index:1000)；
+   根元素的层叠上下文会把内部 popup 的 z-index 困住，必须在根上提级 */
+.filter-shell.sheet-open {
+  z-index: 2000;
 }
 
 .filter-bar {
@@ -958,9 +958,48 @@ function onThumbTouchEnd() {
   background: #fff;
 }
 
+.sheet-mask {
+  position: fixed;
+  z-index: 2000;
+  inset: 0;
+  background: rgb(17 24 39 / 55%);
+  animation: sheet-fade-in 0.2s ease both;
+}
+
+.sheet-wrap {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2001;
+  overflow: hidden;
+  padding-bottom: env(safe-area-inset-bottom);
+  border-radius: 32rpx 32rpx 0 0;
+  background: #fff;
+  animation: sheet-slide-up 0.25s ease both;
+}
+
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
 .sheet-panel {
   display: flex;
-  height: 100%;
+  height: 80vh;
   flex-direction: column;
   background: #fff;
 }
