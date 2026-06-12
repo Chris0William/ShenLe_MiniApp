@@ -445,7 +445,7 @@ onPullDownRefresh(loadCommunities)
       </view>
     </view>
 
-    <wd-action-sheet v-model="pickerVisible" title="选择楼盘" :actions="pickerActions" @select="onPickCommunity" />
+    <wd-action-sheet v-model="pickerVisible" title="选择楼盘" :actions="pickerActions" :z-index="2000" @select="onPickCommunity" />
   </view>
 </template>
 

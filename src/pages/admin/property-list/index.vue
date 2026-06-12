@@ -271,7 +271,7 @@ onReachBottom(() => {
       />
     </view>
 
-    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
+    <wd-popup v-model="videoPreviewVisible" :z-index="2000" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
       <view class="video-preview">
         <view class="video-preview__head">
           <text>{{ previewVideoItem?.name || '视频预览' }}</text>

@@ -498,7 +498,7 @@ function onThumbTouchEnd() {
       position="bottom"
       custom-style="height: 80vh; border-radius: 32rpx 32rpx 0 0; overflow: hidden; background: #ffffff;"
       safe-area-inset-bottom
-      :z-index="120"
+      :z-index="2000"
       @close="closeSheet"
       @click-modal="closeSheet"
     >
