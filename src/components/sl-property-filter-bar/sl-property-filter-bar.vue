@@ -390,9 +390,9 @@ function onThumbTouchEnd() {
       </view>
     </view>
 
-    <view v-if="activeDropdown" class="filter-mask" @tap="closeDropdown" />
+    <view v-if="activeDropdown" class="filter-mask" @tap="closeDropdown" @touchmove.stop.prevent />
 
-    <view v-if="activeDropdown" class="dropdown-panel">
+    <view v-if="activeDropdown" class="dropdown-panel" @touchmove.stop.prevent>
       <view v-if="activeDropdown === 'location'" class="dropdown-section">
         <text class="section-title">附近距离</text>
         <scroll-view scroll-x class="chip-scroll">
@@ -496,13 +496,14 @@ function onThumbTouchEnd() {
     <wd-popup
       :model-value="sheetVisible"
       position="bottom"
-      custom-style="height: 86vh; border-radius: 32rpx 32rpx 0 0; overflow: hidden; background: #ffffff;"
+      custom-style="height: 80vh; border-radius: 32rpx 32rpx 0 0; overflow: hidden; background: #ffffff;"
       safe-area-inset-bottom
       :z-index="120"
       @close="closeSheet"
       @click-modal="closeSheet"
     >
-      <view class="sheet-panel">
+      <!-- 固定 80vh 由面板自身撑起（不依赖 popup 包装层传高度）；catchtouchmove 防滚动穿透 -->
+      <view class="sheet-panel" @touchmove.stop.prevent>
         <view class="sheet-head">
           <text class="sheet-title">筛选</text>
           <view class="sheet-close" @tap="closeSheet">
@@ -623,7 +624,7 @@ function onThumbTouchEnd() {
             重置
           </wd-button>
           <wd-button size="large" type="primary" block @click="confirmSheet">
-            完成
+            确定
           </wd-button>
         </view>
       </view>
