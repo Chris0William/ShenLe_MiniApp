@@ -153,7 +153,7 @@ onReachBottom(() => {
     </view>
 
     <view class="list">
-      <sl-property-card v-for="item in items" :key="String(item.id)" :item="item" @tap="openDetail" />
+      <sl-property-card v-for="item in items" :key="String(item.id)" :item="item" @select="openDetail" />
       <view v-if="!loading && hasLoaded && items.length === 0" class="empty sl-card">
         <wd-icon name="home" size="38px" color="#8ea099" />
         <text>暂无房源数据</text>
@@ -193,7 +193,6 @@ onReachBottom(() => {
 .home-top__title {
   display: block;
 }
-
 
 .home-top__title {
   margin-top: 8rpx;

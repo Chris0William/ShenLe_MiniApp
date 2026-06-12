@@ -17,3 +17,14 @@ export function mediaKindOf(fileType?: string | null, suffixOrUrl?: string | nul
     return 'video'
   return 'image'
 }
+
+/**
+ * 视频首帧缩略图 URL（COS 数据万象截帧）。
+ * 万象服务未开通时该 URL 返回 400，调用方需用 image @error 回退到占位块。
+ */
+export function videoSnapshotUrl(url?: string | null): string {
+  const value = String(url || '')
+  if (!value.includes('.myqcloud.com/'))
+    return ''
+  return `${value}${value.includes('?') ? '&' : '?'}ci-process=snapshot&time=0.1&format=jpg`
+}

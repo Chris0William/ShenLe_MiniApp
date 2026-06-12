@@ -2,6 +2,7 @@
 import type { SlPropertyListOutput } from '@/types/shenle'
 import { computed, ref, watch } from 'vue'
 import { downloadFile } from '@/api/file'
+import { videoSnapshotUrl } from '@/utils/media'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 
 const props = defineProps<{
@@ -9,19 +10,22 @@ const props = defineProps<{
   compact?: boolean
 }>()
 
+// 注意：自定义事件不能叫 tap——mp-weixin 上会被原生 tap 事件遮蔽，handler 收到 TouchEvent 而非 item
 const emit = defineEmits<{
-  tap: [item: SlPropertyListOutput]
+  select: [item: SlPropertyListOutput]
 }>()
 
 const status = computed(() => getStatusMeta(props.item.status))
 const cover = ref(resolveAssetUrl(props.item.coverImage))
 const previewVideo = ref<{ url: string, title: string } | null>(null)
 let coverSeq = 0
+const snapFailed = ref(false)
 
 const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
 const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
 
 const coverKind = computed(() => mediaKind(props.item.coverFileType, props.item.coverSuffix || props.item.coverImage))
+const videoSnap = computed(() => coverKind.value === 'video' ? videoSnapshotUrl(resolveAssetUrl(props.item.coverImage)) : '')
 const videoPreviewVisible = computed({
   get: () => !!previewVideo.value,
   set: (visible: boolean) => {
@@ -79,11 +83,14 @@ watch(
 </script>
 
 <template>
-  <view class="property sl-card" :class="{ 'property--compact': compact }" @tap="emit('tap', item)">
+  <view class="property sl-card" :class="{ 'property--compact': compact }" @tap="emit('select', item)">
     <image v-if="coverKind === 'image' && cover" class="property__cover" :src="cover" mode="aspectFill" />
     <view v-else-if="coverKind === 'video' && cover" class="property__cover property__cover--video" @tap.stop="previewCoverVideo">
-      <wd-icon name="play-circle" size="28px" color="#fff" />
-      <text>视频</text>
+      <image v-if="videoSnap && !snapFailed" class="property__snap" :src="videoSnap" mode="aspectFill" @error="snapFailed = true" />
+      <view class="property__play" :class="{ 'property__play--bare': !videoSnap || snapFailed }">
+        <wd-icon name="play-circle" size="28px" color="#fff" />
+        <text v-if="!videoSnap || snapFailed">视频</text>
+      </view>
     </view>
     <view v-else class="property__cover property__cover--empty">
       <wd-icon name="image" size="26px" color="#8ea099" />
@@ -142,11 +149,35 @@ watch(
 }
 
 .property__cover--video {
+  position: relative;
   gap: 10rpx;
   background: linear-gradient(135deg, #0f6a4c, #163b32);
   color: #fff;
   font-size: 22rpx;
   font-weight: 800;
+}
+
+.property__snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.property__play {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10rpx;
+  background: rgb(16 38 31 / 22%);
+}
+
+.property__play--bare {
+  background: transparent;
 }
 
 .property__cover--empty {

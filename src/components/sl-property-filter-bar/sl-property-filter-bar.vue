@@ -12,13 +12,6 @@ interface RegionHit {
   parent?: SlRegionTreeOutput
 }
 
-interface RegionChip {
-  id?: ShenLeId
-  name: string
-  level?: number
-  node?: SlRegionTreeOutput
-}
-
 const props = defineProps<{
   filters: PropertyFilterState
   keyword?: string
@@ -69,18 +62,6 @@ const priceMinLabel = computed(() => priceBoundaryLabel(priceMinValue.value))
 const priceMaxLabel = computed(() => priceBoundaryLabel(priceMaxValue.value))
 const minPct = computed(() => (priceMinValue.value / PRICE_MAX) * 100)
 const maxPct = computed(() => (priceMaxValue.value / PRICE_MAX) * 100)
-const sheetRegionChips = computed<RegionChip[]>(() => {
-  const chips: RegionChip[] = [{ name: '不限' }]
-  const walk = (nodes: SlRegionTreeOutput[]) => {
-    for (const node of nodes) {
-      chips.push({ id: node.id, name: node.name, level: node.level, node })
-      if (node.children?.length)
-        walk(node.children)
-    }
-  }
-  walk(regionTree.value)
-  return chips
-})
 
 watch(() => props.filters, () => {
   if (!activeDropdown.value && !sheetVisible.value)
@@ -217,18 +198,6 @@ function selectRegionChild(region: SlRegionTreeOutput) {
   applyRegionReferencePoint(region)
 }
 
-function selectRegionChip(chip: RegionChip) {
-  if (!chip.node) {
-    clearLocation()
-    return
-  }
-  const hit = findRegion(chip.node.id)
-  regionParentId.value = hit?.parent?.id ?? chip.node.id
-  draft.value.regionId = chip.node.id
-  draft.value.regionName = chip.node.name
-  applyRegionReferencePoint(chip.node)
-}
-
 function applyRegionReferencePoint(region: SlRegionTreeOutput) {
   if (draft.value.distanceKm === undefined)
     return
@@ -276,7 +245,6 @@ function getLocationOnce(): Promise<{ longitude: number, latitude: number }> {
     })
   })
 }
-
 
 function setPriceRange(min: number, max: number) {
   const boundedMin = Math.max(0, Math.min(PRICE_MAX, min))
@@ -476,7 +444,6 @@ function onThumbTouchEnd() {
         </view>
       </view>
 
-
       <view v-if="activeDropdown === 'price'" class="dropdown-section dropdown-section--short">
         <view class="range-title">
           <text>{{ priceMinLabel }}</text>
@@ -567,16 +534,44 @@ function onThumbTouchEnd() {
 
           <view class="sheet-block">
             <text class="sheet-block__title">选区域</text>
-            <view class="sheet-region-grid">
-              <view
-                v-for="chip in sheetRegionChips"
-                :key="chip.id === undefined ? 'all' : String(chip.id)"
-                class="filter-chip sheet-region-chip"
-                :class="{ active: chip.id === undefined ? !draft.regionId : sameId(draft.regionId, chip.id), child: chip.level && chip.level > 1 }"
-                @tap="selectRegionChip(chip)"
-              >
-                <text>{{ chip.name }}</text>
-              </view>
+            <!-- 与外层「位置」下拉保持同一套级联交互，避免两处区域选择长得不一样 -->
+            <view class="region-split region-split--sheet">
+              <scroll-view scroll-y class="region-left">
+                <view class="region-left__item" :class="{ active: !draft.regionId }" @tap="selectRegionParent()">
+                  <text>不限</text>
+                </view>
+                <view
+                  v-for="region in regionTree"
+                  :key="String(region.id)"
+                  class="region-left__item"
+                  :class="{ active: sameId(regionParentId, region.id) }"
+                  @tap="selectRegionParent(region)"
+                >
+                  <text>{{ region.name }}</text>
+                </view>
+                <view v-if="!regionTree.length" class="region-empty">
+                  {{ regionLoading ? '加载中...' : '暂无区域' }}
+                </view>
+              </scroll-view>
+              <scroll-view scroll-y class="region-right">
+                <view v-if="!selectedParent" class="region-right__item active">
+                  <text>全部区域</text>
+                </view>
+                <template v-else>
+                  <view class="region-right__item" :class="{ active: sameId(draft.regionId, selectedParent.id) }" @tap="selectParentAll">
+                    <text>全部区域</text>
+                  </view>
+                  <view
+                    v-for="child in childRegions"
+                    :key="String(child.id)"
+                    class="region-right__item"
+                    :class="{ active: sameId(draft.regionId, child.id) }"
+                    @tap="selectRegionChild(child)"
+                  >
+                    <text>{{ child.name }}</text>
+                  </view>
+                </template>
+              </scroll-view>
             </view>
           </view>
 
@@ -763,12 +758,6 @@ function onThumbTouchEnd() {
 }
 
 .chip-row,
-.sheet-region-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18rpx;
-}
-
 .chip-row--large {
   padding-top: 8rpx;
 }
@@ -800,6 +789,13 @@ function onThumbTouchEnd() {
   height: 420rpx;
   margin: 26rpx -26rpx -22rpx;
   border-top: 1rpx solid #eef1f7;
+}
+
+.region-split--sheet {
+  height: 460rpx;
+  margin: 20rpx 0 0;
+  border: 1rpx solid #eef1f7;
+  border-radius: 18rpx;
 }
 
 .region-left {
@@ -981,24 +977,5 @@ function onThumbTouchEnd() {
 
 .sheet-block {
   padding: 26rpx 0 6rpx;
-}
-
-.sheet-region-grid {
-  gap: 16rpx;
-}
-
-.sheet-region-chip {
-  max-width: 210rpx;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sheet-region-chip.child {
-  background: #fafbfe;
-}
-
-.sheet-region-chip.child.active {
-  background: #2f66ee;
 }
 </style>

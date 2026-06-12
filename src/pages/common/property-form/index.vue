@@ -14,6 +14,7 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
+import { videoSnapshotUrl } from '@/utils/media'
 import { resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -101,6 +102,13 @@ const uploading = ref(false)
 const communityMediaLoading = ref(false)
 const communityMediaVisible = ref(false)
 const communityMediaPool = ref<PropertyMedia[]>([])
+const snapFailedIds = ref<Record<string, boolean>>({})
+
+function mediaSnap(media: PropertyMedia) {
+  if (media.kind !== 'video' || snapFailedIds.value[String(media.id)])
+    return ''
+  return videoSnapshotUrl(media.remoteUrl || media.url)
+}
 const selectedCommunityMediaIds = ref<string[]>([])
 const previewVideo = ref<PropertyMedia | null>(null)
 const communities = ref<SlCommunitySelectOutput[]>([])
@@ -770,8 +778,11 @@ onLoad(async (query) => {
           <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
             <view v-else class="video-tile" @tap="previewMedia(index)">
-              <wd-icon name="play-circle" size="32px" color="#fff" />
-              <text>{{ media.fileName || '视频' }}</text>
+              <image v-if="mediaSnap(media)" class="video-tile__snap" :src="mediaSnap(media)" mode="aspectFill" @error="snapFailedIds[String(media.id)] = true" />
+              <view class="video-tile__overlay">
+                <wd-icon name="play-circle" size="32px" color="#fff" />
+                <text>{{ media.fileName || '视频' }}</text>
+              </view>
             </view>
             <text v-if="isCoverMedia(media)" class="cover-badge">封面</text>
             <view class="image-remove" @tap.stop="removeMedia(index)">
@@ -834,9 +845,12 @@ onLoad(async (query) => {
           >
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
-              <wd-icon name="play-circle" size="30px" color="#fff" />
-              <text>视频</text>
+              <image v-if="mediaSnap(media)" class="pool-media__snap" :src="mediaSnap(media)" mode="aspectFill" @error="snapFailedIds[String(media.id)] = true" />
+              <view class="pool-media__overlay">
+                <wd-icon name="play-circle" size="30px" color="#fff" />
+              </view>
             </view>
+            <text class="pool-media__name">{{ media.fileName || (media.kind === 'video' ? '视频' : '图片') }}</text>
             <text v-if="isCommunityMediaAdded(media)" class="pool-media__badge">已加入</text>
             <text v-else-if="isCommunityMediaSelected(media)" class="pool-media__badge">已选</text>
           </view>
@@ -1052,6 +1066,25 @@ onLoad(async (query) => {
   text-align: center;
 }
 
+.video-tile__snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.video-tile__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  background: rgb(16 38 31 / 22%);
+}
+
 .video-tile text {
   display: -webkit-box;
   max-width: 100%;
@@ -1166,11 +1199,46 @@ onLoad(async (query) => {
 }
 
 .pool-media.disabled {
-  opacity: .52;
+  opacity: 0.52;
 }
 
 .pool-media__video {
+  position: relative;
+  height: 100%;
   background: linear-gradient(135deg, #173f34, #0f6a4c);
+}
+
+.pool-media__snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.pool-media__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(16 38 31 / 20%);
+}
+
+.pool-media__name {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;
+  overflow: hidden;
+  padding: 6rpx 10rpx;
+  background: rgb(13 28 22 / 55%);
+  color: #fff;
+  font-size: 20rpx;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pool-media__badge {

@@ -5,6 +5,7 @@ import { computed, reactive, ref } from 'vue'
 import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, updateCommunity } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
 import { getRegionTree } from '@/api/region'
+import { videoSnapshotUrl } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -89,6 +90,22 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const uploading = ref(false)
 const previewVideo = ref<CommunityMedia | null>(null)
+const snapFailedIds = ref<Record<string, boolean>>({})
+
+function mediaSnap(media: { id: ShenLeId, kind?: string, url?: string | null }) {
+  if (media.kind && media.kind !== 'video')
+    return ''
+  if (snapFailedIds.value[String(media.id)])
+    return ''
+  return videoSnapshotUrl(media.url)
+}
+
+function coverSnap(item: SlCommunityOutput) {
+  if (snapFailedIds.value[`cover-${item.id}`])
+    return ''
+  const media = coverMedia(item)
+  return videoSnapshotUrl(resolveAssetUrl(media?.url || item.coverImage))
+}
 
 const form = reactive<CommunityForm>({
   id: '',
@@ -707,8 +724,11 @@ onReachBottom(() => loadData())
         <view class="community-card__main">
           <image v-if="coverUrl(item)" class="card-cover card-cover--tap" :src="coverUrl(item)" mode="aspectFill" @tap.stop="previewCommunityCover(item)" />
           <view v-else-if="hasVideoCover(item)" class="card-cover card-cover--video card-cover--tap" @tap.stop="previewCommunityCover(item)">
-            <wd-icon name="play-circle" size="26px" color="#fff" />
-            <text>视频</text>
+            <image v-if="coverSnap(item)" class="card-cover__snap" :src="coverSnap(item)" mode="aspectFill" @error="snapFailedIds[`cover-${item.id}`] = true" />
+            <view class="card-cover__overlay" :class="{ 'card-cover__overlay--bare': !coverSnap(item) }">
+              <wd-icon name="play-circle" size="26px" color="#fff" />
+              <text v-if="!coverSnap(item)">视频</text>
+            </view>
           </view>
           <view class="card-content">
             <view class="card-head">
@@ -820,8 +840,11 @@ onReachBottom(() => loadData())
               <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
                 <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
                 <view v-else class="video-tile" @tap="previewMedia(index)">
-                  <wd-icon name="play-circle" size="32px" color="#fff" />
-                  <text>{{ media.fileName || '视频' }}</text>
+                  <image v-if="mediaSnap(media)" class="video-tile__snap" :src="mediaSnap(media)" mode="aspectFill" @error="snapFailedIds[String(media.id)] = true" />
+                  <view class="video-tile__overlay">
+                    <wd-icon name="play-circle" size="32px" color="#fff" />
+                    <text>{{ media.fileName || '视频' }}</text>
+                  </view>
                 </view>
                 <text v-if="isCoverMedia(media)" class="cover-badge">封面</text>
                 <view class="image-remove" @tap.stop="removeMedia(index)">
@@ -967,6 +990,7 @@ onReachBottom(() => loadData())
 }
 
 .card-cover--video {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -976,6 +1000,29 @@ onReachBottom(() => loadData())
   color: #fff;
   font-size: 22rpx;
   font-weight: 800;
+}
+
+.card-cover__snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.card-cover__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  background: rgb(16 38 31 / 22%);
+}
+
+.card-cover__overlay--bare {
+  background: transparent;
 }
 
 .card-content {
@@ -1169,6 +1216,7 @@ onReachBottom(() => loadData())
 }
 
 .video-tile {
+  position: relative;
   display: flex;
   height: 100%;
   box-sizing: border-box;
@@ -1181,6 +1229,25 @@ onReachBottom(() => loadData())
   font-size: 22rpx;
   font-weight: 800;
   text-align: center;
+}
+
+.video-tile__snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.video-tile__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+  background: rgb(16 38 31 / 22%);
 }
 
 .video-tile text {

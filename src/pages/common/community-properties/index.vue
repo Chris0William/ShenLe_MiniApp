@@ -8,7 +8,7 @@ import { downloadFile } from '@/api/file'
 import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
-import { mediaKindOf } from '@/utils/media'
+import { mediaKindOf, videoSnapshotUrl } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -77,7 +77,12 @@ interface CommunityMediaItem {
 }
 
 const mediaList = ref<CommunityMediaItem[]>([])
+const snapFailedIds = ref<Record<string, boolean>>({})
 const previewVideoMedia = ref<CommunityMediaItem | null>(null)
+
+function mediaSnap(media: CommunityMediaItem) {
+  return snapFailedIds.value[String(media.id)] ? '' : videoSnapshotUrl(media.url)
+}
 const videoPreviewVisible = computed({
   get: () => !!previewVideoMedia.value,
   set: (visible: boolean) => {
@@ -194,7 +199,10 @@ onReachBottom(() => {
         <view v-for="media in mediaList" :key="String(media.id)" class="media-item" @tap="openMedia(media)">
           <image v-if="media.kind === 'image'" class="media-item__thumb" :src="media.url" mode="aspectFill" />
           <view v-else class="media-item__thumb media-item__thumb--video">
-            <wd-icon name="play-circle" size="26px" color="#fff" />
+            <image v-if="mediaSnap(media)" class="media-item__snap" :src="mediaSnap(media)" mode="aspectFill" @error="snapFailedIds[String(media.id)] = true" />
+            <view class="media-item__play">
+              <wd-icon name="play-circle" size="26px" color="#fff" />
+            </view>
           </view>
           <text class="media-item__name">{{ media.name }}</text>
         </view>
@@ -233,7 +241,7 @@ onReachBottom(() => {
 
     <view class="list">
       <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card">
-        <sl-property-card :item="item" compact @tap="openDetail" />
+        <sl-property-card :item="item" compact @select="openDetail" />
         <view v-if="canManage" class="row-actions">
           <wd-button size="small" type="default" plain @click="openForm(item)">
             编辑
@@ -321,10 +329,28 @@ onReachBottom(() => {
 }
 
 .media-item__thumb--video {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #0f6a4c, #173f34);
+}
+
+.media-item__snap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.media-item__play {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(16 38 31 / 20%);
 }
 
 .media-item__name {

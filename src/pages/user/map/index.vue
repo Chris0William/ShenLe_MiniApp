@@ -84,9 +84,10 @@ function rebuildMarkers() {
       id: markerMeta.length,
       latitude: Number(item.lat),
       longitude: Number(item.lng),
-      iconPath: '/static/images/dot-red.png',
-      width: 26,
-      height: 26,
+      iconPath: '/static/images/pin-green.png',
+      width: 28,
+      height: 34,
+      anchor: { x: 0.5, y: 1 },
       callout: { ...CALLOUT_BASE, content: rent ? `${item.name}\n${rent}` : item.name, bgColor: '#126b4f' },
     })
   }
@@ -96,9 +97,10 @@ function rebuildMarkers() {
       id: markerMeta.length,
       latitude: cluster.lat,
       longitude: cluster.lng,
-      iconPath: '/static/images/dot-red.png',
+      iconPath: '/static/images/pin-cluster.png',
       width: 34,
-      height: 34,
+      height: 42,
+      anchor: { x: 0.5, y: 1 },
       callout: { ...CALLOUT_BASE, content: clusterCalloutText(cluster), bgColor: '#b46d08' },
     })
   }
