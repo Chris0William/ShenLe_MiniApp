@@ -31,6 +31,7 @@ export const DISTANCE_OPTIONS = [
   { label: '1km', value: 1 },
   { label: '3km', value: 3 },
   { label: '5km', value: 5 },
+  { label: '10km', value: 10 },
 ] as const
 
 export const PRICE_SEGMENTS = [

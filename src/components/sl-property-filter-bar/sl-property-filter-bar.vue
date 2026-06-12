@@ -382,6 +382,9 @@ function onThumbTouchEnd() {
         <text class="filter-tab__arrow">▾</text>
       </view>
       <view class="filter-spacer" />
+      <view class="filter-reset" @tap="emit('reset')">
+        <text>重置</text>
+      </view>
       <view class="filter-search" :class="{ active: keywordActive || sheetVisible }" @tap="openSheet">
         <wd-icon name="search" size="18px" :color="keywordActive || sheetVisible ? '#2f66ee' : '#293241'" />
       </view>
@@ -392,17 +395,19 @@ function onThumbTouchEnd() {
     <view v-if="activeDropdown" class="dropdown-panel">
       <view v-if="activeDropdown === 'location'" class="dropdown-section">
         <text class="section-title">附近距离</text>
-        <view class="chip-row">
-          <view
-            v-for="item in DISTANCE_OPTIONS"
-            :key="item.label"
-            class="filter-chip"
-            :class="{ active: draft.distanceKm === item.value }"
-            @tap="selectDistance(item.value)"
-          >
-            <text>{{ item.label }}</text>
+        <scroll-view scroll-x class="chip-scroll">
+          <view class="chip-scroll__inner">
+            <view
+              v-for="item in DISTANCE_OPTIONS"
+              :key="item.label"
+              class="filter-chip"
+              :class="{ active: draft.distanceKm === item.value }"
+              @tap="selectDistance(item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
           </view>
-        </view>
+        </scroll-view>
 
         <view class="region-split">
           <scroll-view scroll-y class="region-left">
@@ -519,17 +524,19 @@ function onThumbTouchEnd() {
         <scroll-view scroll-y class="sheet-body">
           <view class="sheet-block">
             <text class="sheet-block__title">附近距离</text>
-            <view class="chip-row">
-              <view
-                v-for="item in DISTANCE_OPTIONS"
-                :key="item.label"
-                class="filter-chip"
-                :class="{ active: draft.distanceKm === item.value }"
-                @tap="selectDistance(item.value)"
-              >
-                <text>{{ item.label }}</text>
+            <scroll-view scroll-x class="chip-scroll">
+              <view class="chip-scroll__inner">
+                <view
+                  v-for="item in DISTANCE_OPTIONS"
+                  :key="item.label"
+                  class="filter-chip"
+                  :class="{ active: draft.distanceKm === item.value }"
+                  @tap="selectDistance(item.value)"
+                >
+                  <text>{{ item.label }}</text>
+                </view>
               </view>
-            </view>
+            </scroll-view>
           </view>
 
           <view class="sheet-block">
@@ -690,6 +697,20 @@ function onThumbTouchEnd() {
   flex: 1;
 }
 
+.filter-reset {
+  display: flex;
+  height: 56rpx;
+  flex: 0 0 auto;
+  align-items: center;
+  margin-right: 6rpx;
+  padding: 0 18rpx;
+  border-radius: 999rpx;
+  background: #f4f6fa;
+  color: #4b5563;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
 .filter-search {
   display: flex;
   width: 60rpx;
@@ -761,6 +782,17 @@ function onThumbTouchEnd() {
   display: flex;
   flex-wrap: wrap;
   gap: 18rpx;
+}
+
+.chip-scroll {
+  white-space: nowrap;
+}
+
+.chip-scroll__inner {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 18rpx;
+  padding: 8rpx 2rpx;
 }
 
 .chip-row--large {
@@ -927,7 +959,7 @@ function onThumbTouchEnd() {
 
 .sheet-panel {
   display: flex;
-  height: 86vh;
+  height: 100%;
   flex-direction: column;
   background: #fff;
 }
