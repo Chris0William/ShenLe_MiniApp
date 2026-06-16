@@ -89,6 +89,7 @@ const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
 const uploading = ref(false)
+const picking = ref(false)
 const previewVideo = ref<CommunityMedia | null>(null)
 const snapFailedIds = ref<Record<string, boolean>>({})
 
@@ -536,6 +537,10 @@ function previewCommunityCover(item: SlCommunityOutput) {
 }
 
 function chooseLocation() {
+  // 重入保护：同一次点击可能从按钮(@click)和父容器(@tap)各触发一次，避免地图选点弹两遍
+  if (picking.value)
+    return
+  picking.value = true
   const latitude = toNumber(form.lat, DEFAULT_MAP_CENTER.lat)
   const longitude = toNumber(form.lng, DEFAULT_MAP_CENTER.lng)
   uni.chooseLocation({
@@ -547,6 +552,9 @@ function chooseLocation() {
       form.address = labels.length ? Array.from(new Set(labels)).join(' - ') : form.address
     },
     fail() {},
+    complete() {
+      picking.value = false
+    },
   })
 }
 
@@ -819,15 +827,15 @@ onReachBottom(() => loadData())
             <text>详细地址</text>
             <input v-model="form.address" placeholder="街道门牌、楼盘位置">
           </view>
-          <view class="location-picker" @tap="chooseLocation">
-            <view class="location-picker__info">
+          <view class="location-picker">
+            <view class="location-picker__info" @tap="chooseLocation">
               <wd-icon name="location" size="22px" color="#126b4f" />
               <view>
                 <text>地图位置</text>
                 <text>{{ formLocationLabel }}</text>
               </view>
             </view>
-            <wd-button size="small" type="primary" plain @click.stop="chooseLocation">
+            <wd-button size="small" type="primary" plain @click="chooseLocation">
               定位选点
             </wd-button>
           </view>
