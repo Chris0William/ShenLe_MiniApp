@@ -162,7 +162,7 @@ function hasCoordinate(item: SlCommunityOutput) {
   return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0
 }
 
-async function loadCommunities() {
+async function loadCommunities(fitToResult = false) {
   loading.value = true
   try {
     const candidates: SlCommunityOutput[] = []
@@ -178,12 +178,29 @@ async function loadCommunities() {
     }
     communities.value = candidates.filter(hasCoordinate)
     selected.value = null
+    // 筛选后把地图视野移到结果范围，否则结果在屏幕外看着像"没变化"
+    if (fitToResult)
+      fitMapToCommunities()
     refreshRegionAndMarkers()
   }
   finally {
     loading.value = false
     uni.stopPullDownRefresh()
   }
+}
+
+function fitMapToCommunities() {
+  const points = communities.value.map(item => ({ latitude: Number(item.lat), longitude: Number(item.lng) }))
+  if (!points.length || !mapContext)
+    return
+  if (points.length === 1) {
+    mapLat.value = points[0].latitude
+    mapLng.value = points[0].longitude
+    mapScale.value = 15
+    mapContext.moveToLocation({ latitude: points[0].latitude, longitude: points[0].longitude, fail: () => {} })
+    return
+  }
+  mapContext.includePoints({ points, padding: [80, 80, 80, 80] })
 }
 
 function requestLocation() {
@@ -263,7 +280,7 @@ function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string)
   }
   if (nextKeyword !== undefined)
     keyword.value = nextKeyword
-  loadCommunities()
+  loadCommunities(true)
 }
 
 function resetFilters() {
@@ -271,7 +288,7 @@ function resetFilters() {
   const userLat = filters.value.userLat
   filters.value = { userLng, userLat }
   keyword.value = ''
-  loadCommunities()
+  loadCommunities(true)
 }
 
 function onMarkerTap(event: any) {

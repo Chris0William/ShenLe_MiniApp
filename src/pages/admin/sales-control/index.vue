@@ -14,6 +14,7 @@ import { getCommunityList } from '@/api/community'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
 import { getRegionStats, getRegionTree } from '@/api/region'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
+import { sameId } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney, getStatusMeta, idToQuery } from '@/utils/shenle'
 
@@ -47,6 +48,12 @@ interface FloorRow {
 const level = ref<1 | 2 | 3>(1)
 const breadcrumbs = ref<string[]>(['销控'])
 const regionList = ref<RegionRow[]>([])
+const regionFilterId = ref<ShenLeId | undefined>()
+const displayedRegions = computed(() => {
+  if (regionFilterId.value === undefined)
+    return regionList.value
+  return regionList.value.filter(item => sameId(item.id, regionFilterId.value))
+})
 const selectedRegion = ref<RegionRow | null>(null)
 const communityRows = ref<CommunityRow[]>([])
 const selectedCommunityName = ref('')
@@ -57,7 +64,7 @@ const actionVisible = ref(false)
 const loading = ref(false)
 const propertyLoading = ref(false)
 
-const totalRegionStats = computed(() => regionList.value.reduce((acc, item) => {
+const totalRegionStats = computed(() => displayedRegions.value.reduce((acc, item) => {
   acc.community += item.stats?.communityCount || 0
   acc.building += item.stats?.buildingCount || 0
   acc.property += item.stats?.propertyCount || 0
@@ -104,6 +111,10 @@ function flattenRegions(nodes: SlRegionTreeOutput[]) {
   return result
 }
 
+function selectRegionFilter(id?: ShenLeId) {
+  regionFilterId.value = id
+}
+
 async function mapLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>) {
   const result: R[] = []
   let index = 0
@@ -130,6 +141,9 @@ async function loadRegions() {
     const tree = await getRegionTree()
     const leaves = flattenRegions(tree)
     regionList.value = leaves.map(item => ({ id: item.id, name: item.name, stats: null }))
+    // 选中的筛选区域若已不存在则重置
+    if (regionFilterId.value !== undefined && !regionList.value.some(r => sameId(r.id, regionFilterId.value)))
+      regionFilterId.value = undefined
 
     await mapLimit(regionList.value, 5, async (region) => {
       try {
@@ -322,16 +336,38 @@ onPullDownRefresh(refreshCurrent)
           </view>
         </view>
 
+        <scroll-view v-if="regionList.length" scroll-x class="region-filter">
+          <view class="region-filter__inner">
+            <view class="filter-chip" :class="{ active: regionFilterId === undefined }" @tap="selectRegionFilter(undefined)">
+              全部
+            </view>
+            <view
+              v-for="region in regionList"
+              :key="String(region.id)"
+              class="filter-chip"
+              :class="{ active: sameId(regionFilterId, region.id) }"
+              @tap="selectRegionFilter(region.id)"
+            >
+              {{ region.name }}
+            </view>
+          </view>
+        </scroll-view>
+
         <view v-if="loading && !regionList.length" class="loading sl-card">
           数据加载中...
         </view>
+        <view v-else-if="!displayedRegions.length" class="empty sl-card">
+          <wd-icon name="location" size="36px" color="#8ea099" />
+          <text>暂无区域数据</text>
+        </view>
         <view v-else class="region-list">
-          <view v-for="region in regionList" :key="String(region.id)" class="region-card sl-card" @tap="drillRegion(region)">
+          <view v-for="region in displayedRegions" :key="String(region.id)" class="region-card sl-card" @tap="drillRegion(region)">
             <view class="region-card__top">
               <text class="region-card__name">{{ region.name }}</text>
               <wd-icon name="arrow-right" size="18px" color="#72817b" />
             </view>
             <view class="region-card__stats">
+              <view><text>{{ region.stats?.buildingCount || 0 }}</text><text>楼栋</text></view>
               <view><text>{{ region.stats?.availableCount || 0 }}</text><text>空置</text></view>
               <view><text>{{ region.stats?.rentedCount || 0 }}</text><text>已租</text></view>
               <view><text>{{ region.stats?.propertyCount || 0 }}</text><text>房源</text></view>
@@ -634,17 +670,48 @@ onPullDownRefresh(refreshCurrent)
   font-size: 23rpx;
 }
 
+.region-filter {
+  margin-bottom: 18rpx;
+  white-space: nowrap;
+}
+
+.region-filter__inner {
+  display: inline-flex;
+  gap: 14rpx;
+  padding: 4rpx 2rpx 8rpx;
+}
+
+.filter-chip {
+  display: inline-flex;
+  height: 60rpx;
+  align-items: center;
+  padding: 0 28rpx;
+  border: 1rpx solid rgb(18 107 79 / 16%);
+  border-radius: 999rpx;
+  background: #fff;
+  color: #5e6c65;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.filter-chip.active {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--sl-brand, #126b4f), #24815f);
+  box-shadow: 0 8rpx 20rpx rgb(18 107 79 / 22%);
+  color: #fff;
+}
+
 .region-card__stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 10rpx;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8rpx;
   margin-top: 22rpx;
 }
 
 .region-card__stats view {
-  border-radius: 18rpx;
+  border-radius: 16rpx;
   background: #f3f7f1;
-  padding: 14rpx 4rpx;
+  padding: 14rpx 2rpx;
   text-align: center;
 }
 
