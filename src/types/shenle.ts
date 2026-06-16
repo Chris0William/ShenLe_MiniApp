@@ -280,6 +280,8 @@ export interface SlCommunityOutput {
   coverFileType?: string | null
   coverSuffix?: string | null
   propertyCount: number
+  availableCount?: number
+  rentedCount?: number
   minRentPrice?: number | null
   maxRentPrice?: number | null
   houseTypes?: string | null

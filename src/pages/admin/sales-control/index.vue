@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type {
+  PageSlCommunityInput,
   ShenLeId,
   SlBuildingStatsOutput,
-  SlCommunitySelectOutput,
+  SlCommunityOutput,
   SlPropertyListOutput,
   SlRegionStatsOutput,
   SlRegionTreeOutput,
@@ -10,7 +11,7 @@ import type {
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getBuildingStats } from '@/api/building'
-import { getCommunityList } from '@/api/community'
+import { getCommunityPage } from '@/api/community'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
 import { getRegionStats, getRegionTree } from '@/api/region'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
@@ -34,44 +35,55 @@ interface RegionRow {
   stats: SlRegionStatsOutput | null
 }
 
-interface CommunityRow {
-  community: SlCommunitySelectOutput
-  buildings: SlBuildingStatsOutput[]
-}
-
 interface FloorRow {
   floor: number | null
   label: string
   rooms: SlPropertyListOutput[]
 }
 
+const COMMUNITY_PAGE_SIZE = 20
+
 const level = ref<1 | 2 | 3>(1)
 const breadcrumbs = ref<string[]>(['销控'])
+
+// 一级：区域筛选 + 楼盘列表
 const regionList = ref<RegionRow[]>([])
 const regionFilterId = ref<ShenLeId | undefined>()
-const displayedRegions = computed(() => {
-  if (regionFilterId.value === undefined)
-    return regionList.value
-  return regionList.value.filter(item => sameId(item.id, regionFilterId.value))
-})
-const selectedRegion = ref<RegionRow | null>(null)
-const communityRows = ref<CommunityRow[]>([])
-const selectedCommunityName = ref('')
+const communities = ref<SlCommunityOutput[]>([])
+const communityPage = ref(1)
+const communityTotal = ref(0)
+const communityLoading = ref(false)
+const communityLoaded = ref(false)
+const loading = ref(false)
+
+// 二级：楼栋列表（某个楼盘下）
+const selectedCommunity = ref<SlCommunityOutput | null>(null)
+const buildings = ref<SlBuildingStatsOutput[]>([])
+const buildingLoading = ref(false)
+
+// 三级：房源楼层网格（某个楼栋下）
 const selectedBuilding = ref<SlBuildingStatsOutput | null>(null)
 const properties = ref<SlPropertyListOutput[]>([])
+const propertyLoading = ref(false)
 const activeProperty = ref<SlPropertyListOutput | null>(null)
 const actionVisible = ref(false)
-const loading = ref(false)
-const propertyLoading = ref(false)
 
-const totalRegionStats = computed(() => displayedRegions.value.reduce((acc, item) => {
-  acc.community += item.stats?.communityCount || 0
-  acc.building += item.stats?.buildingCount || 0
-  acc.property += item.stats?.propertyCount || 0
-  acc.available += item.stats?.availableCount || 0
-  acc.rented += item.stats?.rentedCount || 0
-  return acc
-}, { community: 0, building: 0, property: 0, available: 0, rented: 0 }))
+const communityFinished = computed(() => communityTotal.value > 0 && communities.value.length >= communityTotal.value)
+
+// 区域维度概览（全部=所有区域汇总，选中=该区域）
+const overviewStats = computed(() => {
+  const list = regionFilterId.value === undefined
+    ? regionList.value
+    : regionList.value.filter(item => sameId(item.id, regionFilterId.value))
+  return list.reduce((acc, item) => {
+    acc.community += item.stats?.communityCount || 0
+    acc.building += item.stats?.buildingCount || 0
+    acc.property += item.stats?.propertyCount || 0
+    acc.rented += item.stats?.rentedCount || 0
+    acc.available += item.stats?.availableCount || 0
+    return acc
+  }, { community: 0, building: 0, property: 0, rented: 0, available: 0 })
+})
 
 const floorGrid = computed<FloorRow[]>(() => {
   const floors = new Map<number | null, SlPropertyListOutput[]>()
@@ -111,10 +123,6 @@ function flattenRegions(nodes: SlRegionTreeOutput[]) {
   return result
 }
 
-function selectRegionFilter(id?: ShenLeId) {
-  regionFilterId.value = id
-}
-
 async function mapLimit<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>) {
   const result: R[] = []
   let index = 0
@@ -129,31 +137,65 @@ async function mapLimit<T, R>(items: T[], limit: number, worker: (item: T) => Pr
   return result
 }
 
-async function loadRegions() {
+// 加载区域树（筛选 chip）与区域统计（概览汇总）
+async function loadRegionMeta() {
+  const tree = await getRegionTree()
+  const leaves = flattenRegions(tree)
+  regionList.value = leaves.map(item => ({ id: item.id, name: item.name, stats: null }))
+  if (regionFilterId.value !== undefined && !regionList.value.some(r => sameId(r.id, regionFilterId.value)))
+    regionFilterId.value = undefined
+  await mapLimit(regionList.value, 5, async (region) => {
+    region.stats = await getRegionStats(region.id).catch(() => null)
+    return region
+  })
+}
+
+function buildCommunityQuery(page: number): PageSlCommunityInput {
+  return {
+    page,
+    pageSize: COMMUNITY_PAGE_SIZE,
+    status: 0,
+    regionId: regionFilterId.value,
+  }
+}
+
+async function loadCommunities(reset = false) {
+  if (communityLoading.value)
+    return
+  if (reset) {
+    communityPage.value = 1
+    communities.value = []
+    communityTotal.value = 0
+  }
+  communityLoading.value = true
+  try {
+    const result = await getCommunityPage(buildCommunityQuery(communityPage.value))
+    communityTotal.value = result.total
+    communities.value = reset ? result.items : [...communities.value, ...result.items]
+    communityLoaded.value = true
+  }
+  finally {
+    communityLoading.value = false
+    uni.stopPullDownRefresh()
+  }
+}
+
+function loadMoreCommunities() {
+  if (level.value !== 1 || communityFinished.value || communityLoading.value)
+    return
+  communityPage.value += 1
+  loadCommunities()
+}
+
+async function initPage() {
   loading.value = true
   try {
     level.value = 1
     breadcrumbs.value = ['销控']
-    selectedRegion.value = null
+    selectedCommunity.value = null
     selectedBuilding.value = null
-    properties.value = []
-
-    const tree = await getRegionTree()
-    const leaves = flattenRegions(tree)
-    regionList.value = leaves.map(item => ({ id: item.id, name: item.name, stats: null }))
-    // 选中的筛选区域若已不存在则重置
-    if (regionFilterId.value !== undefined && !regionList.value.some(r => sameId(r.id, regionFilterId.value)))
-      regionFilterId.value = undefined
-
-    await mapLimit(regionList.value, 5, async (region) => {
-      try {
-        region.stats = await getRegionStats(region.id)
-      }
-      catch {
-        region.stats = null
-      }
-      return region
-    })
+    await loadRegionMeta()
+    await loadCommunities(true)
   }
   finally {
     loading.value = false
@@ -161,29 +203,33 @@ async function loadRegions() {
   }
 }
 
-async function drillRegion(region: RegionRow) {
-  selectedRegion.value = region
+function selectRegionFilter(id?: ShenLeId) {
+  if (sameId(regionFilterId.value, id) || (regionFilterId.value === undefined && id === undefined))
+    return
+  regionFilterId.value = id
+  loadCommunities(true)
+}
+
+// 一级 → 二级：进入某个楼盘的楼栋列表
+async function drillCommunity(community: SlCommunityOutput) {
+  selectedCommunity.value = community
   level.value = 2
-  breadcrumbs.value = ['销控', region.name]
-  communityRows.value = []
-  loading.value = true
+  breadcrumbs.value = ['销控', community.name]
+  buildings.value = []
+  buildingLoading.value = true
   try {
-    const communities = await getCommunityList({ regionId: region.id })
-    communityRows.value = await mapLimit(communities, 6, async community => ({
-      community,
-      buildings: await getBuildingStats(community.id).catch(() => []),
-    }))
+    buildings.value = await getBuildingStats(community.id).catch(() => [])
   }
   finally {
-    loading.value = false
+    buildingLoading.value = false
   }
 }
 
-async function drillBuilding(building: SlBuildingStatsOutput, communityName: string) {
+// 二级 → 三级：进入某个楼栋的房源楼层网格
+async function drillBuilding(building: SlBuildingStatsOutput) {
   selectedBuilding.value = building
-  selectedCommunityName.value = communityName
   level.value = 3
-  breadcrumbs.value = ['销控', selectedRegion.value?.name || '', `${communityName} · ${building.name}`].filter(Boolean)
+  breadcrumbs.value = ['销控', selectedCommunity.value?.name || '', building.name].filter(Boolean)
   propertyLoading.value = true
   properties.value = []
   try {
@@ -201,24 +247,24 @@ function goBack() {
     activeProperty.value = null
     actionVisible.value = false
     properties.value = []
-    breadcrumbs.value = ['销控', selectedRegion.value?.name || ''].filter(Boolean)
+    breadcrumbs.value = ['销控', selectedCommunity.value?.name || ''].filter(Boolean)
     return
   }
   if (level.value === 2) {
     level.value = 1
-    selectedRegion.value = null
-    communityRows.value = []
+    selectedCommunity.value = null
+    buildings.value = []
     breadcrumbs.value = ['销控']
   }
 }
 
 function refreshCurrent() {
   if (level.value === 1)
-    return loadRegions()
-  if (level.value === 2 && selectedRegion.value)
-    return drillRegion(selectedRegion.value)
+    return initPage()
+  if (level.value === 2 && selectedCommunity.value)
+    return drillCommunity(selectedCommunity.value)
   if (level.value === 3 && selectedBuilding.value)
-    return drillBuilding(selectedBuilding.value, selectedCommunityName.value)
+    return drillBuilding(selectedBuilding.value)
   return Promise.resolve()
 }
 
@@ -279,13 +325,13 @@ function goEdit() {
   uni.navigateTo({ url: `/pages/common/property-form/index?id=${idToQuery(activeProperty.value.id)}` })
 }
 
-function goCommunityProperties(community: SlCommunitySelectOutput) {
+function goCommunityProperties(community: SlCommunityOutput) {
   uni.navigateTo({
     url: `/pages/common/community-properties/index?communityId=${idToQuery(community.id)}&communityName=${encodeURIComponent(community.name)}`,
   })
 }
 
-onLoad(loadRegions)
+onLoad(initPage)
 onPullDownRefresh(refreshCurrent)
 </script>
 
@@ -315,102 +361,110 @@ onPullDownRefresh(refreshCurrent)
       </view>
     </view>
 
-    <scroll-view scroll-y class="content-scroll">
+    <scroll-view v-if="level === 1 && regionList.length" scroll-x class="region-filter">
+      <view class="region-filter__inner">
+        <view class="filter-chip" :class="{ active: regionFilterId === undefined }" @tap="selectRegionFilter(undefined)">
+          全部
+        </view>
+        <view
+          v-for="region in regionList"
+          :key="String(region.id)"
+          class="filter-chip"
+          :class="{ active: sameId(regionFilterId, region.id) }"
+          @tap="selectRegionFilter(region.id)"
+        >
+          {{ region.name }}
+        </view>
+      </view>
+    </scroll-view>
+
+    <scroll-view scroll-y class="content-scroll" @scrolltolower="loadMoreCommunities">
       <view v-if="level === 1" class="content-inner">
-        <view class="overview sl-card">
-          <view>
-            <text>{{ totalRegionStats.community }}</text>
-            <text>小区</text>
-          </view>
-          <view>
-            <text>{{ totalRegionStats.building }}</text>
-            <text>楼栋</text>
-          </view>
-          <view>
-            <text>{{ totalRegionStats.property }}</text>
-            <text>房源</text>
-          </view>
-          <view>
-            <text>{{ totalRegionStats.rented }}</text>
-            <text>已租</text>
-          </view>
+        <view class="overview overview--wide sl-card">
+          <view><text>{{ overviewStats.community }}</text><text>楼盘</text></view>
+          <view><text>{{ overviewStats.building }}</text><text>楼栋</text></view>
+          <view><text>{{ overviewStats.property }}</text><text>房源</text></view>
+          <view><text>{{ overviewStats.rented }}</text><text>已租</text></view>
+          <view><text>{{ overviewStats.available }}</text><text>空置</text></view>
+          <view><text>{{ rate(overviewStats.rented, overviewStats.property) }}%</text><text>出租率</text></view>
         </view>
 
-        <scroll-view v-if="regionList.length" scroll-x class="region-filter">
-          <view class="region-filter__inner">
-            <view class="filter-chip" :class="{ active: regionFilterId === undefined }" @tap="selectRegionFilter(undefined)">
-              全部
-            </view>
-            <view
-              v-for="region in regionList"
-              :key="String(region.id)"
-              class="filter-chip"
-              :class="{ active: sameId(regionFilterId, region.id) }"
-              @tap="selectRegionFilter(region.id)"
-            >
-              {{ region.name }}
-            </view>
-          </view>
-        </scroll-view>
-
-        <view v-if="loading && !regionList.length" class="loading sl-card">
+        <view v-if="communityLoading && !communities.length" class="loading sl-card">
           数据加载中...
         </view>
-        <view v-else-if="!displayedRegions.length" class="empty sl-card">
-          <wd-icon name="location" size="36px" color="#8ea099" />
-          <text>暂无区域数据</text>
+        <view v-else-if="communityLoaded && !communities.length" class="empty sl-card">
+          <wd-icon name="home" size="36px" color="#8ea099" />
+          <text>暂无楼盘数据</text>
         </view>
-        <view v-else class="region-list">
-          <view v-for="region in displayedRegions" :key="String(region.id)" class="region-card sl-card" @tap="drillRegion(region)">
-            <view class="region-card__top">
-              <text class="region-card__name">{{ region.name }}</text>
-              <wd-icon name="arrow-right" size="18px" color="#72817b" />
+        <view v-else class="community-list">
+          <view v-for="community in communities" :key="String(community.id)" class="community-card sl-card" @tap="drillCommunity(community)">
+            <view class="community-card__head">
+              <view class="community-card__title">
+                <text class="community-card__name">{{ community.name }}</text>
+                <wd-tag v-if="community.regionName" type="success" plain custom-class="community-card__tag">
+                  {{ community.regionName }}
+                </wd-tag>
+              </view>
+              <view class="community-card__actions">
+                <wd-button size="small" plain @click.stop="goCommunityProperties(community)">
+                  房源
+                </wd-button>
+                <wd-icon name="arrow-right" size="18px" color="#72817b" />
+              </view>
             </view>
             <view class="region-card__stats">
-              <view><text>{{ region.stats?.buildingCount || 0 }}</text><text>楼栋</text></view>
-              <view><text>{{ region.stats?.availableCount || 0 }}</text><text>空置</text></view>
-              <view><text>{{ region.stats?.rentedCount || 0 }}</text><text>已租</text></view>
-              <view><text>{{ region.stats?.propertyCount || 0 }}</text><text>房源</text></view>
-              <view><text>{{ rate(region.stats?.rentedCount, region.stats?.propertyCount) }}%</text><text>出租率</text></view>
+              <view><text>{{ community.buildingCount || 0 }}</text><text>楼栋</text></view>
+              <view><text>{{ community.propertyCount || 0 }}</text><text>房源</text></view>
+              <view><text>{{ community.rentedCount || 0 }}</text><text>已租</text></view>
+              <view><text>{{ community.availableCount || 0 }}</text><text>空置</text></view>
+              <view><text>{{ rate(community.rentedCount, community.propertyCount) }}%</text><text>出租率</text></view>
             </view>
             <view class="progress">
-              <view :style="{ width: `${rate(region.stats?.rentedCount, region.stats?.propertyCount)}%` }" />
+              <view :style="{ width: `${rate(community.rentedCount, community.propertyCount)}%` }" />
             </view>
+          </view>
+          <view v-if="communityLoading && communities.length" class="loading">
+            加载中...
+          </view>
+          <view v-else-if="communityFinished && communities.length" class="loading">
+            已经到底了
           </view>
         </view>
       </view>
 
       <view v-if="level === 2" class="content-inner">
-        <view v-if="loading" class="loading sl-card">
+        <view class="overview overview--wide sl-card">
+          <view><text>{{ selectedCommunity?.buildingCount || 0 }}</text><text>楼栋</text></view>
+          <view><text>{{ selectedCommunity?.propertyCount || 0 }}</text><text>房源</text></view>
+          <view><text>{{ selectedCommunity?.rentedCount || 0 }}</text><text>已租</text></view>
+          <view><text>{{ selectedCommunity?.availableCount || 0 }}</text><text>空置</text></view>
+          <view><text>{{ rate(selectedCommunity?.rentedCount, selectedCommunity?.propertyCount) }}%</text><text>出租率</text></view>
+        </view>
+
+        <view v-if="buildingLoading" class="loading sl-card">
           数据加载中...
         </view>
-        <view v-else-if="!communityRows.length" class="empty sl-card">
+        <view v-else-if="!buildings.length" class="empty sl-card">
           <wd-icon name="home" size="36px" color="#8ea099" />
-          <text>暂无小区数据</text>
+          <text>暂无楼栋数据</text>
         </view>
-        <view v-else class="community-list">
-          <view v-for="row in communityRows" :key="String(row.community.id)" class="community-card sl-card">
-            <view class="community-card__head">
-              <view>
-                <text class="community-card__name">{{ row.community.name }}</text>
-                <text class="community-card__desc">{{ row.buildings.length }} 栋楼 · 点击楼栋进入销控</text>
-              </view>
-              <wd-button size="small" plain @click="goCommunityProperties(row.community)">
-                房源
-              </wd-button>
-            </view>
-            <view v-if="row.buildings.length" class="building-grid">
-              <view v-for="building in row.buildings" :key="String(building.id)" class="building-card" @tap="drillBuilding(building, row.community.name)">
-                <text class="building-card__name">{{ building.name }}</text>
-                <view class="building-card__nums">
-                  <text>{{ building.availableCount }} 空置</text>
-                  <text>{{ building.rentedCount }} 已租</text>
-                </view>
-                <text class="building-card__meta">{{ building.propertyCount }}间 · {{ building.totalFloors || '-' }}层</text>
+        <view v-else class="building-list">
+          <view v-for="building in buildings" :key="String(building.id)" class="building-row sl-card" @tap="drillBuilding(building)">
+            <view class="building-row__head">
+              <text class="building-row__name">{{ building.name }}</text>
+              <view class="building-row__right">
+                <text class="building-row__meta">{{ building.totalFloors || '-' }}层</text>
+                <wd-icon name="arrow-right" size="18px" color="#72817b" />
               </view>
             </view>
-            <view v-else class="no-building">
-              暂无楼栋
+            <view class="region-card__stats region-card__stats--4">
+              <view><text>{{ building.propertyCount || 0 }}</text><text>房源</text></view>
+              <view><text>{{ building.rentedCount || 0 }}</text><text>已租</text></view>
+              <view><text>{{ building.availableCount || 0 }}</text><text>空置</text></view>
+              <view><text>{{ rate(building.rentedCount, building.propertyCount) }}%</text><text>出租率</text></view>
+            </view>
+            <view class="progress">
+              <view :style="{ width: `${rate(building.rentedCount, building.propertyCount)}%` }" />
             </view>
           </view>
         </view>
@@ -418,13 +472,15 @@ onPullDownRefresh(refreshCurrent)
 
       <view v-if="level === 3" class="content-inner">
         <view class="building-summary sl-card">
-          <view>
+          <view class="building-summary__head">
             <text class="building-summary__name">{{ selectedBuilding?.name }}</text>
-            <text class="building-summary__desc">{{ selectedCommunityName }} · {{ selectedBuilding?.totalFloors || '-' }} 层</text>
+            <text class="building-summary__desc">{{ selectedCommunity?.name }} · {{ selectedBuilding?.totalFloors || '-' }} 层</text>
           </view>
-          <view class="building-summary__stats">
-            <text>{{ selectedBuilding?.propertyCount || 0 }}间</text>
-            <text>出租率 {{ rate(selectedBuilding?.rentedCount, selectedBuilding?.propertyCount) }}%</text>
+          <view class="region-card__stats region-card__stats--4">
+            <view><text>{{ selectedBuilding?.propertyCount || 0 }}</text><text>房源</text></view>
+            <view><text>{{ selectedBuilding?.rentedCount || 0 }}</text><text>已租</text></view>
+            <view><text>{{ selectedBuilding?.availableCount || 0 }}</text><text>空置</text></view>
+            <view><text>{{ rate(selectedBuilding?.rentedCount, selectedBuilding?.propertyCount) }}%</text><text>出租率</text></view>
           </view>
         </view>
 
@@ -610,6 +666,12 @@ onPullDownRefresh(refreshCurrent)
   padding: 22rpx 10rpx;
 }
 
+.overview--wide {
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4rpx;
+  padding: 22rpx 6rpx;
+}
+
 .overview view {
   text-align: center;
 }
@@ -619,6 +681,10 @@ onPullDownRefresh(refreshCurrent)
   color: var(--sl-brand);
   font-size: 34rpx;
   font-weight: 900;
+}
+
+.overview--wide text:first-child {
+  font-size: 30rpx;
 }
 
 .overview text:last-child {
@@ -646,8 +712,7 @@ onPullDownRefresh(refreshCurrent)
 }
 
 .region-card__top,
-.community-card__head,
-.building-summary {
+.community-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -658,8 +723,11 @@ onPullDownRefresh(refreshCurrent)
 .community-card__name,
 .building-summary__name {
   display: block;
+  overflow: hidden;
   font-size: 31rpx;
   font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .community-card__desc,
@@ -671,7 +739,8 @@ onPullDownRefresh(refreshCurrent)
 }
 
 .region-filter {
-  margin-bottom: 18rpx;
+  flex: 0 0 auto;
+  margin: 16rpx 28rpx 0;
   white-space: nowrap;
 }
 
@@ -708,11 +777,30 @@ onPullDownRefresh(refreshCurrent)
   margin-top: 22rpx;
 }
 
+.region-card__stats--4 {
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10rpx;
+}
+
 .region-card__stats view {
   border-radius: 16rpx;
   background: #f3f7f1;
   padding: 14rpx 2rpx;
   text-align: center;
+}
+
+.community-card__title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.community-card__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10rpx;
 }
 
 .region-card__stats text:first-child {
@@ -743,58 +831,44 @@ onPullDownRefresh(refreshCurrent)
   background: linear-gradient(90deg, var(--sl-brand), var(--sl-brand-2));
 }
 
-.building-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14rpx;
-  margin-top: 20rpx;
+.building-list {
+  display: flex;
+  flex-direction: column;
+  gap: 18rpx;
+  margin-top: 18rpx;
 }
 
-.building-card {
-  padding: 20rpx;
-  border: 1rpx solid rgb(18 107 79 / 8%);
-  border-radius: 20rpx;
-  background: #f7faf4;
+.building-row {
+  padding: 24rpx;
 }
 
-.building-card__name,
-.building-card__meta {
-  display: block;
+.building-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
 }
 
-.building-card__name {
-  font-size: 27rpx;
+.building-row__name {
+  font-size: 30rpx;
   font-weight: 850;
 }
 
-.building-card__nums {
+.building-row__right {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 0 auto;
+  align-items: center;
   gap: 10rpx;
-  margin-top: 14rpx;
-}
-
-.building-card__nums text {
-  padding: 5rpx 10rpx;
-  border-radius: 999rpx;
-  background: #fff;
-  color: var(--sl-brand);
-  font-size: 21rpx;
-}
-
-.building-card__meta,
-.no-building {
-  margin-top: 12rpx;
   color: var(--sl-muted);
-  font-size: 22rpx;
+  font-size: 23rpx;
 }
 
 .building-summary {
   margin-bottom: 18rpx;
 }
 
-.building-summary__stats {
-  text-align: right;
+.building-summary__head {
+  margin-bottom: 4rpx;
 }
 
 .building-summary__stats text:first-child {
