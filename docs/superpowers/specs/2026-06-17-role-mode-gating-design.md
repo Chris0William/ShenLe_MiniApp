@@ -1,103 +1,154 @@
 # 角色模式门控设计（用户端 / 管理端，单版本 B 方案）
 
-> 状态：已与用户对齐，待评审 → 实施。
+> 状态：已与用户对齐 + 已过 spec 评审修订（v2）。
 > 日期：2026-06-17
 
-## 目标（Goal）
+## 目标
 
-在**同一个已发布小程序**内，用一个全局模式状态区分"用户端 / 管理端"，而不是靠微信发版渠道（体验版/正式版）区分。所有浏览页面单一来源、两端共用，差异**只**体现在三处：tab 集、共享页上的管理按钮显隐、管理端独有页的可达性。
+同一个已发布小程序内，用运行时模式状态 `mode: 'user' | 'admin'` 区分用户端/管理端，而非靠微信发版渠道。所有浏览页面单一来源、两端共用，差异只在三处：tab 集、共享页管理按钮显隐、管理端独有页的可达性。安全由后端 888 校验兜底，本轮不改后端。
 
-## 背景与现状
+## 现状关键事实（评审已核）
 
-- 当前整个小程序被 888 强门控：入口=地图，tabbar=管理端 5 项，未登录/非 888 一律拦在登录页（"仅管理员可使用"）。
-- 浏览 UI 的实际承载者是 `src/components/` 下的共享组件（地图、`sl-property-filter-bar`、`sl-property-card`、`sl-community-card`、详情等），两端早已共用；"用户端页面 / 管理端页面"只是薄入口壳。
-- `src/pages/user/home`（找房，房源优先）是历史孤岛，本方案**弃用并删除**——两端统一走管理端的"楼盘列表优先"浏览模型。
-- 后端对每个管理接口已强制校验 888（接口层 + 路由守卫）。前端 mode 仅控制 UX，安全由后端兜底，本轮不改后端。
+- 自定义 tabbar（CUSTOM_TABBAR 策略）。`config.ts`：`nativeTabbarList`(2项) + `customTabbarList`(5项=地图/房源/工作台/销控/我的)；喂给 `pages.config.ts` 的原生 `tabBar.list` 实际是这 5 项。
+- `tabbar/store.ts` 是**普通 reactive 单例（非 pinia）**，模块加载时一次性固化 `baseTabbarList`；`curIdx` 初值来自 storage `app-tabbar-index`。
+- `pages/user/map/index.vue` 的 `onLoad` 有**独立硬守卫**（绕过拦截器）：未登录→跳 login(redirect=map)，非 888→`reLaunch('/login?denied=1')`。这是冷启动落地图时真正生效的门控。
+- `community-properties/index.vue`：`canManage = computed(() => auth.isLogin)`；有 FAB（新增）、每条房源的编辑/状态/删除、状态筛选 chips。
+- `property-list/index.vue`：顶部有"新增"按钮（admin-head 内），**无 FAB**；无 canManage 概念，管理元素恒显。
+- `PageSlPropertyInput.status` 是**单个 number**，`getPropertyPage` 单字段透传 → 无法一次传 0 和 1。
+- `dashboard/index.vue`、`property-list` 等 onLoad 也各有 isLogin 判断。
+- `router/interceptor.ts` `PROTECTED_PATHS` 含 `/pages/admin/`、`/pages/user/map/index`(第14行) 等；拦截器 install 在 navigateTo/reLaunch/redirectTo/switchTab。
 
 ## 核心架构
 
-### 模式状态
+### 1. 模式状态：独立 reactive 单例（避开 pinia/模块时序问题）
 
-新增全局模式：`mode: 'user' | 'admin'`，存于 pinia（复用或扩展 `store/auth` 或新建 `store/app`），并持久化到 storage。
+新建 `src/store/mode.ts`，**普通 reactive 单例**（参照 `tabbar/store.ts` 的写法，不依赖 pinia），这样 `tabbar/store.ts` 能直接 import 读取，无 pinia 实例时序问题。
 
-- **默认**：所有人首次进入 = `user`。
-- **记忆**：888 用户的 `mode` 持久化；下次打开恢复上次模式（管理员上次在管理端，下次直接进管理端）。
-- **非 888**：`mode` 恒为 `user`，无切换入口；即使 storage 残留 `admin` 也在读取时强制纠正为 `user`（防止降权后残留）。
+```ts
+// 伪代码要点
+const APP_MODE_KEY = 'app-mode'
+function readInitialMode(): 'user' | 'admin' {
+  const saved = uni.getStorageSync(APP_MODE_KEY)
+  // admin 模式前提：有 token + storage 里 accountType≥888（不依赖 pinia 已初始化）
+  const token = uni.getStorageSync(SHENLE_TOKEN_KEY)
+  const user = uni.getStorageSync(SHENLE_USER_KEY)
+  const isAdmin = !!token && (user?.accountType || 0) >= 888
+  return (saved === 'admin' && isAdmin) ? 'admin' : 'user'
+}
+export const modeStore = reactive({
+  mode: readInitialMode(),
+  setMode(m) { this.mode = m; uni.setStorageSync(APP_MODE_KEY, m) },
+})
+```
 
-### Tab 集（随 mode 切换）
+- **默认**：所有人 = `user`。
+- **记忆**：888 的 `mode` 持久化；冷启动 `readInitialMode` 恢复（admin 仅当 storage=admin 且**有 token** 且 accountType≥888）。
+- **非 888 / 登出纠正**：`readInitialMode` 以 **token 存在性**为前提 —— 401 路径（`request.ts` 已 `removeStorageSync(TOKEN)+removeStorageSync(USER)`）或 `signOut` 清掉 token 后，下次冷启动必回 user。`signOut` 中显式 `modeStore.setMode('user')` 双保险。
 
-- 用户模式：`地图 / 房源 / 我的`（3 项）
-- 管理模式：`工作台 / 房源 / 销控 / 地图 / 我的`（5 项）
+### 2. Tab 集（运行时裁剪，"我的"合一以满足原生 ≤5 限制）
 
-实现：`src/tabbar/config.ts` 暴露两套 `customTabbarList`（userTabbarList / adminTabbarList）；`src/tabbar/store.ts` 的 `tabbarList` 改为 computed，依据 `mode` 返回对应集合，并在切换时重置 `curIdx`。`pages.config.ts` 的原生 `tabBar.list`（用于占位/启动页合法性）取两套的并集或保持自定义 tabbar 策略不依赖它。
+**硬约束**：微信原生 `tabBar.list` 最多 5 项，且自定义 tabbar 的每个 tab 用 `switchTab` 跳转，目标必须在原生 list 内。若用户/管理各保留独立"我的"页，pagePath 并集 = 6（user/mine + admin/mine + 其余 4），**超 5 限制**。
 
-> 注意：自定义 tabBar（CUSTOM_TABBAR 策略）下，tab 页仍必须在 `pages.json` 注册且原生 tabBar 至少声明合法 list。切换 tab 集本质是切换自定义组件渲染的数组，不改 `pages.json`。
+**决议：把"我的"合并为一个随 mode 自适应的页面**，复用现有 `pages/admin/mine/index`（保持原生 list pagePath 不变、风险最小），内容按 `modeStore.mode` 分支：用户模式渲染用户向内容 + 888 显示"切换到管理端"；管理模式渲染管理入口 + "切换到用户端"。**删除 `pages/user/mine`**，其有用内容并入统一"我的"页。
 
-### 共享页面（两端同一份，按 mode 显隐）
+`config.ts` 定义两套显示集（均指向原生 list 内的合法 pagePath）：
+- `userTabbarList`：`地图(user/map) / 房源(admin/property-list) / 我的(admin/mine)`（3 项）
+- `adminTabbarList`：`工作台(admin/dashboard) / 房源(admin/property-list) / 销控(admin/sales-control) / 地图(user/map) / 我的(admin/mine)`（5 项）
+
+原生 `tabBar.list`（喂给 `pages.config.ts`）= **5 项并集：地图/房源/工作台/销控/我的(admin/mine)**，与现状完全一致，不增不减。运行时仅靠自定义 tabbar 组件按 mode 渲染 user-3 或 admin-5，不改 `pages.json` 原生 list。
+
+`tabbar/store.ts`：`tabbarList` 改为 `computed(() => modeStore.mode === 'admin' ? adminList : userList)`（带 '/' 前缀归一）。切 mode 时 `setCurIdx(0)` 并写 `app-tabbar-index=0`，避免越界。`setAutoCurIdx`/`isPageTabbar` 基于当前 mode 的 list 计算。
+
+### 3. 共享页 canManage 门控（语义统一）
+
+统一计算属性：`canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')`（不再用 `auth.isLogin`）。
 
 | 页面 | 用户模式 | 管理模式 |
 |------|---------|---------|
-| 地图 `pages/user/map` | 楼盘卡仅"查看房源" | 多"编辑楼盘" |
-| 房源（楼盘列表）`pages/admin/property-list` | 只读：刷楼盘→进楼盘看房源→看详情；**无**新增 FAB | 新增 FAB + 进楼盘可管理 |
-| 楼盘房源列表 `pages/common/community-properties` | 只读列表 + 媒体；**只展示可租房源（status 0 空置 / 1 预定）**；无新增/编辑/状态/删除 | 全状态 + 管理操作 |
-| 房源详情 `pages/common/property-detail` | 只读 | 可编辑入口 |
+| 地图 `user/map` | 楼盘卡仅"查看房源"；**删除 onLoad 自守卫**（见下） | 多"编辑楼盘" |
+| 房源列表 `admin/property-list` | 隐藏顶部"新增"按钮；admin-head 整块文案改中性（标题"找房"、副标题去掉"管理楼盘房源"那句或改"按楼盘浏览可租房源"）；只读刷楼盘 | 新增按钮 + admin-head"房源管理 / 先筛选楼盘，再进入楼盘管理房源" |
+| 楼盘房源 `community-properties` | `canManage=false`：隐藏 FAB/编辑/状态/删除/状态chips；**仅展示可租房源(status 0,1)**（见取数方案） | 全状态 + 管理操作 |
+| 房源详情 `property-detail` | 隐藏编辑入口 | 显示编辑入口 |
 
-> 房源 tab 在两个模式下都叫"房源"，都是楼盘列表优先（用户确认）。
+### 4. 地图页冷启动自守卫处置（修复免登录阻塞）
 
-### 管理端独有页（用户模式不放 tab、不可达）
+`user/map/index.vue` 的 `onLoad` **删除 isLogin/isAdmin 跳转**，改为：任何人（含未登录）都能加载地图浏览。管理动作（编辑楼盘）由 `canManage` 控制显隐；点编辑时若 `!canManage` 不显示，不存在越权入口。`dashboard`/其它管理页的 onLoad 守卫保留（它们是管理页，仍要 888）。
 
-工作台 `admin/dashboard`、销控 `admin/sales-control`、楼盘管理 `common/community-manage`、楼栋管理 `common/building-manage`、区域管理 `common/region-manage`、标签管理 `common/tag-manage`、房源表单 `common/property-form`。
+### 5. community-properties 仅可租房源取数方案（无后端改动）
 
-### "我的"页
+单个楼盘房源数量有限。用户模式：
+- 不展示状态 chips；
+- 调 `getPropertyPage` 循环拉全量（pageSize 100，`while(acc<total)`，参照地图页 loadCommunities 的循环），客户端过滤 `status===0 || status===1`，渲染扁平列表；
+- 不走服务端分页/触底（用户模式数据量小，全量可接受）。
+管理模式：保持现状（chips + 服务端分页 + 管理操作）。
+用 `canManage` 在 onLoad 分流两条加载路径。
 
-- 用户模式：`pages/user/mine` 展示用户向内容（登录/资料），888 用户额外显示"切换到管理端"入口。
-- 管理模式：`pages/admin/mine` 展示管理入口，顶部/底部显示"切换到用户端"入口。
-- 切换动作：设 `mode`，持久化，`reLaunch` 到目标模式的首 tab（用户端→地图，管理端→工作台 或上次页）。
+### 6. 路由门控调整（`interceptor.ts`）
 
-### 登录与门控调整（`router/interceptor.ts` + `login`）
+**关键修正**：现 `PROTECTED_PATHS` 用 `/pages/admin/` 整段前缀保护，但合一后 `admin/mine`（我的）和 `admin/property-list`（房源）都是**两端共享、用户模式也要可达**的页 —— 整段前缀会把它们误拦。改为**显式列举管理独有页**，不再用 `/pages/admin/` 前缀：
 
-- **放开用户端**：`PROTECTED_PATHS` 移除用户可浏览的路径（地图、房源列表、楼盘房源、详情），改为公开。
-- **管理端仍 888 门控**：管理独有页 + 共享页的管理动作入口，要求 `isLogin && isAdmin`。
-- **切到管理端时**：若未登录 → 走微信授权登录；登录后非 888 → 提示"仅管理员可使用管理端"，留在用户端（不再像现在那样把人踢死）。
-- 登录页 `common/login`：去掉"整个 app 仅管理员"的拦死逻辑，改为"用于进入管理端的授权"；普通用户浏览不触发登录。
+```
+PROTECTED_PATHS = [
+  '/pages/admin/dashboard/index',      // 工作台（管理独有）
+  '/pages/admin/sales-control/index',  // 销控（管理独有）
+  '/pages/common/building-manage/index',
+  '/pages/common/community-manage/index',
+  '/pages/common/property-form/index',
+  '/pages/common/region-manage/index',
+  '/pages/common/tag-manage/index',
+]
+```
 
-## 数据流
+不受保护（用户模式可浏览）：`user/map`、`admin/property-list`、`admin/mine`、`common/community-properties`、`common/property-detail`。其管理动作由各页 `canManage` 控制显隐。
 
-- 进入小程序 → 读 storage 的 mode（非 888 纠正为 user）→ tabbar 渲染对应集合 → 落在该模式首 tab。
-- 共享页通过 `mode`（或 `auth.isAdmin && mode==='admin'`）的计算属性 `canManage` 控制按钮/FAB/筛选可见性与列表过滤（用户模式 community-properties 仅请求/展示可租房源）。
-- 切模式 → 写 storage → reLaunch。
+- 命中管理路径且 `!isLogin` → login；`isLogin && !isAdmin` → toast"仅管理员可使用管理端" + 留用户端（不踢死）。
+
+### 7. 登录流程调整（`login/index.vue`）
+
+- 去掉"整个 app 仅管理员、非 888 signOut 踢死"逻辑。
+- 登录页定位为"进入管理端的授权"。`onLoad`：带 `redirect`（默认 dashboard）。
+- 登录成功 `goAfterLogin`：
+  - `isAdmin` → `setMode('admin')` + `reLaunch(redirect || dashboard)`；
+  - **非 isAdmin** → toast"仅管理员可使用管理端"，**保留登录态**（不 signOut），`setMode('user')`，`reLaunch('/pages/user/map/index')`（回用户端，不带 redirect）。
+- `denied=1` 分支：保留为"非管理员尝试进管理端"的提示态，但不再 signOut。
+
+### 8. "我的"双向切换（统一页，按 mode 分支）
+
+统一"我的"页 `pages/admin/mine/index` 按 `modeStore.mode` 渲染：
+- **用户模式视图**：用户向内容（登录态/资料）。888 用户显示"切换到管理端"入口（非 888 不显示）。点击：未登录→login(redirect=dashboard)；已登录且 isAdmin→`setMode('admin')`+`setCurIdx(0)`+`reLaunch('/pages/admin/dashboard/index')`。
+- **管理模式视图**：管理入口列表（现 admin/mine 内容）+ "切换到用户端"。点击：`setMode('user')`+`setCurIdx(0)`+`reLaunch('/pages/user/map/index')`。
+- 切 mode → reLaunch 链路：set mode（同步）→ reset curIdx → reLaunch → 拦截器（目标在当前 mode 合法）→ 目标页 onLoad（admin 页守卫此时 isAdmin 通过；map 已无守卫）→ 正常落地。
+- **登出落点**：统一"我的"页的"退出登录"= `signOut()` → `modeStore.setMode('user')` → `reLaunch('/pages/user/map/index')`（回用户端地图，**不去登录页**）。避免非 888 登出后被甩到"进管理端授权页"，与 section 7 语义一致。
 
 ## 影响文件清单
 
-- 修改：`src/tabbar/config.ts`（两套 tab 集）、`src/tabbar/store.ts`（mode 驱动 computed）、`src/tabbar/index.vue`（如需）
-- 新增或扩展：模式 store（`store/app.ts` 或扩展 `store/auth.ts`）
-- 修改：`src/router/interceptor.ts`（放开用户端、管理端门控）
-- 修改：`src/pages/common/login/index.vue`（授权进管理端，不再拦死）
-- 修改：`src/pages/user/map/index.vue`、`src/pages/admin/property-list/index.vue`、`src/pages/common/community-properties/index.vue`、`src/pages/common/property-detail/index.vue`（canManage 显隐 + 用户模式仅可租房源）
-- 修改：`src/pages/user/mine/index.vue`、`src/pages/admin/mine/index.vue`（双向切换入口）
-- 删除：`src/pages/user/home/`（弃用的找房页）
-- 入口/启动页：地图为首页（已是 `type:'home'`），保持。
+- 新增：`src/store/mode.ts`（reactive 单例 + 持久化 + 非888纠正）
+- 修改：`src/tabbar/config.ts`（userTabbarList/adminTabbarList + 原生 list 并集）、`src/tabbar/store.ts`（mode 驱动 computed + 切换重置 curIdx）
+- 修改：`src/router/interceptor.ts`（放开用户端、管理端门控、非888留用户端）
+- 修改：`src/pages/common/login/index.vue`（授权进管理端、非888不踢死）
+- 修改：`src/pages/user/map/index.vue`（删自守卫 + canManage 显隐编辑）
+- 修改：`src/pages/admin/property-list/index.vue`（canManage 隐藏新增 + header 文案）
+- 修改：`src/pages/common/community-properties/index.vue`（canManage 语义改 + 用户模式仅可租房源取数）
+- 修改：`src/pages/common/property-detail/index.vue`（canManage 隐藏编辑入口）
+- 修改：`src/pages/admin/mine/index.vue`（统一"我的"页：按 mode 渲染用户/管理两视图 + 双向切换入口）
+- 删除：`src/pages/user/home/`（弃用找房页）、`src/pages/user/mine/`（并入统一"我的"）；全局搜索清理 `pages/user/home`、`pages/user/mine` 引用；删后 uni-pages 自动重生成 pages.json
+- 启动页：地图保持 `type:'home'`，冷启动落地图（用户模式默认）。
 
-## 不在本轮范围（明确 YAGNI / 延后）
+## 不在本轮范围
 
-- 用户端视觉打磨到生产级（卡片/空态/动效）——延后。
-- 管理端页面移入分包（subpackage）——延后（多数页共享，分包收益主要来自管理独有页，单独一轮做）。
-- 后端任何改动——本轮纯前端门控，后端 888 校验已具备。
-- 用户端登录/收藏/联系房东等业务——延后。
+- 用户端视觉打磨到生产级、管理端移入分包、后端改动、用户端业务（收藏/联系）——均延后。
 
-## 验证策略（无单测设施，遵循项目惯例）
+## 验证策略（automator/CDP，注入点明确）
 
-- `pnpm type-check` + `pnpm lint` 全绿。
-- 微信开发者工具编译通过。
-- automator/CDP 运行时断言：
-  1. 非 888（伪造 accountType=1）：tabbar = 用户 3 项；进房源 tab 无新增 FAB；进楼盘只见可租房源；无任何管理端 tab；我的页无切换入口。
-  2. 888：我的页有"切换到管理端"；切换后 tabbar = 管理 5 项、出现新增 FAB/管理动作；可进工作台/销控；再切回用户端正常。
-  3. mode 记忆：888 切到管理端后冷启动（cli auto 重启）仍落在管理端；非 888 冷启动恒在用户端。
-  4. 免登录：清空登录态后地图/房源/详情可正常浏览（不被踢登录页）；点"切换到管理端"才触发登录。
-- 渲染层 hit-test 复核关键按钮显隐（沿用本项目既有方法）。
+注入手段：`wx.setStorageSync('shenle_user', {...,accountType:N})` 改角色 + `wx.setStorageSync('app-mode', m)` + `cli auto` 重启后 reLaunch，再断言。
+
+1. **非 888 + 免登录**：清空 token、伪造 accountType=1 → 冷启动落地图且**不被踢登录页**；tabbar=用户 3 项；房源 tab 无"新增"；进楼盘只见可租房源、无管理按钮；user/mine 无切换入口。
+2. **888 切换**：伪造 accountType=888 → user/mine 有"切换到管理端"；切换后 tabbar=管理 5 项、出现新增/管理动作、可进工作台/销控；admin/mine 可切回用户端。
+3. **mode 记忆**：888 切管理端后 `cli auto` 重启 → 冷启动落管理端；非 888 冷启动恒用户端。
+4. **渲染层 hit-test** 复核关键管理按钮在用户模式确实不可见（沿用既有方法）。
 
 ## 风险与回滚
 
-- mode 与 tabbar 持久化 idx 语义变化：切 mode 必须重置 `curIdx`，否则越界。
-- 自定义 tabbar 两套切换时的启动页一致性：保证地图在两套里都存在，冷启动落地图安全。
-- 每个任务一个 git checkpoint，便于回退（本项目允许 Codex/Claude 自主提交回滚）。
+- 切 mode 必重置 curIdx（防越界）；原生 list 必含全部 tab pagePath（防 switchTab 失败）。
+- 401 降权后的纠正有一帧窗口（下次进入纠正），可接受。
+- 每任务一 git checkpoint，可回退（本项目允许自主提交回滚）。
