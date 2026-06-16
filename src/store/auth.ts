@@ -2,6 +2,7 @@ import type { LoginUserOutput, WxLoginOutput } from '@/types/shenle'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { completeProfile, getUserInfo, getWxOpenId, logout, uploadAvatar, wxOpenIdLogin } from '@/api/auth'
+import { modeStore } from '@/store/mode'
 import { SHENLE_OPENID_KEY, SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
 export const useShenleAuthStore = defineStore('shenle-auth', () => {
@@ -131,6 +132,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
       setToken('')
       setOpenId('')
       setUser(null)
+      modeStore.setMode('user')
     }
   }
 
