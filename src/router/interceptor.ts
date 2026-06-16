@@ -9,11 +9,13 @@ import { getLastPage, parseUrlToObj } from '@/utils/index'
 
 export const FG_LOG_ENABLE = false
 
+// 仅管理端独有页需要 888 门控。
+// 共享页（地图/房源列表 admin/property-list/楼盘房源 community-properties/详情/我的 admin/mine）
+// 用户模式也要可达，因此不在此列——其管理动作由各页 canManage 控制显隐。
 const PROTECTED_PATHS = [
-  '/pages/admin/',
-  '/pages/user/map/index',
+  '/pages/admin/dashboard/index',
+  '/pages/admin/sales-control/index',
   '/pages/common/building-manage/index',
-  '/pages/common/community-properties/index',
   '/pages/common/community-manage/index',
   '/pages/common/property-form/index',
   '/pages/common/region-manage/index',
@@ -72,9 +74,9 @@ export const navigateToInterceptor = {
         toLogin(path)
         return false
       }
-      // 管理端仅限 888 权限账号使用
-      if (!auth.isAdmin && !path.startsWith('/pages/common/login/')) {
-        uni.reLaunch({ url: '/pages/common/login/index?denied=1' })
+      // 管理端独有页仅 888 可用；非 888 不踢死，提示后留在用户端
+      if (!auth.isAdmin) {
+        uni.showToast({ title: '仅管理员可使用管理端', icon: 'none' })
         return false
       }
     }
