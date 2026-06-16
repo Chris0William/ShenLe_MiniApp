@@ -1,15 +1,21 @@
 import type { CustomTabBarItem, CustomTabBarItemBadge } from './types'
 import { computed, reactive } from 'vue'
 
-import { tabbarList as _tabbarList, selectedTabbarStrategy, TABBAR_STRATEGY_MAP } from './config'
+import { modeStore } from '@/store/mode'
+import { adminTabbarList, selectedTabbarStrategy, TABBAR_STRATEGY_MAP, userTabbarList } from './config'
 
-/** tabbarList 里面的 path 从 pages.config.ts 得到 */
-const baseTabbarList = reactive<CustomTabBarItem[]>(_tabbarList.map(item => ({
-  ...item,
-  pagePath: item.pagePath.startsWith('/') ? item.pagePath : `/${item.pagePath}`, // 统一成 '/' 开头的路径
-})))
+function normalize(list: CustomTabBarItem[]) {
+  return list.map(item => ({
+    ...item,
+    pagePath: item.pagePath.startsWith('/') ? item.pagePath : `/${item.pagePath}`, // 统一成 '/' 开头
+  }))
+}
 
-const tabbarList = computed(() => baseTabbarList)
+const baseUserList = reactive<CustomTabBarItem[]>(normalize(userTabbarList))
+const baseAdminList = reactive<CustomTabBarItem[]>(normalize(adminTabbarList))
+
+/** 随 mode 切换的 tab 集（用户 3 项 / 管理 5 项） */
+const tabbarList = computed(() => (modeStore.mode === 'admin' ? baseAdminList : baseUserList))
 
 export function isPageTabbar(path: string) {
   if (selectedTabbarStrategy === TABBAR_STRATEGY_MAP.NO_TABBAR) {

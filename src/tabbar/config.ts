@@ -24,38 +24,20 @@ export const nativeTabbarList: NativeTabBarItem[] = [
   },
 ]
 
-export const customTabbarList: CustomTabBarItem[] = [
-  {
-    text: '地图',
-    pagePath: 'pages/user/map/index',
-    iconType: 'unocss',
-    icon: 'i-carbon-location',
-  },
-  {
-    text: '房源',
-    pagePath: 'pages/admin/property-list/index',
-    iconType: 'unocss',
-    icon: 'i-carbon-building',
-  },
-  {
-    text: '工作台',
-    pagePath: 'pages/admin/dashboard/index',
-    iconType: 'unocss',
-    icon: 'i-carbon-dashboard',
-  },
-  {
-    text: '销控',
-    pagePath: 'pages/admin/sales-control/index',
-    iconType: 'unocss',
-    icon: 'i-carbon-table-split',
-  },
-  {
-    text: '我的',
-    pagePath: 'pages/admin/mine/index',
-    iconType: 'unocss',
-    icon: 'i-carbon-user',
-  },
-]
+const MAP_TAB: CustomTabBarItem = { text: '地图', pagePath: 'pages/user/map/index', iconType: 'unocss', icon: 'i-carbon-location' }
+const PROPERTY_TAB: CustomTabBarItem = { text: '房源', pagePath: 'pages/admin/property-list/index', iconType: 'unocss', icon: 'i-carbon-building' }
+const DASHBOARD_TAB: CustomTabBarItem = { text: '工作台', pagePath: 'pages/admin/dashboard/index', iconType: 'unocss', icon: 'i-carbon-dashboard' }
+const SALES_TAB: CustomTabBarItem = { text: '销控', pagePath: 'pages/admin/sales-control/index', iconType: 'unocss', icon: 'i-carbon-table-split' }
+const MINE_TAB: CustomTabBarItem = { text: '我的', pagePath: 'pages/admin/mine/index', iconType: 'unocss', icon: 'i-carbon-user' }
+
+/** 用户模式 tab：地图 / 房源 / 我的（房源只读、我的展示用户视图） */
+export const userTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, MINE_TAB]
+
+/** 管理模式 tab：工作台 / 房源 / 销控 / 地图 / 我的 */
+export const adminTabbarList: CustomTabBarItem[] = [DASHBOARD_TAB, PROPERTY_TAB, SALES_TAB, MAP_TAB, MINE_TAB]
+
+// 原生 tabBar.list 取并集（5 项，与现状一致；微信原生 list 最多 5 项，运行时由自定义组件按 mode 裁剪）
+export const customTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, DASHBOARD_TAB, SALES_TAB, MINE_TAB]
 
 export const tabbarCacheEnable
   = [TABBAR_STRATEGY_MAP.NATIVE_TABBAR, TABBAR_STRATEGY_MAP.CUSTOM_TABBAR].includes(selectedTabbarStrategy)
