@@ -15,7 +15,7 @@ const auth = useShenleAuthStore()
 const loading = ref(false)
 const step = ref<'login' | 'profile'>('login')
 const denied = ref(false)
-const redirect = ref('/pages/admin/dashboard/index')
+const redirect = ref('/pages/user/map/index')
 const profileNickName = ref('')
 const profileAvatarTemp = ref('')
 const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
@@ -33,7 +33,7 @@ function goAfterLogin(showToast = true) {
   tabbarStore.setCurIdx(0)
   if (showToast)
     uni.showToast({ title: '登录成功', icon: 'success' })
-  const target = redirect.value || '/pages/admin/dashboard/index'
+  const target = redirect.value || '/pages/user/map/index'
   setTimeout(() => uni.reLaunch({ url: target }), showToast ? 300 : 0)
 }
 

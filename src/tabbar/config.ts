@@ -33,8 +33,8 @@ const MINE_TAB: CustomTabBarItem = { text: '我的', pagePath: 'pages/admin/mine
 /** 用户模式 tab：地图 / 房源 / 我的（房源只读、我的展示用户视图） */
 export const userTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, MINE_TAB]
 
-/** 管理模式 tab：工作台 / 房源 / 销控 / 地图 / 我的 */
-export const adminTabbarList: CustomTabBarItem[] = [DASHBOARD_TAB, PROPERTY_TAB, SALES_TAB, MAP_TAB, MINE_TAB]
+/** 管理模式 tab：地图 / 房源 / 工作台 / 销控 / 我的（地图第一，与用户端一致） */
+export const adminTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, DASHBOARD_TAB, SALES_TAB, MINE_TAB]
 
 // 原生 tabBar.list 取并集（5 项，与现状一致；微信原生 list 最多 5 项，运行时由自定义组件按 mode 裁剪）
 export const customTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, DASHBOARD_TAB, SALES_TAB, MINE_TAB]

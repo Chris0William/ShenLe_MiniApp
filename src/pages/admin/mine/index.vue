@@ -34,7 +34,7 @@ function go(url: string) {
 // 切到管理端：未登录先授权；已登录且 888 才进
 function toAdmin() {
   if (!auth.isLogin) {
-    uni.navigateTo({ url: `/pages/common/login/index?redirect=${encodeURIComponent('/pages/admin/dashboard/index')}` })
+    uni.navigateTo({ url: `/pages/common/login/index?redirect=${encodeURIComponent('/pages/user/map/index')}` })
     return
   }
   if (!auth.isAdmin) {
@@ -43,7 +43,7 @@ function toAdmin() {
   }
   modeStore.setMode('admin')
   tabbarStore.setCurIdx(0)
-  uni.reLaunch({ url: '/pages/admin/dashboard/index' })
+  uni.reLaunch({ url: '/pages/user/map/index' }) // 管理端首 tab 也是地图
 }
 
 function toUser() {
