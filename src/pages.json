@@ -48,7 +48,7 @@
       "path": "pages/admin/mine/index",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "管理我的"
+        "navigationBarTitleText": "我的"
       }
     },
     {
@@ -128,22 +128,6 @@
       "style": {
         "navigationBarTitleText": "标签管理",
         "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/user/home/index",
-      "type": "page",
-      "style": {
-        "navigationStyle": "custom",
-        "navigationBarTitleText": "找房",
-        "enablePullDownRefresh": true
-      }
-    },
-    {
-      "path": "pages/user/mine/index",
-      "type": "page",
-      "style": {
-        "navigationBarTitleText": "我的"
       }
     }
   ],
