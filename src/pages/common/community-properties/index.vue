@@ -8,6 +8,7 @@ import { downloadFile } from '@/api/file'
 import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
+import { modeStore } from '@/store/mode'
 import { mediaKindOf, videoSnapshotUrl } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
@@ -30,7 +31,7 @@ const loading = ref(false)
 const hasLoaded = ref(false)
 const auth = useShenleAuthStore()
 const finished = computed(() => total.value > 0 && items.value.length >= total.value)
-const canManage = computed(() => auth.isLogin)
+const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 
 function buildQuery(): PageSlPropertyInput {
   return {
@@ -45,6 +46,10 @@ function buildQuery(): PageSlPropertyInput {
 async function load(reset = false) {
   if (!communityId.value || loading.value)
     return
+  // 用户模式：仅展示可租房源（status 0 空置 / 1 预定）。
+  // 后端 status 是单值无法一次传 0+1，循环拉全量后客户端过滤、扁平只读、不分页。
+  if (!canManage.value)
+    return loadAvailableForUser()
   if (reset) {
     page.value = 1
     items.value = []
@@ -55,6 +60,37 @@ async function load(reset = false) {
     const result = await getPropertyPage(buildQuery())
     total.value = result.total
     items.value = reset ? result.items : [...items.value, ...result.items]
+    hasLoaded.value = true
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
+  }
+}
+
+async function loadAvailableForUser() {
+  if (loading.value)
+    return
+  loading.value = true
+  try {
+    const all: SlPropertyListOutput[] = []
+    let pageNo = 1
+    let totalCount = Number.POSITIVE_INFINITY
+    while (all.length < totalCount) {
+      const result = await getPropertyPage({
+        page: pageNo,
+        pageSize: 100,
+        communityId: communityId.value || undefined,
+        title: keyword.value.trim() || undefined,
+      })
+      all.push(...result.items)
+      totalCount = result.total
+      if (!result.items.length)
+        break
+      pageNo += 1
+    }
+    items.value = all.filter(item => item.status === 0 || item.status === 1) // 0=空置 1=预定
+    total.value = items.value.length
     hasLoaded.value = true
   }
   finally {
@@ -185,6 +221,9 @@ onLoad((query) => {
 })
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
+  // 用户模式一次性全量加载，不分页
+  if (!canManage.value)
+    return
   if (!finished.value) {
     page.value += 1
     load()
@@ -217,7 +256,7 @@ onReachBottom(() => {
       </wd-button>
     </view>
 
-    <scroll-view scroll-x class="chips">
+    <scroll-view v-if="canManage" scroll-x class="chips">
       <view class="chips__inner">
         <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
           全部
@@ -235,8 +274,8 @@ onReachBottom(() => {
     </scroll-view>
 
     <view class="result-head">
-      <text class="result-head__title">{{ total }} 套房源</text>
-      <text class="result-head__desc">支持状态快捷切换和编辑。</text>
+      <text class="result-head__title">{{ total }} 套{{ canManage ? '房源' : '可租房源' }}</text>
+      <text class="result-head__desc">{{ canManage ? '支持状态快捷切换和编辑。' : '点击房源查看详情。' }}</text>
     </view>
 
     <view class="list">
