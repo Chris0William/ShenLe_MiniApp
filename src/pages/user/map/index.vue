@@ -5,6 +5,7 @@ import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { useShenleAuthStore } from '@/store/auth'
+import { modeStore } from '@/store/mode'
 import { clusterCalloutText, clusterCommunities, isClusterUnsplittable } from '@/utils/map-cluster'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -22,6 +23,8 @@ definePage({
 const DEFAULT_CENTER = { latitude: 22.5431, longitude: 114.0579 }
 const mapId = 'property-map'
 const safeTop = useSafeTopStyle()
+const auth = useShenleAuthStore()
+const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 
 const keyword = ref('')
 const filters = ref<PropertyFilterState>({
@@ -337,16 +340,7 @@ function goProperties(item: SlCommunityOutput | null) {
 }
 
 onLoad(() => {
-  // 冷启动直接落在本页时拦截器不生效，需自行守卫登录态与管理员权限
-  const auth = useShenleAuthStore()
-  if (!auth.isLogin) {
-    uni.navigateTo({ url: `/pages/common/login/index?redirect=${encodeURIComponent('/pages/user/map/index')}` })
-    return
-  }
-  if (!auth.isAdmin) {
-    uni.reLaunch({ url: '/pages/common/login/index?denied=1' })
-    return
-  }
+  // 地图为用户端公开页，任何人（含未登录）均可浏览；管理动作由 canManage 控制显隐
   mapContext = uni.createMapContext(mapId)
   loadCommunities()
   getLocation(false)
@@ -452,7 +446,7 @@ onPullDownRefresh(loadCommunities)
           </view>
         </view>
         <view class="map-card__actions">
-          <wd-button size="small" plain @click="editSelected">
+          <wd-button v-if="canManage" size="small" plain @click="editSelected">
             编辑楼盘
           </wd-button>
           <wd-button size="small" type="primary" @click="goProperties(selected)">
