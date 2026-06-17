@@ -21,20 +21,16 @@ const profileAvatarTemp = ref('')
 const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
 
 function goAfterLogin(showToast = true) {
-  // 登录用于进入管理端授权：888 进管理端；非 888 保留登录态、留在用户端（不踢死、不清登录）
-  if (!auth.isAdmin) {
-    modeStore.setMode('user')
-    tabbarStore.setCurIdx(0)
-    uni.showToast({ title: '仅管理员可使用管理端', icon: 'none' })
-    setTimeout(() => uni.reLaunch({ url: '/pages/user/map/index' }), 600)
+  // 准入制：666 游客 → 申请页；777+ → 用户端首页（管理员再去"我的"切换管理端）
+  if (auth.isGuest) {
+    uni.reLaunch({ url: '/pages/common/apply/index' })
     return
   }
-  modeStore.setMode('admin')
+  modeStore.setMode('user')
   tabbarStore.setCurIdx(0)
   if (showToast)
     uni.showToast({ title: '登录成功', icon: 'success' })
-  const target = redirect.value || '/pages/user/map/index'
-  setTimeout(() => uni.reLaunch({ url: target }), showToast ? 300 : 0)
+  setTimeout(() => uni.reLaunch({ url: '/pages/user/map/index' }), showToast ? 300 : 0)
 }
 
 function retryLogin() {

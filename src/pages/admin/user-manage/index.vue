@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { SlUserOutput } from '@/types/shenle'
+import type { SlPendingUserOutput, SlUserOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { getUserPage, setUserRole } from '@/api/user-manage'
+import { approveUser, getPendingUsers, getUserPage, rejectUser, setUserRole } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -26,6 +26,49 @@ const items = ref<SlUserOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
 const finished = computed(() => total.value > 0 && items.value.length >= total.value)
+
+// 待审申请
+const pending = ref<SlPendingUserOutput[]>([])
+
+async function loadPending() {
+  pending.value = await getPendingUsers().catch(() => [])
+}
+
+async function approve(item: SlPendingUserOutput) {
+  uni.showModal({
+    title: '通过申请',
+    content: `通过「${item.nickName || '该用户'}」的申请？将升级为普通用户，对方刷新或重登后即可使用。`,
+    success: async (res) => {
+      if (!res.confirm)
+        return
+      try {
+        await approveUser(item.userId)
+        pending.value = pending.value.filter(p => String(p.userId) !== String(item.userId))
+        uni.showToast({ title: '已通过', icon: 'success' })
+        load(true)
+      }
+      catch {}
+    },
+  })
+}
+
+async function reject(item: SlPendingUserOutput) {
+  uni.showModal({
+    title: '拒绝申请',
+    content: `拒绝「${item.nickName || '该用户'}」的申请？对方仍是游客，可重新申请。`,
+    confirmColor: '#c94832',
+    success: async (res) => {
+      if (!res.confirm)
+        return
+      try {
+        await rejectUser(item.userId)
+        pending.value = pending.value.filter(p => String(p.userId) !== String(item.userId))
+        uni.showToast({ title: '已拒绝', icon: 'none' })
+      }
+      catch {}
+    },
+  })
+}
 
 async function load(reset = false) {
   if (loading.value)
@@ -53,8 +96,16 @@ function roleTone(accountType: number) {
     return 'gold'
   if (accountType >= 888)
     return 'green'
+  if (accountType >= 777)
+    return 'blue'
   return 'gray'
 }
+
+const ROLE_OPTIONS = [
+  { value: 888, label: '管理员' },
+  { value: 777, label: '普通用户' },
+  { value: 666, label: '游客' },
+]
 
 function changeRole(item: SlUserOutput, target: number) {
   if (item.accountType >= 999) {
@@ -63,10 +114,11 @@ function changeRole(item: SlUserOutput, target: number) {
   }
   if (item.accountType === target)
     return
-  const label = target >= 888 ? '管理员' : '普通用户'
+  const label = ROLE_OPTIONS.find(o => o.value === target)?.label || ''
+  const extra = target === 666 ? '对方将退回游客，需重新申请。' : '对方刷新或重登后生效。'
   uni.showModal({
     title: '调整角色',
-    content: `确定将「${item.nickName || '该用户'}」设为${label}？对方需重新登录后生效。`,
+    content: `确定将「${item.nickName || '该用户'}」设为${label}？${extra}`,
     success: async (res) => {
       if (!res.confirm)
         return
@@ -89,6 +141,7 @@ onLoad(() => {
     return
   }
   load(true)
+  loadPending()
 })
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
@@ -103,7 +156,29 @@ onReachBottom(() => {
   <view class="sl-page user-page" :style="safeTop">
     <view class="head">
       <text class="head__title">用户管理</text>
-      <text class="head__desc">设置小程序用户为管理员或普通用户</text>
+      <text class="head__desc">审批游客申请、设置用户角色</text>
+    </view>
+
+    <!-- 待审申请 -->
+    <view v-if="pending.length" class="pending-block sl-card">
+      <view class="pending-head">
+        <text class="pending-title">待申请</text>
+        <view class="pending-badge">
+          {{ pending.length }}
+        </view>
+      </view>
+      <view v-for="item in pending" :key="String(item.userId)" class="pending-row">
+        <image class="avatar avatar--sm" :src="resolveAssetUrl(item.avatar) || '/static/images/default-avatar.png'" mode="aspectFill" />
+        <text class="pending-name">{{ item.nickName || '微信用户' }}</text>
+        <view class="pending-actions">
+          <view class="mini-btn mini-btn--reject" @tap="reject(item)">
+            拒绝
+          </view>
+          <view class="mini-btn mini-btn--approve" @tap="approve(item)">
+            通过
+          </view>
+        </view>
+      </view>
     </view>
 
     <view class="search sl-card">
@@ -129,11 +204,14 @@ onReachBottom(() => {
             </view>
           </view>
           <view v-if="item.accountType < 999" class="user__actions">
-            <view class="role-btn" :class="{ active: item.accountType >= 888 }" @tap="changeRole(item, 888)">
-              管理员
-            </view>
-            <view class="role-btn" :class="{ active: item.accountType < 888 }" @tap="changeRole(item, 666)">
-              普通用户
+            <view
+              v-for="opt in ROLE_OPTIONS"
+              :key="opt.value"
+              class="role-btn"
+              :class="{ active: item.accountType === opt.value }"
+              @tap="changeRole(item, opt.value)"
+            >
+              {{ opt.label }}
             </view>
           </view>
           <text v-else class="user__hint">超级管理员（仅后台可调）</text>
@@ -253,6 +331,11 @@ onReachBottom(() => {
   color: #126b4f;
 }
 
+.role-tag--blue {
+  background: #e7f0ff;
+  color: #2f66ee;
+}
+
 .role-tag--gray {
   background: #f0f2f0;
   color: #6b7770;
@@ -265,12 +348,95 @@ onReachBottom(() => {
 }
 
 .role-btn {
-  padding: 10rpx 26rpx;
+  padding: 10rpx 22rpx;
   border: 1rpx solid rgb(18 107 79 / 18%);
   border-radius: 999rpx;
   color: #5e6c65;
-  font-size: 24rpx;
+  font-size: 23rpx;
   font-weight: 700;
+}
+
+/* 待审申请区块 */
+.pending-block {
+  margin-top: 14rpx;
+  padding: 22rpx;
+}
+
+.pending-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.pending-title {
+  font-size: 28rpx;
+  font-weight: 850;
+}
+
+.pending-badge {
+  display: flex;
+  min-width: 34rpx;
+  height: 34rpx;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: #f5594e;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.pending-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid var(--sl-line);
+}
+
+.pending-row:last-child {
+  border-bottom: 0;
+}
+
+.avatar--sm {
+  width: 64rpx;
+  height: 64rpx;
+  flex: 0 0 64rpx;
+}
+
+.pending-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  font-size: 27rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12rpx;
+}
+
+.mini-btn {
+  padding: 10rpx 24rpx;
+  border-radius: 999rpx;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+
+.mini-btn--approve {
+  background: linear-gradient(135deg, var(--sl-brand, #126b4f), #24815f);
+  color: #fff;
+}
+
+.mini-btn--reject {
+  border: 1rpx solid rgb(201 72 50 / 40%);
+  color: #c94832;
 }
 
 .role-btn.active {

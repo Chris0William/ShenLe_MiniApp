@@ -340,7 +340,15 @@ function goProperties(item: SlCommunityOutput | null) {
 }
 
 onLoad(() => {
-  // 地图为用户端公开页，任何人（含未登录）均可浏览；管理动作由 canManage 控制显隐
+  // 准入制：地图是冷启动入口，未登录强制登录、游客(666)去申请页，777+ 才能浏览
+  if (!auth.isLogin) {
+    uni.reLaunch({ url: '/pages/common/login/index' })
+    return
+  }
+  if (auth.isGuest) {
+    uni.reLaunch({ url: '/pages/common/apply/index' })
+    return
+  }
   mapContext = uni.createMapContext(mapId)
   loadCommunities()
   getLocation(false)

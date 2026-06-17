@@ -491,3 +491,15 @@ export interface SetSlUserRoleInput {
   userId: ShenLeId
   accountType: number
 }
+
+export interface MyAccessOutput {
+  accountType: number
+  applyStatus: number
+}
+
+export interface SlPendingUserOutput {
+  userId: ShenLeId
+  nickName?: string | null
+  avatar?: string | null
+  applyTime?: string | null
+}

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { onShow } from '@dcloudio/uni-app'
+import { computed, ref } from 'vue'
+import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { tabbarStore } from '@/tabbar/store'
@@ -12,24 +14,30 @@ definePage({
 
 const auth = useShenleAuthStore()
 const isAdminView = computed(() => modeStore.mode === 'admin')
+const pendingCount = ref(0)
 
 const adminMenus = computed(() => {
   const base = [
-    { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index' },
-    { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index' },
-    { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index' },
-    { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index' },
-    { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index' },
+    { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index', badge: 0 },
+    { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index', badge: 0 },
+    { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index', badge: 0 },
+    { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 },
+    { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index', badge: 0 },
   ]
-  // 用户管理仅超级管理员(999)可见
+  // 用户管理仅超级管理员(999)可见，带待审红点
   if (auth.isSuperAdmin)
-    base.push({ title: '用户管理', desc: '设置用户为管理员/普通用户', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index' })
+    base.push({ title: '用户管理', desc: '审批申请、设置用户角色', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index', badge: pendingCount.value })
   return base
 })
 
 function go(url: string) {
   uni.navigateTo({ url })
 }
+
+onShow(() => {
+  if (isAdminView.value && auth.isSuperAdmin)
+    getPendingUsers().then((list) => { pendingCount.value = list.length }).catch(() => {})
+})
 
 // 切到管理端：未登录先授权；已登录且 888 才进
 function toAdmin() {
@@ -86,6 +94,9 @@ async function signOut() {
           <view class="menu-text">
             <text>{{ item.title }}</text>
             <text>{{ item.desc }}</text>
+          </view>
+          <view v-if="item.badge" class="menu-badge">
+            {{ item.badge }}
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
@@ -234,6 +245,22 @@ async function signOut() {
 
 .menu-icon--green {
   background: #ecf5ee;
+}
+
+.menu-badge {
+  display: flex;
+  min-width: 34rpx;
+  height: 34rpx;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+  margin-right: 8rpx;
+  border-radius: 999rpx;
+  background: #f5594e;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 800;
 }
 
 .menu-text {

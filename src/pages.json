@@ -79,6 +79,13 @@
       }
     },
     {
+      "path": "pages/common/apply/index",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "申请使用"
+      }
+    },
+    {
       "path": "pages/common/building-manage/index",
       "type": "page",
       "style": {
