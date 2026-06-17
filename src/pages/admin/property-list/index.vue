@@ -3,6 +3,8 @@ import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput } fro
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
+import { useShenleAuthStore } from '@/store/auth'
+import { modeStore } from '@/store/mode'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
@@ -16,6 +18,8 @@ definePage({
 })
 
 const safeTop = useSafeTopStyle()
+const auth = useShenleAuthStore()
+const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 
 const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
 
@@ -209,10 +213,10 @@ onReachBottom(() => {
   <view class="sl-page property-page" :style="safeTop">
     <view class="admin-head">
       <view>
-        <text class="admin-head__title">房源管理</text>
-        <text class="admin-head__desc">先筛选楼盘，再进入楼盘管理房源</text>
+        <text class="admin-head__title">{{ canManage ? '房源管理' : '找房' }}</text>
+        <text class="admin-head__desc">{{ canManage ? '先筛选楼盘，再进入楼盘管理房源' : '按楼盘浏览可租房源' }}</text>
       </view>
-      <wd-button size="small" type="primary" icon="add" @click="openForm">
+      <wd-button v-if="canManage" size="small" type="primary" icon="add" @click="openForm">
         新增
       </wd-button>
     </view>
