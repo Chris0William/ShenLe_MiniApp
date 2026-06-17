@@ -473,3 +473,21 @@ export interface CompleteProfileInput {
 export interface UploadAvatarOutput {
   url: string
 }
+
+export interface SlUserOutput {
+  userId: ShenLeId
+  nickName?: string | null
+  avatar?: string | null
+  accountType: number
+  accountTypeName: string
+  createTime?: string | null
+}
+
+export interface PageSlUserInput extends BasePageInput {
+  keyword?: string
+}
+
+export interface SetSlUserRoleInput {
+  userId: ShenLeId
+  accountType: number
+}

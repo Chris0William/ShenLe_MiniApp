@@ -15,6 +15,7 @@ export const FG_LOG_ENABLE = false
 const PROTECTED_PATHS = [
   '/pages/admin/dashboard/index',
   '/pages/admin/sales-control/index',
+  '/pages/admin/user-manage/index', // 超管页，登录+管理员先过守卫，999 由页面自守卫
   '/pages/common/building-manage/index',
   '/pages/common/community-manage/index',
   '/pages/common/property-form/index',

@@ -13,13 +13,19 @@ definePage({
 const auth = useShenleAuthStore()
 const isAdminView = computed(() => modeStore.mode === 'admin')
 
-const adminMenus = [
-  { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index' },
-  { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index' },
-  { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index' },
-  { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index' },
-  { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index' },
-]
+const adminMenus = computed(() => {
+  const base = [
+    { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index' },
+    { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index' },
+    { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index' },
+    { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index' },
+    { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index' },
+  ]
+  // 用户管理仅超级管理员(999)可见
+  if (auth.isSuperAdmin)
+    base.push({ title: '用户管理', desc: '设置用户为管理员/普通用户', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index' })
+  return base
+})
 
 function go(url: string) {
   uni.navigateTo({ url })
