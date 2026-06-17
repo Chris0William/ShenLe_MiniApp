@@ -2,6 +2,8 @@
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { useShenleAuthStore } from '@/store/auth'
+import { modeStore } from '@/store/mode'
+import { tabbarStore } from '@/tabbar/store'
 
 definePage({
   style: {
@@ -13,22 +15,25 @@ const auth = useShenleAuthStore()
 const loading = ref(false)
 const step = ref<'login' | 'profile'>('login')
 const denied = ref(false)
-const redirect = ref('/pages/user/map/index')
+const redirect = ref('/pages/admin/dashboard/index')
 const profileNickName = ref('')
 const profileAvatarTemp = ref('')
 const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
 
 function goAfterLogin(showToast = true) {
-  // 管理端仅限 888 权限账号使用
+  // 登录用于进入管理端授权：888 进管理端；非 888 保留登录态、留在用户端（不踢死、不清登录）
   if (!auth.isAdmin) {
-    denied.value = true
-    step.value = 'login'
-    auth.signOut()
+    modeStore.setMode('user')
+    tabbarStore.setCurIdx(0)
+    uni.showToast({ title: '仅管理员可使用管理端', icon: 'none' })
+    setTimeout(() => uni.reLaunch({ url: '/pages/user/map/index' }), 600)
     return
   }
+  modeStore.setMode('admin')
+  tabbarStore.setCurIdx(0)
   if (showToast)
     uni.showToast({ title: '登录成功', icon: 'success' })
-  const target = redirect.value || '/pages/user/map/index'
+  const target = redirect.value || '/pages/admin/dashboard/index'
   setTimeout(() => uni.reLaunch({ url: target }), showToast ? 300 : 0)
 }
 
@@ -88,8 +93,8 @@ onLoad(async (query) => {
     redirect.value = decodeURIComponent(query.redirect)
 
   if (query?.denied === '1') {
+    // 非管理员尝试进管理端的提示态：不清登录、不踢死
     denied.value = true
-    auth.signOut()
     return
   }
 
