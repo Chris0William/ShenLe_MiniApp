@@ -58,3 +58,7 @@ export function uploadAvatar(openId: string, tempFilePath: string): Promise<Uplo
     })
   })
 }
+
+export function setMyNickName(nickName: string) {
+  return post<void>('/api/slAccess/setNickName', { nickName })
+}

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput } from '@/types/shenle'
+import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
+import { getPublicRegionPage } from '@/api/public-preview'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
@@ -21,6 +22,7 @@ definePage({
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
 const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const isPreviewMode = computed(() => !auth.canViewRealData)
 
 const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
 
@@ -33,13 +35,15 @@ const page = ref(1)
 const pageSize = 10
 const total = ref(0)
 const items = ref<SlCommunityOutput[]>([])
+const previewItems = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
 const locating = ref(false)
 const locationReady = ref(false)
 const locationLabel = ref('点击选择位置')
 
-const finished = computed(() => total.value > 0 && items.value.length >= total.value)
+const currentCount = computed(() => isPreviewMode.value ? previewItems.value.length : items.value.length)
+const finished = computed(() => total.value > 0 && currentCount.value >= total.value)
 const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
@@ -54,6 +58,30 @@ function buildQuery(pageNumber = page.value, size = pageSize): PageSlCommunityIn
   }
 }
 
+function buildPreviewQuery(pageNumber = page.value, size = pageSize) {
+  return {
+    page: pageNumber,
+    pageSize: size,
+    regionId: filters.value.regionId,
+    minPrice: filters.value.minPrice,
+    maxPrice: filters.value.maxPrice,
+    longitude: filters.value.userLng,
+    latitude: filters.value.userLat,
+  }
+}
+
+function previewCardAction() {
+  ensureCanUse('登录并通过审核后可查看具体楼盘与房源')
+}
+
+function previewRegionDesc(item: SlPublicRegionPreviewOutput) {
+  return `${item.availableCountText} · ${item.rentRangeText}`
+}
+
+function previewRegionMeta(item: SlPublicRegionPreviewOutput) {
+  return item.distanceText ? `${item.communityCountText} · ${item.distanceText}` : item.communityCountText
+}
+
 // 距离排序与 DistanceKm 过滤均由服务端在分页前完成，前端只做标准分页
 async function load(reset = false) {
   if (loading.value)
@@ -61,13 +89,21 @@ async function load(reset = false) {
   if (reset) {
     page.value = 1
     items.value = []
+    previewItems.value = []
     total.value = 0
   }
   loading.value = true
   try {
-    const result = await getCommunityPage(buildQuery())
-    total.value = result.total
-    items.value = reset ? result.items : [...items.value, ...result.items]
+    if (isPreviewMode.value) {
+      const result = await getPublicRegionPage(buildPreviewQuery())
+      total.value = result.total
+      previewItems.value = reset ? result.items : [...previewItems.value, ...result.items]
+    }
+    else {
+      const result = await getCommunityPage(buildQuery())
+      total.value = result.total
+      items.value = reset ? result.items : [...items.value, ...result.items]
+    }
     hasLoaded.value = true
   }
   finally {
@@ -138,15 +174,17 @@ async function chooseReferencePoint() {
 }
 
 function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string) {
-  if (!canManage.value && !ensureCanUse('登录后即可按区域、租金搜索房源'))
+  if (isPreviewMode.value && nextKeyword?.trim()) {
+    uni.showToast({ title: '登录并通过审核后可搜索具体楼盘', icon: 'none' })
     return
+  }
   filters.value = {
     ...nextFilters,
     userLng: filters.value.userLng,
     userLat: filters.value.userLat,
   }
   if (nextKeyword !== undefined)
-    keyword.value = nextKeyword
+    keyword.value = isPreviewMode.value ? '' : nextKeyword
   load(true)
 }
 
@@ -177,6 +215,8 @@ function openVideoPreview(item: SlCommunityOutput) {
 }
 
 function goProperties(item: SlCommunityOutput) {
+  if (!canManage.value && !ensureCanUse('登录并通过审核后可查看具体楼盘与房源'))
+    return
   uni.navigateTo({
     url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`,
   })
@@ -238,6 +278,11 @@ onReachBottom(() => {
       </view>
     </view>
 
+    <view v-if="auth.isGuest" class="guest-strip sl-card" @tap="previewCardAction">
+      <wd-icon name="warning" size="18px" color="#b46d08" />
+      <text>当前账号待开通，申请通过后可查看完整房源</text>
+    </view>
+
     <sl-property-filter-bar
       :filters="filters"
       :keyword="keyword"
@@ -267,15 +312,29 @@ onReachBottom(() => {
     </view>
 
     <view class="list">
-      <sl-community-card
-        v-for="item in items"
-        :key="String(item.id)"
-        :item="item"
-        show-navigate
-        @select="goProperties"
-        @navigate="openNavigation"
-        @preview-video="openVideoPreview"
-      />
+      <view v-if="isPreviewMode" class="preview-list">
+        <view v-for="item in previewItems" :key="String(item.regionId)" class="preview-card sl-card" @tap="previewCardAction">
+          <view class="preview-card__main">
+            <text class="preview-card__name">{{ item.regionName }}</text>
+            <text class="preview-card__desc">{{ previewRegionDesc(item) }}</text>
+            <text class="preview-card__meta">{{ previewRegionMeta(item) }}</text>
+          </view>
+          <wd-button size="small" type="primary" @click.stop="previewCardAction">
+            申请后查看
+          </wd-button>
+        </view>
+      </view>
+      <template v-else>
+        <sl-community-card
+          v-for="item in items"
+          :key="String(item.id)"
+          :item="item"
+          show-navigate
+          @select="goProperties"
+          @navigate="openNavigation"
+          @preview-video="openVideoPreview"
+        />
+      </template>
     </view>
 
     <wd-popup v-model="videoPreviewVisible" :z-index="2000" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
@@ -292,7 +351,7 @@ onReachBottom(() => {
       <wd-icon name="loading" size="18px" color="#126b4f" />
       <text>加载中...</text>
     </view>
-    <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
+    <view v-else-if="hasLoaded && !currentCount" class="empty sl-card">
       <wd-icon name="home" size="42px" color="#8ea099" />
       <text class="empty__title">暂无匹配楼盘</text>
       <text class="empty__desc">调整楼盘名称、区域、租金或距离后再试</text>
@@ -499,5 +558,57 @@ onReachBottom(() => {
   width: 680rpx;
   height: 420rpx;
   background: #10261f;
+}
+
+.guest-strip {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 18rpx 22rpx;
+  color: #8a5a08;
+  font-size: 24rpx;
+}
+
+.preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.preview-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  padding: 24rpx;
+}
+
+.preview-card__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.preview-card__name,
+.preview-card__desc,
+.preview-card__meta {
+  display: block;
+}
+
+.preview-card__name {
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.preview-card__desc {
+  margin-top: 8rpx;
+  color: #126b4f;
+  font-size: 25rpx;
+  font-weight: 700;
+}
+
+.preview-card__meta {
+  margin-top: 6rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
 }
 </style>

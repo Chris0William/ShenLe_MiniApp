@@ -1,4 +1,4 @@
-import type { MyAccessOutput, PagedList, PageSlUserInput, SetSlUserRoleInput, ShenLeId, SlPendingUserOutput, SlUserOutput } from '@/types/shenle'
+import type { MyAccessOutput, PagedList, PageSlUserInput, SetSlUserNickNameInput, SetSlUserRoleInput, ShenLeId, SlPendingUserOutput, SlUserOutput } from '@/types/shenle'
 import { get, post } from './request'
 
 export function getUserPage(input: PageSlUserInput) {
@@ -27,4 +27,8 @@ export function approveUser(userId: ShenLeId) {
 
 export function rejectUser(userId: ShenLeId) {
   return post<void>('/api/slUserManage/reject', { userId })
+}
+
+export function setUserNickName(input: SetSlUserNickNameInput) {
+  return post<void>('/api/slUserManage/setNickName', input as unknown as Record<string, unknown>)
 }

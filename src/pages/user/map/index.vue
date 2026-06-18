@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput } from '@/types/shenle'
+import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput } from '@/types/shenle'
 import type { CommunityCluster, MapRegionBounds } from '@/utils/map-cluster'
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
+import { getPublicRegionMap } from '@/api/public-preview'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
@@ -26,6 +27,7 @@ const mapId = 'property-map'
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
 const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const isPreviewMode = computed(() => !auth.canViewRealData)
 
 const keyword = ref('')
 const filters = ref<PropertyFilterState>({
@@ -36,6 +38,7 @@ const mapLat = ref(DEFAULT_CENTER.latitude)
 const mapLng = ref(DEFAULT_CENTER.longitude)
 const mapScale = ref(13)
 const communities = ref<SlCommunityOutput[]>([])
+const previewRegions = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
 const locating = ref(false)
 const locationReady = ref(false)
@@ -45,11 +48,17 @@ let mapContext: UniApp.MapContext | null = null
 const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
+const mapBadgeText = computed(() => {
+  if (loading.value)
+    return '加载中'
+  return isPreviewMode.value ? `${previewRegions.value.length} 个片区` : `${communities.value.length} 个楼盘`
+})
 
 // ===== 聚合 marker 体系 =====
-type MarkerMeta = { type: 'single', community: SlCommunityOutput } | { type: 'cluster', cluster: CommunityCluster }
+type MarkerMeta = { type: 'single', community: SlCommunityOutput } | { type: 'cluster', cluster: CommunityCluster } | { type: 'preview', region: SlPublicRegionPreviewOutput }
 const markers = ref<any[]>([])
 const selected = ref<SlCommunityOutput | null>(null)
+const selectedPreview = ref<SlPublicRegionPreviewOutput | null>(null)
 const pickerVisible = ref(false)
 const pickerItems = ref<SlCommunityOutput[]>([])
 const pickerActions = computed(() => pickerItems.value.map(item => ({ name: item.name })))
@@ -78,6 +87,25 @@ function rentText(item: SlCommunityOutput) {
 const CALLOUT_BASE = { display: 'ALWAYS', fontSize: 11, borderRadius: 8, padding: 6, color: '#ffffff', textAlign: 'center' } as const
 
 function rebuildMarkers() {
+  if (isPreviewMode.value) {
+    markerMeta = []
+    markers.value = previewRegions.value
+      .filter(item => Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)))
+      .map((item) => {
+        markerMeta.push({ type: 'preview', region: item })
+        return {
+          id: markerMeta.length,
+          latitude: Number(item.latitude),
+          longitude: Number(item.longitude),
+          iconPath: '/static/images/pin-green.png',
+          width: 30,
+          height: 36,
+          anchor: { x: 0.5, y: 1 },
+          callout: { ...CALLOUT_BASE, content: `${item.regionName}\n${item.availableCountText}`, bgColor: '#126b4f' },
+        }
+      })
+    return
+  }
   const { singles, clusters } = clusterCommunities(communities.value, regionBounds, windowWidthPx)
   const list: any[] = []
   markerMeta = []
@@ -160,13 +188,51 @@ function buildQuery(pageNumber = 1, size = 200): PageSlCommunityInput {
   }
 }
 
+function buildPreviewQuery(pageNumber = 1, size = 200) {
+  return {
+    page: pageNumber,
+    pageSize: size,
+    regionId: filters.value.regionId,
+    minPrice: filters.value.minPrice,
+    maxPrice: filters.value.maxPrice,
+    longitude: filters.value.userLng,
+    latitude: filters.value.userLat,
+  }
+}
+
+function previewCardAction() {
+  ensureCanUse('登录并通过审核后可查看具体楼盘与房源')
+}
+
 function hasCoordinate(item: SlCommunityOutput) {
   const lat = Number(item.lat)
   const lng = Number(item.lng)
   return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0
 }
 
+async function loadPreviewRegions(fitToResult = false) {
+  loading.value = true
+  try {
+    const rows = await getPublicRegionMap(buildPreviewQuery())
+    previewRegions.value = rows
+    communities.value = []
+    selected.value = null
+    selectedPreview.value = null
+    refreshRegionAndMarkers()
+    if (fitToResult)
+      fitMapToPreviewRegions()
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
+  }
+}
+
 async function loadCommunities(fitToResult = false) {
+  if (isPreviewMode.value) {
+    await loadPreviewRegions(fitToResult)
+    return
+  }
   loading.value = true
   try {
     const candidates: SlCommunityOutput[] = []
@@ -201,6 +267,20 @@ function fitMapToCommunities() {
     mapLat.value = points[0].latitude
     mapLng.value = points[0].longitude
     mapScale.value = 15
+    mapContext.moveToLocation({ latitude: points[0].latitude, longitude: points[0].longitude, fail: () => {} })
+    return
+  }
+  mapContext.includePoints({ points, padding: [80, 80, 80, 80] })
+}
+
+function fitMapToPreviewRegions() {
+  const points = previewRegions.value.map(item => ({ latitude: Number(item.latitude), longitude: Number(item.longitude) }))
+  if (!points.length || !mapContext)
+    return
+  if (points.length === 1) {
+    mapLat.value = points[0].latitude
+    mapLng.value = points[0].longitude
+    mapScale.value = 14
     mapContext.moveToLocation({ latitude: points[0].latitude, longitude: points[0].longitude, fail: () => {} })
     return
   }
@@ -277,15 +357,17 @@ async function chooseReferencePoint() {
 }
 
 function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string) {
-  if (!ensureCanUse('登录后即可按区域、租金搜索房源'))
+  if (isPreviewMode.value && nextKeyword?.trim()) {
+    uni.showToast({ title: '登录并通过审核后可搜索具体楼盘', icon: 'none' })
     return
+  }
   filters.value = {
     ...nextFilters,
     userLng: filters.value.userLng,
     userLat: filters.value.userLat,
   }
   if (nextKeyword !== undefined)
-    keyword.value = nextKeyword
+    keyword.value = isPreviewMode.value ? '' : nextKeyword
   loadCommunities(true)
 }
 
@@ -301,8 +383,14 @@ function onMarkerTap(event: any) {
   const meta = markerMeta[Number(event.detail?.markerId) - 1]
   if (!meta)
     return
+  if (meta.type === 'preview') {
+    selectedPreview.value = meta.region
+    selected.value = null
+    return
+  }
   if (meta.type === 'single') {
     selected.value = meta.community
+    selectedPreview.value = null
     return
   }
   expandCluster(meta.cluster)
@@ -337,6 +425,8 @@ function editSelected() {
 function goProperties(item: SlCommunityOutput | null) {
   if (!item)
     return
+  if (!canManage.value && !ensureCanUse('登录并通过审核后可查看具体楼盘与房源'))
+    return
   uni.navigateTo({
     url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`,
   })
@@ -355,6 +445,7 @@ onLoad(() => {
         tapMarker: (markerId: number) => onMarkerTap({ detail: { markerId } }),
         state: () => ({
           communities: communities.value.length,
+          previewRegions: previewRegions.value.length,
           markers: markers.value.length,
           selectedName: selected.value?.name || null,
           pickerVisible: pickerVisible.value,
@@ -395,6 +486,11 @@ onPullDownRefresh(loadCommunities)
       <text class="location-strip__state">{{ locationReady ? '距离参考点' : '未定位' }}</text>
     </view>
 
+    <view v-if="auth.isGuest" class="guest-strip sl-card" @tap="previewCardAction">
+      <wd-icon name="warning" size="18px" color="#b46d08" />
+      <text>当前账号待开通，申请通过后可查看完整房源</text>
+    </view>
+
     <sl-property-filter-bar
       :filters="filters"
       :keyword="keyword"
@@ -429,9 +525,29 @@ onPullDownRefresh(loadCommunities)
         @regionchange="onRegionChange"
       >
         <cover-view class="map-badge">
-          <cover-view class="map-badge__text">{{ loading ? '加载中' : `${communities.length} 个楼盘` }}</cover-view>
+          <cover-view class="map-badge__text">{{ mapBadgeText }}</cover-view>
         </cover-view>
       </map>
+
+      <view v-if="selectedPreview" class="map-card">
+        <view class="map-card__close" @tap="selectedPreview = null">
+          <wd-icon name="close" size="16px" color="#9aa3af" />
+        </view>
+        <view class="map-card__main" @tap="previewCardAction">
+          <text class="map-card__name">{{ selectedPreview.regionName }}</text>
+          <view class="map-card__meta">
+            <wd-tag plain type="success">{{ selectedPreview.availableCountText }}</wd-tag>
+            <text>{{ selectedPreview.communityCountText }}</text>
+            <text>{{ selectedPreview.rentRangeText }}</text>
+            <text v-if="selectedPreview.distanceText">{{ selectedPreview.distanceText }}</text>
+          </view>
+        </view>
+        <view class="map-card__actions">
+          <wd-button size="small" type="primary" @click="previewCardAction">
+            申请后查看具体房源
+          </wd-button>
+        </view>
+      </view>
 
       <view v-if="selected" class="map-card">
         <view class="map-card__close" @tap="selected = null">
@@ -617,5 +733,14 @@ onPullDownRefresh(loadCommunities)
   color: var(--sl-brand);
   font-size: 22rpx;
   font-weight: 800;
+}
+
+.guest-strip {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  padding: 18rpx 22rpx;
+  color: #8a5a08;
+  font-size: 24rpx;
 }
 </style>

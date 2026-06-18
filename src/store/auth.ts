@@ -22,7 +22,8 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const isSuperAdmin = computed(() => (user.value?.accountType || 0) >= 999) // 999 超级管理员可用户管理
   const canUseApp = computed(() => (user.value?.accountType || 0) >= 777) // 777 普通用户可正常使用
   const isGuest = computed(() => isLogin.value && (user.value?.accountType || 0) < 777) // 666 游客需申请
-  const displayName = computed(() => user.value?.realName || user.value?.account || '未登录')
+  const canViewRealData = computed(() => canUseApp.value || isAdmin.value)
+  const displayName = computed(() => (isLogin.value ? user.value?.nickName || '微信用户' : '未登录'))
 
   function setToken(value: string) {
     token.value = value
@@ -52,7 +53,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     return {
       id: session.userId,
       account: '',
-      realName: session.nickName || '微信用户',
+      nickName: session.nickName || '',
       avatar: session.avatar || '',
       accountType: session.accountType,
     }
@@ -147,6 +148,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     isAdmin,
     isSuperAdmin,
     canUseApp,
+    canViewRealData,
     isGuest,
     displayName,
     setToken,

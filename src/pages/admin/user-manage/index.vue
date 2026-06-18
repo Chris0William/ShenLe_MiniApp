@@ -2,7 +2,7 @@
 import type { SlPendingUserOutput, SlUserOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { approveUser, getPendingUsers, getUserPage, rejectUser, setUserRole } from '@/api/user-manage'
+import { approveUser, getPendingUsers, getUserPage, rejectUser, setUserNickName, setUserRole } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -29,6 +29,40 @@ const finished = computed(() => total.value > 0 && items.value.length >= total.v
 
 // 待审申请
 const pending = ref<SlPendingUserOutput[]>([])
+const nicknameVisible = ref(false)
+const nicknameDraft = ref('')
+const nicknameTarget = ref<SlUserOutput | null>(null)
+const nicknameSaving = ref(false)
+
+function openUserNickname(item: SlUserOutput) {
+  nicknameTarget.value = item
+  nicknameDraft.value = item.nickName || ''
+  nicknameVisible.value = true
+}
+
+async function submitUserNickname() {
+  const nickName = nicknameDraft.value.trim()
+  if (!nicknameTarget.value)
+    return
+  if (!nickName) {
+    uni.showToast({ title: '昵称不能为空', icon: 'none' })
+    return
+  }
+  if (nickName.length > 32) {
+    uni.showToast({ title: '昵称不能超过32个字符', icon: 'none' })
+    return
+  }
+  nicknameSaving.value = true
+  try {
+    await setUserNickName({ userId: nicknameTarget.value.userId, nickName })
+    nicknameTarget.value.nickName = nickName
+    nicknameVisible.value = false
+    uni.showToast({ title: '已更新昵称', icon: 'success' })
+  }
+  finally {
+    nicknameSaving.value = false
+  }
+}
 
 async function loadPending() {
   pending.value = await getPendingUsers().catch(() => [])
@@ -203,21 +237,37 @@ onReachBottom(() => {
               {{ item.accountTypeName }}
             </view>
           </view>
-          <view v-if="item.accountType < 999" class="user__actions">
-            <view
-              v-for="opt in ROLE_OPTIONS"
-              :key="opt.value"
-              class="role-btn"
-              :class="{ active: item.accountType === opt.value }"
-              @tap="changeRole(item, opt.value)"
-            >
-              {{ opt.label }}
+          <view class="user__actions">
+            <view class="role-btn role-btn--nick" @tap="openUserNickname(item)">
+              修改昵称
             </view>
+            <template v-if="item.accountType < 999">
+              <view
+                v-for="opt in ROLE_OPTIONS"
+                :key="opt.value"
+                class="role-btn"
+                :class="{ active: item.accountType === opt.value }"
+                @tap="changeRole(item, opt.value)"
+              >
+                {{ opt.label }}
+              </view>
+            </template>
           </view>
-          <text v-else class="user__hint">超级管理员（仅后台可调）</text>
+          <text v-if="item.accountType >= 999" class="user__hint">超级管理员（仅后台可调）</text>
         </view>
       </view>
     </view>
+
+    <wd-popup v-model="nicknameVisible" :z-index="2000" custom-style="border-radius: 26rpx; overflow: hidden; width: 640rpx;">
+      <view class="nickname-popup">
+        <text class="nickname-popup__title">修改用户昵称</text>
+        <wd-input v-model="nicknameDraft" placeholder="请输入昵称" clearable :maxlength="32" />
+        <view class="nickname-popup__actions">
+          <wd-button plain size="small" @click="nicknameVisible = false">取消</wd-button>
+          <wd-button type="primary" size="small" :loading="nicknameSaving" @click="submitUserNickname">保存</wd-button>
+        </view>
+      </view>
+    </wd-popup>
 
     <view v-if="loading && !items.length" class="tip">
       加载中...
@@ -458,4 +508,28 @@ onReachBottom(() => {
   font-size: 24rpx;
   text-align: center;
 }
+.role-btn--nick {
+  border-color: rgb(180 109 8 / 28%);
+  color: #9a6408;
+}
+
+.nickname-popup {
+  padding: 30rpx;
+  background: #fff;
+}
+
+.nickname-popup__title {
+  display: block;
+  margin-bottom: 20rpx;
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.nickname-popup__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
 </style>

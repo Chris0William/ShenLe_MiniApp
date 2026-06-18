@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import { setMyNickName } from '@/api/auth'
 import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
@@ -15,6 +16,9 @@ definePage({
 const auth = useShenleAuthStore()
 const isAdminView = computed(() => modeStore.mode === 'admin')
 const pendingCount = ref(0)
+const nicknameVisible = ref(false)
+const nicknameDraft = ref('')
+const nicknameSaving = ref(false)
 
 const adminMenus = computed(() => {
   const base = [
@@ -29,6 +33,35 @@ const adminMenus = computed(() => {
     base.push({ title: '用户管理', desc: '审批申请、设置用户角色', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index', badge: pendingCount.value })
   return base
 })
+
+function openNicknameEditor() {
+  if (!auth.isLogin)
+    return
+  nicknameDraft.value = auth.user?.nickName || ''
+  nicknameVisible.value = true
+}
+
+async function submitNickname() {
+  const nickName = nicknameDraft.value.trim()
+  if (!nickName) {
+    uni.showToast({ title: '昵称不能为空', icon: 'none' })
+    return
+  }
+  if (nickName.length > 32) {
+    uni.showToast({ title: '昵称不能超过32个字符', icon: 'none' })
+    return
+  }
+  nicknameSaving.value = true
+  try {
+    await setMyNickName(nickName)
+    await auth.refreshUser(true)
+    nicknameVisible.value = false
+    uni.showToast({ title: '已更新昵称', icon: 'success' })
+  }
+  finally {
+    nicknameSaving.value = false
+  }
+}
 
 function go(url: string) {
   uni.navigateTo({ url })
@@ -77,6 +110,7 @@ async function signOut() {
           {{ isAdminView ? '管理端' : '用户端' }} ·
           {{ auth.isLogin ? (auth.isAdmin ? '管理员账号' : '普通账号') : '登录后可进入管理端' }}
         </text>
+        <text v-if="auth.isLogin" class="nickname-edit" @tap="openNicknameEditor">修改昵称</text>
       </view>
     </view>
 
@@ -138,6 +172,17 @@ async function signOut() {
         管理员可在此切换到管理端
       </view>
     </template>
+
+    <wd-popup v-model="nicknameVisible" :z-index="2000" custom-style="border-radius: 26rpx; overflow: hidden; width: 640rpx;">
+      <view class="nickname-popup">
+        <text class="nickname-popup__title">修改昵称</text>
+        <wd-input v-model="nicknameDraft" placeholder="请输入昵称" clearable :maxlength="32" />
+        <view class="nickname-popup__actions">
+          <wd-button plain size="small" @click="nicknameVisible = false">取消</wd-button>
+          <wd-button type="primary" size="small" :loading="nicknameSaving" @click="submitNickname">保存</wd-button>
+        </view>
+      </view>
+    </wd-popup>
 
     <wd-button v-if="auth.isLogin" plain block type="danger" custom-class="logout" @click="signOut">
       退出登录
@@ -307,4 +352,31 @@ async function signOut() {
 :deep(.logout) {
   margin-top: 34rpx;
 }
+.nickname-edit {
+  display: inline-block;
+  margin-top: 12rpx;
+  color: #126b4f;
+  font-size: 24rpx;
+  font-weight: 750;
+}
+
+.nickname-popup {
+  padding: 30rpx;
+  background: #fff;
+}
+
+.nickname-popup__title {
+  display: block;
+  margin-bottom: 20rpx;
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.nickname-popup__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
 </style>

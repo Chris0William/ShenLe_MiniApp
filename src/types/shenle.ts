@@ -440,6 +440,7 @@ export interface SlTagCategoryOutput {
 export interface LoginUserOutput {
   id: ShenLeId
   account: string
+  nickName?: string
   realName?: string
   phone?: string
   avatar?: string
@@ -448,6 +449,35 @@ export interface LoginUserOutput {
   buttons?: string[]
   roleIds?: ShenLeId[]
   tenantId?: ShenLeId
+}
+
+
+export interface SlPublicRegionQueryInput extends BasePageInput {
+  regionId?: ShenLeId
+  minPrice?: number
+  maxPrice?: number
+  longitude?: number
+  latitude?: number
+}
+
+export interface SlPublicRegionPreviewOutput {
+  regionId: ShenLeId
+  regionName: string
+  longitude: number
+  latitude: number
+  communityCountText: string
+  availableCountText: string
+  rentRangeText: string
+  distanceText?: string | null
+}
+
+export interface SetMyNickNameInput {
+  nickName: string
+}
+
+export interface SetSlUserNickNameInput {
+  userId: ShenLeId
+  nickName: string
 }
 
 export interface WxOpenIdOutput {

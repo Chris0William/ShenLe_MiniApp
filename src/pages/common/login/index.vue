@@ -21,16 +21,12 @@ const profileAvatarTemp = ref('')
 const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
 
 function goAfterLogin(showToast = true) {
-  // 准入制：666 游客 → 申请页；777+ → 用户端首页（管理员再去"我的"切换管理端）
-  if (auth.isGuest) {
-    uni.reLaunch({ url: '/pages/common/apply/index' })
-    return
-  }
   modeStore.setMode('user')
   tabbarStore.setCurIdx(0)
   if (showToast)
     uni.showToast({ title: '登录成功', icon: 'success' })
-  setTimeout(() => uni.reLaunch({ url: '/pages/user/map/index' }), showToast ? 300 : 0)
+  const target = redirect.value && !redirect.value.includes('/pages/common/login') ? redirect.value : '/pages/user/map/index'
+  setTimeout(() => uni.reLaunch({ url: target }), showToast ? 300 : 0)
 }
 
 function retryLogin() {

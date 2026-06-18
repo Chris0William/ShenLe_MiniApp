@@ -223,6 +223,11 @@ function backToMap() {
 }
 
 onLoad((query) => {
+  if (!canManage.value && !auth.canViewRealData) {
+    ensureCanUse('登录并通过审核后可查看具体楼盘与房源')
+    setTimeout(() => uni.switchTab({ url: '/pages/user/map/index' }), 300)
+    return
+  }
   communityId.value = String(query?.communityId || '')
   communityName.value = decodeURIComponent(String(query?.communityName || ''))
   if (communityName.value)
