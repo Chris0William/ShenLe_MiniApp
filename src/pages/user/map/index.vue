@@ -8,6 +8,7 @@ import { getPublicRegionMap } from '@/api/public-preview'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
+import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
 import { clusterCalloutText, clusterCommunities, isClusterUnsplittable } from '@/utils/map-cluster'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -287,17 +288,6 @@ function fitMapToPreviewRegions() {
   mapContext.includePoints({ points, padding: [80, 80, 80, 80] })
 }
 
-function requestLocation() {
-  return new Promise<UniApp.GetLocationSuccess>((resolve, reject) => {
-    uni.getLocation({
-      type: 'gcj02',
-      isHighAccuracy: true,
-      highAccuracyExpireTime: 4000,
-      success: resolve,
-      fail: reject,
-    })
-  })
-}
 
 function applyReferencePoint(longitude: number, latitude: number, label: string, moveMap = true) {
   filters.value = {
@@ -320,8 +310,8 @@ async function getLocation(showTip = false) {
     return
   locating.value = true
   try {
-    const res = await requestLocation()
-    applyReferencePoint(res.longitude, res.latitude, '当前位置')
+    const res = await getLocationOnceCached()
+    applyReferencePoint(res.longitude, res.latitude, res.label)
     if (showTip)
       uni.showToast({ title: '已更新当前位置', icon: 'success' })
     await loadCommunities()
@@ -337,14 +327,19 @@ async function getLocation(showTip = false) {
 }
 
 async function chooseReferencePoint() {
+  if (isPreviewMode.value) {
+    ensureCanUse('登录并通过审核后可选择位置')
+    return
+  }
   if (locating.value)
     return
   locating.value = true
   try {
-    const res = await new Promise<any>((resolve, reject) => {
+    const res = await new Promise<UniApp.ChooseLocationSuccess>((resolve, reject) => {
       uni.chooseLocation({ success: resolve, fail: reject })
     })
     const label = res.name || res.address || '选定位置'
+    setCachedLocation(res.longitude, res.latitude, label)
     applyReferencePoint(res.longitude, res.latitude, label)
     await loadCommunities()
   }
@@ -377,6 +372,10 @@ function resetFilters() {
   filters.value = { userLng, userLat }
   keyword.value = ''
   loadCommunities(true)
+}
+
+function onFilterGuarded(tip?: string) {
+  ensureCanUse(tip || '登录并通过审核后可使用筛选')
 }
 
 function onMarkerTap(event: any) {
@@ -471,9 +470,6 @@ onPullDownRefresh(loadCommunities)
         <wd-button size="small" plain @click="chooseReferencePoint">
           选点
         </wd-button>
-        <wd-button size="small" plain @click="getLocation(true)">
-          {{ locating ? '定位中' : '定位' }}
-        </wd-button>
         <wd-button size="small" type="primary" @click="loadCommunities">
           刷新
         </wd-button>
@@ -486,17 +482,15 @@ onPullDownRefresh(loadCommunities)
       <text class="location-strip__state">{{ locationReady ? '距离参考点' : '未定位' }}</text>
     </view>
 
-    <view v-if="auth.isGuest" class="guest-strip sl-card" @tap="previewCardAction">
-      <wd-icon name="warning" size="18px" color="#b46d08" />
-      <text>当前账号待开通，申请通过后可查看完整房源</text>
-    </view>
-
     <sl-property-filter-bar
       :filters="filters"
       :keyword="keyword"
+      :guarded="isPreviewMode"
+      guard-tip="登录并通过审核后可使用筛选"
       mount-key="admin-map-filter"
       @confirm="onFilterConfirm"
       @reset="resetFilters"
+      @guarded="onFilterGuarded"
     />
 
     <view v-if="activeCount" class="active-summary sl-card">
@@ -735,12 +729,4 @@ onPullDownRefresh(loadCommunities)
   font-weight: 800;
 }
 
-.guest-strip {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 18rpx 22rpx;
-  color: #8a5a08;
-  font-size: 24rpx;
-}
 </style>

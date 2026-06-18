@@ -16,11 +16,14 @@ const props = defineProps<{
   filters: PropertyFilterState
   keyword?: string
   mountKey?: string
+  guarded?: boolean
+  guardTip?: string
 }>()
 
 const emit = defineEmits<{
   confirm: [filters: PropertyFilterState, keyword?: string]
   reset: []
+  guarded: [tip?: string]
 }>()
 
 const PRICE_MAX = 10000
@@ -37,6 +40,15 @@ const instance = getCurrentInstance()
 let dragging: 'min' | 'max' | null = null
 let trackLeft = 0
 let trackWidth = 0
+
+function guardInteraction() {
+  if (!props.guarded)
+    return false
+  activeDropdown.value = null
+  sheetVisible.value = false
+  emit('guarded', props.guardTip)
+  return true
+}
 
 const locationActive = computed(() => !!props.filters.regionId || props.filters.distanceKm !== undefined)
 const priceActive = computed(() => props.filters.minPrice !== undefined || props.filters.maxPrice !== undefined)
@@ -134,6 +146,8 @@ function syncRegionCursor() {
 }
 
 function toggleDropdown(name: DropdownName) {
+  if (guardInteraction())
+    return
   if (activeDropdown.value === name) {
     closeDropdown()
     return
@@ -152,6 +166,8 @@ function closeDropdown() {
 }
 
 function openSheet() {
+  if (guardInteraction())
+    return
   activeDropdown.value = null
   syncDraft()
   sheetVisible.value = true
@@ -289,6 +305,8 @@ async function confirmSheet() {
 }
 
 function resetAll() {
+  if (guardInteraction())
+    return
   draft.value = {}
   draftKeyword.value = ''
   regionParentId.value = undefined
@@ -382,7 +400,7 @@ function onThumbTouchEnd() {
         <text class="filter-tab__arrow">▾</text>
       </view>
       <view class="filter-spacer" />
-      <view class="filter-reset" @tap="emit('reset')">
+      <view class="filter-reset" @tap="resetAll">
         <text>重置</text>
       </view>
       <view class="filter-search" :class="{ active: keywordActive || sheetVisible }" @tap="openSheet">

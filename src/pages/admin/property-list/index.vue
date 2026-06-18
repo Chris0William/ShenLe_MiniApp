@@ -7,6 +7,7 @@ import { getPublicRegionPage } from '@/api/public-preview'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
+import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
@@ -32,7 +33,7 @@ const filters = ref<PropertyFilterState>({
   userLat: DEFAULT_LOCATION.latitude,
 })
 const page = ref(1)
-const pageSize = 10
+const pageSize = 200
 const total = ref(0)
 const items = ref<SlCommunityOutput[]>([])
 const previewItems = ref<SlPublicRegionPreviewOutput[]>([])
@@ -122,29 +123,16 @@ function setReferencePoint(longitude: number, latitude: number, label: string) {
   locationLabel.value = label
 }
 
-function requestLocation() {
-  return new Promise<UniApp.GetLocationSuccess>((resolve, reject) => {
-    uni.getLocation({
-      type: 'gcj02',
-      isHighAccuracy: true,
-      highAccuracyExpireTime: 4000,
-      success: resolve,
-      fail: reject,
-    })
-  })
-}
-
 async function autoLocate() {
   if (locating.value)
     return
   locating.value = true
   try {
-    const res = await requestLocation()
-    setReferencePoint(res.longitude, res.latitude, '当前位置')
+    const res = await getLocationOnceCached()
+    setReferencePoint(res.longitude, res.latitude, res.label)
     await load(true)
   }
   catch {
-    // 定位失败时继续使用深圳中心点，避免距离筛选缺少参考点。
     setReferencePoint(DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude, '深圳市中心')
     await load(true)
   }
@@ -154,6 +142,10 @@ async function autoLocate() {
 }
 
 async function chooseReferencePoint() {
+  if (isPreviewMode.value) {
+    ensureCanUse('登录并通过审核后可选择位置')
+    return
+  }
   if (locating.value)
     return
   locating.value = true
@@ -162,6 +154,7 @@ async function chooseReferencePoint() {
       uni.chooseLocation({ success: resolve, fail: reject })
     })
     const label = res.name || res.address || '选定位置'
+    setCachedLocation(res.longitude, res.latitude, label)
     setReferencePoint(res.longitude, res.latitude, label)
     await load(true)
   }
@@ -194,6 +187,10 @@ function resetFilters() {
   filters.value = { userLng, userLat }
   keyword.value = ''
   load(true)
+}
+
+function onFilterGuarded(tip?: string) {
+  ensureCanUse(tip || '登录并通过审核后可使用筛选')
 }
 
 function clearAllFilters() {
@@ -273,22 +270,19 @@ onReachBottom(() => {
         </view>
       </view>
       <view class="location-card__actions">
-        <text class="location-card__action" @tap.stop="autoLocate">定位</text>
         <text class="location-card__action">选点</text>
       </view>
-    </view>
-
-    <view v-if="auth.isGuest" class="guest-strip sl-card" @tap="previewCardAction">
-      <wd-icon name="warning" size="18px" color="#b46d08" />
-      <text>当前账号待开通，申请通过后可查看完整房源</text>
     </view>
 
     <sl-property-filter-bar
       :filters="filters"
       :keyword="keyword"
+      :guarded="isPreviewMode"
+      guard-tip="登录并通过审核后可使用筛选"
       mount-key="admin-community-filter"
       @confirm="onFilterConfirm"
       @reset="resetFilters"
+      @guarded="onFilterGuarded"
     />
 
     <view v-if="activeCount" class="active-summary sl-card">
@@ -560,14 +554,6 @@ onReachBottom(() => {
   background: #10261f;
 }
 
-.guest-strip {
-  display: flex;
-  align-items: center;
-  gap: 12rpx;
-  padding: 18rpx 22rpx;
-  color: #8a5a08;
-  font-size: 24rpx;
-}
 
 .preview-list {
   display: flex;
