@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
+import { ensureCanUse } from '@/utils/auth-guard'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
@@ -137,6 +138,8 @@ async function chooseReferencePoint() {
 }
 
 function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string) {
+  if (!canManage.value && !ensureCanUse('登录后即可按区域、租金搜索房源'))
+    return
   filters.value = {
     ...nextFilters,
     userLng: filters.value.userLng,

@@ -4,6 +4,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { downloadFile } from '@/api/file'
 import { getPropertyDetail } from '@/api/property'
+import { ensureCanUse } from '@/utils/auth-guard'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -143,6 +144,11 @@ function callLandlord() {
 }
 
 onLoad((query) => {
+  // 房源详情需登录（深链/直达兜底）：未登录或游客拦回
+  if (!ensureCanUse('登录后即可查看房源详情')) {
+    setTimeout(() => uni.navigateBack(), 0)
+    return
+  }
   id.value = String(query?.id || '')
   loadDetail()
 })

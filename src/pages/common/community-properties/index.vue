@@ -9,6 +9,7 @@ import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/pro
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
+import { ensureCanUse } from '@/utils/auth-guard'
 import { mediaKindOf, videoSnapshotUrl } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
@@ -104,6 +105,13 @@ function selectStatus(value?: number) {
   load(true)
 }
 
+function onSearch() {
+  // 搜索需登录（管理端不拦）
+  if (!canManage.value && !ensureCanUse('登录后即可搜索房源'))
+    return
+  load(true)
+}
+
 // ===== 楼盘媒体横滑栏 =====
 interface CommunityMediaItem {
   id: ShenLeId
@@ -172,6 +180,9 @@ function openMedia(media: CommunityMediaItem) {
 }
 
 function openDetail(item: SlPropertyListOutput) {
+  // 详情需登录（管理端不拦）
+  if (!canManage.value && !ensureCanUse('登录后即可查看房源详情'))
+    return
   uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(item.id)}` })
 }
 
@@ -250,8 +261,8 @@ onReachBottom(() => {
 
     <view class="search sl-card">
       <wd-icon name="search" size="20px" color="#7a8780" />
-      <input v-model="keyword" class="search__input" placeholder="搜索房源 / 房号" confirm-type="search" @confirm="load(true)">
-      <wd-button size="small" type="primary" @click="load(true)">
+      <input v-model="keyword" class="search__input" placeholder="搜索房源 / 房号" confirm-type="search" @confirm="onSearch">
+      <wd-button size="small" type="primary" @click="onSearch">
         搜索
       </wd-button>
     </view>

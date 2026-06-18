@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
+import { ensureCanUse } from '@/utils/auth-guard'
 import { clusterCalloutText, clusterCommunities, isClusterUnsplittable } from '@/utils/map-cluster'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -276,6 +277,8 @@ async function chooseReferencePoint() {
 }
 
 function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string) {
+  if (!ensureCanUse('登录后即可按区域、租金搜索房源'))
+    return
   filters.value = {
     ...nextFilters,
     userLng: filters.value.userLng,
@@ -340,15 +343,7 @@ function goProperties(item: SlCommunityOutput | null) {
 }
 
 onLoad(() => {
-  // 准入制：地图是冷启动入口，未登录强制登录、游客(666)去申请页，777+ 才能浏览
-  if (!auth.isLogin) {
-    uni.reLaunch({ url: '/pages/common/login/index' })
-    return
-  }
-  if (auth.isGuest) {
-    uni.reLaunch({ url: '/pages/common/apply/index' })
-    return
-  }
+  // 微信合规：打开即可匿名浏览地图/楼盘，不强制登录；搜索/详情/联系等动作再触发登录
   mapContext = uni.createMapContext(mapId)
   loadCommunities()
   getLocation(false)
