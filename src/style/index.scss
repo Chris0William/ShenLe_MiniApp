@@ -13,7 +13,9 @@ page {
   --wot-button-primary-bg-color: #126b4f;
   --wot-button-primary-color: #ffffff;
 
+  width: 100%;
   min-height: 100%;
+  overflow-x: hidden;
   color: var(--sl-ink);
   background:
     radial-gradient(circle at 16% -4%, rgb(228 161 27 / 18%), transparent 310rpx),
@@ -22,9 +24,11 @@ page {
 }
 
 .sl-page {
+  width: 100%;
   min-height: 100vh;
   padding: 32rpx 28rpx calc(132rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .sl-page--plain {

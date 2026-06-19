@@ -562,8 +562,11 @@ onPullDownRefresh(refreshCurrent)
 <style scoped lang="scss">
 .sales-page {
   display: flex;
+  width: 100%;
   height: 100vh;
   flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
   background:
     radial-gradient(circle at 12% -2%, rgb(228 161 27 / 18%), transparent 260rpx),
     linear-gradient(180deg, #f8fbf4 0%, #eef5ef 100%);
@@ -652,10 +655,14 @@ onPullDownRefresh(refreshCurrent)
 
 .content-scroll {
   flex: 1;
+  width: 100%;
   height: 0;
+  overflow: hidden;
 }
 
 .content-inner {
+  width: 100%;
+  box-sizing: border-box;
   padding: 22rpx 28rpx calc(130rpx + env(safe-area-inset-bottom));
 }
 
@@ -740,6 +747,9 @@ onPullDownRefresh(refreshCurrent)
 
 .region-filter {
   flex: 0 0 auto;
+  width: calc(100% - 56rpx);
+  box-sizing: border-box;
+  overflow: hidden;
   margin: 16rpx 28rpx 0;
   white-space: nowrap;
 }

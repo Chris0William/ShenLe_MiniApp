@@ -81,7 +81,7 @@ function getColorByIndex(index: number) {
 
 <style scoped lang="scss">
 .tabbar-placeholder {
-  height: calc(112rpx + env(safe-area-inset-bottom));
+  height: 0;
 }
 
 .tabbar-shell {

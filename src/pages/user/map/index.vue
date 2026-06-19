@@ -576,9 +576,11 @@ onPullDownRefresh(loadCommunities)
 <style scoped lang="scss">
 .map-page {
   display: flex;
+  width: 100%;
   height: 100vh;
   flex-direction: column;
   box-sizing: border-box;
+  overflow: hidden;
   padding: 28rpx 24rpx calc(132rpx + env(safe-area-inset-bottom));
   background:
     radial-gradient(circle at 12% -2%, rgb(228 161 27 / 18%), transparent 260rpx),
