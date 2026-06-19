@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput } from '@/types/shenle'
-import type { CommunityCluster, MapRegionBounds } from '@/utils/map-cluster'
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
@@ -9,7 +8,6 @@ import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
-import { clusterCalloutText, clusterCommunities, isClusterUnsplittable } from '@/utils/map-cluster'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
@@ -55,25 +53,13 @@ const mapBadgeText = computed(() => {
   return isPreviewMode.value ? `${previewRegions.value.length} 个片区` : `${communities.value.length} 个楼盘`
 })
 
-// ===== 聚合 marker 体系 =====
-type MarkerMeta = { type: 'single', community: SlCommunityOutput } | { type: 'cluster', cluster: CommunityCluster } | { type: 'preview', region: SlPublicRegionPreviewOutput }
+// ===== marker 体系 =====
+type MarkerMeta = { type: 'single', community: SlCommunityOutput } | { type: 'preview', region: SlPublicRegionPreviewOutput }
 const markers = ref<any[]>([])
 const selected = ref<SlCommunityOutput | null>(null)
 const selectedPreview = ref<SlPublicRegionPreviewOutput | null>(null)
-const pickerVisible = ref(false)
-const pickerItems = ref<SlCommunityOutput[]>([])
-const pickerActions = computed(() => pickerItems.value.map(item => ({ name: item.name })))
 let markerMeta: MarkerMeta[] = []
-let regionBounds: MapRegionBounds | null = null
 let regionTimer: ReturnType<typeof setTimeout> | null = null
-const windowWidthPx = (() => {
-  try {
-    return (uni.getWindowInfo?.() ?? uni.getSystemInfoSync()).windowWidth || 375
-  }
-  catch {
-    return 375
-  }
-})()
 
 function rentText(item: SlCommunityOutput) {
   const min = Number(item.minRentPrice)
@@ -107,10 +93,9 @@ function rebuildMarkers() {
       })
     return
   }
-  const { singles, clusters } = clusterCommunities(communities.value, regionBounds, windowWidthPx)
   const list: any[] = []
   markerMeta = []
-  for (const item of singles) {
+  for (const item of communities.value.filter(hasCoordinate)) {
     markerMeta.push({ type: 'single', community: item })
     const rent = rentText(item)
     list.push({
@@ -124,34 +109,11 @@ function rebuildMarkers() {
       callout: { ...CALLOUT_BASE, content: rent ? `${item.name}\n${rent}` : item.name, bgColor: '#126b4f' },
     })
   }
-  for (const cluster of clusters) {
-    markerMeta.push({ type: 'cluster', cluster })
-    list.push({
-      id: markerMeta.length,
-      latitude: cluster.lat,
-      longitude: cluster.lng,
-      iconPath: '/static/images/pin-cluster.png',
-      width: 34,
-      height: 42,
-      anchor: { x: 0.5, y: 1 },
-      callout: { ...CALLOUT_BASE, content: clusterCalloutText(cluster), bgColor: '#b46d08' },
-    })
-  }
   markers.value = list
 }
 
 function refreshRegionAndMarkers() {
-  if (!mapContext) {
-    rebuildMarkers()
-    return
-  }
-  mapContext.getRegion({
-    success: (res: any) => {
-      regionBounds = { southwest: res.southwest, northeast: res.northeast }
-      rebuildMarkers()
-    },
-    fail: () => rebuildMarkers(),
-  })
+  rebuildMarkers()
 }
 
 const regionDebug = { fired: 0, accepted: 0, lastEvent: null as any }
@@ -390,29 +352,7 @@ function onMarkerTap(event: any) {
   if (meta.type === 'single') {
     selected.value = meta.community
     selectedPreview.value = null
-    return
   }
-  expandCluster(meta.cluster)
-}
-
-function expandCluster(cluster: CommunityCluster) {
-  // 坐标几乎重合的聚合放大也拆不开，改为弹出楼盘选择列表
-  if (isClusterUnsplittable(cluster)) {
-    pickerItems.value = cluster.items
-    pickerVisible.value = true
-    return
-  }
-  const points = cluster.items.map(item => ({ latitude: Number(item.lat), longitude: Number(item.lng) }))
-  mapContext?.includePoints({ points, padding: [80, 80, 80, 80] })
-  // includePoints 在部分环境不触发 regionchange，兜底延时重算聚合
-  setTimeout(refreshRegionAndMarkers, 400)
-}
-
-function onPickCommunity(event: any) {
-  const item = pickerItems.value[Number(event?.index ?? -1)]
-  pickerVisible.value = false
-  if (item)
-    selected.value = item
 }
 
 function editSelected() {
@@ -447,10 +387,8 @@ onLoad(() => {
           previewRegions: previewRegions.value.length,
           markers: markers.value.length,
           selectedName: selected.value?.name || null,
-          pickerVisible: pickerVisible.value,
           markerKinds: markers.value.map((m, i) => markerMeta[i]?.type),
           regionDebug: { ...regionDebug },
-          regionBounds,
         }),
       }
     }
@@ -568,8 +506,6 @@ onPullDownRefresh(loadCommunities)
         </view>
       </view>
     </view>
-
-    <wd-action-sheet v-model="pickerVisible" title="选择楼盘" :actions="pickerActions" :z-index="2000" @select="onPickCommunity" />
   </view>
 </template>
 
