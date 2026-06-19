@@ -40,8 +40,10 @@ const previewItems = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
 const locating = ref(false)
+const choosingReferencePoint = ref(false)
 const locationReady = ref(false)
 const locationLabel = ref('点击选择位置')
+let referencePointVersion = 0
 
 const currentCount = computed(() => isPreviewMode.value ? previewItems.value.length : items.value.length)
 const finished = computed(() => total.value > 0 && currentCount.value >= total.value)
@@ -126,18 +128,24 @@ function setReferencePoint(longitude: number, latitude: number, label: string) {
 async function autoLocate() {
   if (locating.value)
     return
+  const requestVersion = referencePointVersion
   locating.value = true
   try {
     const res = await getLocationOnceCached()
+    if (requestVersion !== referencePointVersion)
+      return
     setReferencePoint(res.longitude, res.latitude, res.label)
     await load(true)
   }
   catch {
+    if (requestVersion !== referencePointVersion)
+      return
     setReferencePoint(DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude, '深圳市中心')
     await load(true)
   }
   finally {
-    locating.value = false
+    if (requestVersion === referencePointVersion)
+      locating.value = false
   }
 }
 
@@ -146,8 +154,10 @@ async function chooseReferencePoint() {
     ensureCanUse('登录并通过审核后可选择位置')
     return
   }
-  if (locating.value)
+  if (choosingReferencePoint.value)
     return
+  const requestVersion = ++referencePointVersion
+  choosingReferencePoint.value = true
   locating.value = true
   try {
     const res = await new Promise<UniApp.ChooseLocationSuccess>((resolve, reject) => {
@@ -162,7 +172,9 @@ async function chooseReferencePoint() {
     uni.showToast({ title: '未选择位置', icon: 'none' })
   }
   finally {
-    locating.value = false
+    if (requestVersion === referencePointVersion)
+      locating.value = false
+    choosingReferencePoint.value = false
   }
 }
 

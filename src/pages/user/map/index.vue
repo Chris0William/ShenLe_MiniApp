@@ -40,9 +40,11 @@ const communities = ref<SlCommunityOutput[]>([])
 const previewRegions = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
 const locating = ref(false)
+const choosingReferencePoint = ref(false)
 const locationReady = ref(false)
 const locationLabel = ref('点击选择位置')
 let mapContext: UniApp.MapContext | null = null
+let referencePointVersion = 0
 
 const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
@@ -270,21 +272,27 @@ function applyReferencePoint(longitude: number, latitude: number, label: string,
 async function getLocation(showTip = false) {
   if (locating.value)
     return
+  const requestVersion = referencePointVersion
   locating.value = true
   try {
     const res = await getLocationOnceCached()
+    if (requestVersion !== referencePointVersion)
+      return
     applyReferencePoint(res.longitude, res.latitude, res.label)
     if (showTip)
       uni.showToast({ title: '已更新当前位置', icon: 'success' })
     await loadCommunities()
   }
   catch {
+    if (requestVersion !== referencePointVersion)
+      return
     locationReady.value = false
     if (showTip)
       uni.showToast({ title: '定位失败，请手动选点', icon: 'none' })
   }
   finally {
-    locating.value = false
+    if (requestVersion === referencePointVersion)
+      locating.value = false
   }
 }
 
@@ -293,8 +301,10 @@ async function chooseReferencePoint() {
     ensureCanUse('登录并通过审核后可选择位置')
     return
   }
-  if (locating.value)
+  if (choosingReferencePoint.value)
     return
+  const requestVersion = ++referencePointVersion
+  choosingReferencePoint.value = true
   locating.value = true
   try {
     const res = await new Promise<UniApp.ChooseLocationSuccess>((resolve, reject) => {
@@ -303,13 +313,15 @@ async function chooseReferencePoint() {
     const label = res.name || res.address || '选定位置'
     setCachedLocation(res.longitude, res.latitude, label)
     applyReferencePoint(res.longitude, res.latitude, label)
-    await loadCommunities()
+    await loadCommunities(filters.value.distanceKm !== undefined)
   }
   catch {
     uni.showToast({ title: '未选择位置', icon: 'none' })
   }
   finally {
-    locating.value = false
+    if (requestVersion === referencePointVersion)
+      locating.value = false
+    choosingReferencePoint.value = false
   }
 }
 
