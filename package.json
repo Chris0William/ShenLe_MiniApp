@@ -196,7 +196,7 @@
         "unconfig": "7.3.2"
     },
     "lint-staged": {
-        "*": "echo 祝菲鸽身体健康"
+        "*.{js,ts,mjs,cjs,vue,json}": "eslint --fix"
     },
     "unibest": {
         "platforms": [

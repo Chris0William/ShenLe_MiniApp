@@ -6,6 +6,7 @@ import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { tabbarStore } from '@/tabbar/store'
+import { requestLogin } from '@/utils/login-flow'
 
 definePage({
   style: {
@@ -19,6 +20,7 @@ const pendingCount = ref(0)
 const nicknameVisible = ref(false)
 const nicknameDraft = ref('')
 const nicknameSaving = ref(false)
+const loginConsentRef = ref<{ open: (options?: Parameters<typeof requestLogin>[0]) => void } | null>(null)
 
 const adminMenus = computed(() => {
   const base = [
@@ -39,6 +41,16 @@ function openNicknameEditor() {
     return
   nicknameDraft.value = auth.user?.nickName || ''
   nicknameVisible.value = true
+}
+
+function handleProfileTap() {
+  if (auth.isLogin)
+    return
+  loginConsentRef.value?.open({
+    reason: '登录后可申请使用并查看完整房源服务',
+    redirect: '/pages/user/map/index', // 登录成功后由 finishLogin 统一 reLaunch 到地图
+    onSuccess: () => modeStore.setMode('user'),
+  })
 }
 
 async function submitNickname() {
@@ -75,7 +87,7 @@ onShow(() => {
 // 切到管理端：未登录先授权；已登录且 888 才进
 function toAdmin() {
   if (!auth.isLogin) {
-    uni.navigateTo({ url: `/pages/common/login/index?redirect=${encodeURIComponent('/pages/user/map/index')}` })
+    requestLogin({ reason: '登录管理员账号后可切换管理端', redirect: '/pages/user/map/index' })
     return
   }
   if (!auth.isAdmin) {
@@ -102,7 +114,7 @@ async function signOut() {
 
 <template>
   <view class="sl-page mine-page">
-    <view class="profile sl-card">
+    <view class="profile sl-card" :class="{ 'profile--clickable': !auth.isLogin }" @tap="handleProfileTap">
       <image class="avatar" :src="auth.user?.avatar || '/static/images/default-avatar.png'" mode="aspectFill" />
       <view class="profile-info">
         <text class="name">{{ auth.isLogin ? auth.displayName : '未登录' }}</text>
@@ -147,17 +159,8 @@ async function signOut() {
 
     <!-- 用户模式视图 -->
     <template v-else>
-      <view class="menu sl-card user-menu">
-        <view class="menu-row" @tap="go('/pages/common/login/index')">
-          <view class="menu-row__left">
-            <view class="menu-icon menu-icon--gold">
-              <wd-icon name="user" size="21px" color="#b46d08" />
-            </view>
-            <text>{{ auth.isLogin ? '切换账号' : '微信授权登录' }}</text>
-          </view>
-          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
-        </view>
-        <view v-if="auth.isAdmin" class="menu-row" @tap="toAdmin">
+      <view v-if="auth.isAdmin" class="menu sl-card user-menu">
+        <view class="menu-row" @tap="toAdmin">
           <view class="menu-row__left">
             <view class="menu-icon menu-icon--green">
               <wd-icon name="setting" size="21px" color="#126b4f" />
@@ -169,7 +172,7 @@ async function signOut() {
       </view>
 
       <view v-if="!auth.isAdmin" class="hint">
-        管理员可在此切换到管理端
+        {{ auth.isLogin ? '管理员可在此切换到管理端' : '点击上方头像卡片登录或申请使用' }}
       </view>
     </template>
 
@@ -178,8 +181,12 @@ async function signOut() {
         <text class="nickname-popup__title">修改昵称</text>
         <wd-input v-model="nicknameDraft" placeholder="请输入昵称" clearable :maxlength="32" />
         <view class="nickname-popup__actions">
-          <wd-button plain size="small" @click="nicknameVisible = false">取消</wd-button>
-          <wd-button type="primary" size="small" :loading="nicknameSaving" @click="submitNickname">保存</wd-button>
+          <wd-button plain size="small" @click="nicknameVisible = false">
+            取消
+          </wd-button>
+          <wd-button type="primary" size="small" :loading="nicknameSaving" @click="submitNickname">
+            保存
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -187,6 +194,7 @@ async function signOut() {
     <wd-button v-if="auth.isLogin" plain block type="danger" custom-class="logout" @click="signOut">
       退出登录
     </wd-button>
+    <sl-login-consent ref="loginConsentRef" />
   </view>
 </template>
 
@@ -202,6 +210,20 @@ async function signOut() {
   margin-top: 18rpx;
   padding: 28rpx;
   background: radial-gradient(circle at 90% -10%, rgb(228 161 27 / 20%), transparent 220rpx), #fff;
+}
+
+.profile--clickable {
+  position: relative;
+}
+
+.profile--clickable::after {
+  content: '点击登录';
+  position: absolute;
+  right: 26rpx;
+  bottom: 24rpx;
+  color: #126b4f;
+  font-size: 23rpx;
+  font-weight: 800;
 }
 
 .avatar {
@@ -378,5 +400,4 @@ async function signOut() {
   gap: 16rpx;
   margin-top: 24rpx;
 }
-
 </style>

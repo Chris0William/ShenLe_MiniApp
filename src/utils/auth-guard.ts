@@ -1,4 +1,5 @@
 import { useShenleAuthStore } from '@/store/auth'
+import { promptProtectedLogin } from '@/utils/login-flow'
 
 /**
  * 动作级登录/准入拦截（微信合规：浏览免登录，关键动作才要登录）。
@@ -11,17 +12,7 @@ import { useShenleAuthStore } from '@/store/auth'
 export function ensureCanUse(tip = '登录后即可使用该功能'): boolean {
   const auth = useShenleAuthStore()
   if (!auth.isLogin) {
-    uni.showModal({
-      title: '需要登录',
-      content: tip,
-      confirmText: '去登录',
-      cancelText: '再看看',
-      confirmColor: '#126b4f',
-      success: (res) => {
-        if (res.confirm)
-          uni.navigateTo({ url: '/pages/common/login/index' })
-      },
-    })
+    promptProtectedLogin(tip)
     return false
   }
   if (auth.isGuest) {

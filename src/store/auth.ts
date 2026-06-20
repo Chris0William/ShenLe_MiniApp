@@ -15,6 +15,8 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   uni.$on('shenle:unauthorized', () => {
     token.value = ''
     user.value = null
+    // 同步退回用户端，避免过期后仍停留在管理端外壳（tabbar/视图与已登出状态不一致）
+    modeStore.setMode('user')
   })
 
   const isLogin = computed(() => !!token.value)

@@ -1,4 +1,5 @@
 import type { AdminResult } from '@/types/shenle'
+import { promptProtectedLogin } from '@/utils/login-flow'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
 export type RequestMethod = 'GET' | 'POST'
@@ -12,7 +13,7 @@ export interface RequestOptions {
   silent?: boolean
 }
 
-let redirectingLogin = false
+let promptingLogin = false
 
 function cleanQuery(data?: Record<string, unknown>) {
   if (!data)
@@ -20,24 +21,14 @@ function cleanQuery(data?: Record<string, unknown>) {
   return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined && value !== null && value !== ''))
 }
 
-function redirectToLogin() {
-  if (redirectingLogin)
+function promptLoginAgain() {
+  if (promptingLogin)
     return
-  const pages = getCurrentPages()
-  const current = pages[pages.length - 1]
-  // 已在登录页时不再跳转，避免登录页叠层或循环
-  if (current?.route?.includes('pages/common/login/'))
-    return
-  redirectingLogin = true
-  const route = current?.route ? `/${current.route}` : '/pages/user/map/index'
-  uni.navigateTo({
-    url: `/pages/common/login/index?redirect=${encodeURIComponent(route)}`,
-    complete: () => {
-      setTimeout(() => {
-        redirectingLogin = false
-      }, 800)
-    },
-  })
+  promptingLogin = true
+  promptProtectedLogin('登录状态已过期，请重新登录后继续')
+  setTimeout(() => {
+    promptingLogin = false
+  }, 800)
 }
 
 export function request<T>({ url, method = 'GET', data, header, auth = true, silent = false }: RequestOptions): Promise<T> {
@@ -65,8 +56,7 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
           // 通知 auth store 同步清理内存登录态（storage 与 pinia 不同步会造成登录页/业务页来回横跳）
           uni.$emit('shenle:unauthorized')
           if (!silent) {
-            uni.showToast({ title: '登录已过期', icon: 'none' })
-            redirectToLogin()
+            promptLoginAgain()
           }
           reject(new Error(body?.message || '未授权'))
           return

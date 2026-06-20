@@ -1,4 +1,5 @@
 import { useShenleAuthStore } from '@/store/auth'
+import { promptProtectedLogin } from '@/utils/login-flow'
 /**
  * by 菲鸽 on 2025-08-19
  * 路由拦截，通常也是登录拦截
@@ -25,12 +26,6 @@ const PROTECTED_PATHS = [
 
 function needsLogin(path: string) {
   return PROTECTED_PATHS.some(item => path === item || path.startsWith(item))
-}
-
-function toLogin(path: string) {
-  uni.navigateTo({
-    url: `/pages/common/login/index?redirect=${encodeURIComponent(path)}`,
-  })
 }
 
 export const navigateToInterceptor = {
@@ -72,7 +67,7 @@ export const navigateToInterceptor = {
     const auth = useShenleAuthStore()
     if (needsLogin(path)) {
       if (!auth.isLogin) {
-        toLogin(path)
+        promptProtectedLogin('登录管理员账号后可使用管理端功能')
         return false
       }
       // 管理端独有页仅 888 可用；非 888 不踢死，提示后留在用户端

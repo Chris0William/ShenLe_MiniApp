@@ -1,24 +1,21 @@
 <script setup lang="ts">
 import { onLoad } from '@dcloudio/uni-app'
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { tabbarStore } from '@/tabbar/store'
+import { requestLogin } from '@/utils/login-flow'
 
 definePage({
   style: {
-    navigationBarTitleText: '微信授权登录',
+    navigationBarTitleText: '登录确认',
   },
 })
 
 const auth = useShenleAuthStore()
 const loading = ref(false)
-const step = ref<'login' | 'profile'>('login')
 const denied = ref(false)
 const redirect = ref('/pages/user/map/index')
-const profileNickName = ref('')
-const profileAvatarTemp = ref('')
-const canSubmitProfile = computed(() => !!profileNickName.value.trim() && !!profileAvatarTemp.value)
 
 function goAfterLogin(showToast = true) {
   modeStore.setMode('user')
@@ -29,155 +26,60 @@ function goAfterLogin(showToast = true) {
   setTimeout(() => uni.reLaunch({ url: target }), showToast ? 300 : 0)
 }
 
-function retryLogin() {
-  denied.value = false
-}
-
-async function onWxLogin() {
+async function startLogin() {
   if (loading.value)
     return
-
   loading.value = true
   try {
-    const result = await auth.wxLoginStep1()
-    if (result === 'needProfile') {
-      step.value = 'profile'
-      return
-    }
-
-    goAfterLogin()
-  }
-  catch (error) {
-    console.error('微信授权登录失败', error)
-    uni.showToast({ title: '微信授权失败，请重试', icon: 'none' })
+    await requestLogin({
+      reason: denied.value ? '当前账号暂无管理权限，可重新登录其他微信账号' : '登录后可申请使用并查看完整房源服务',
+      redirect: redirect.value,
+      onSuccess: () => modeStore.setMode('user'), // 跳转由 finishLogin 统一 reLaunch 处理
+    })
   }
   finally {
     loading.value = false
   }
 }
 
-function onChooseAvatar(event: any) {
-  profileAvatarTemp.value = event.detail?.avatarUrl || ''
-}
-
-async function onProfileSubmit() {
-  if (!canSubmitProfile.value || loading.value) {
-    uni.showToast({ title: '请先选择头像并填写昵称', icon: 'none' })
-    return
-  }
-
-  loading.value = true
-  try {
-    await auth.wxLoginStep2(profileNickName.value.trim(), profileAvatarTemp.value)
-    goAfterLogin()
-  }
-  catch (error) {
-    console.error('完善微信资料失败', error)
-    uni.showToast({ title: '资料提交失败，请重试', icon: 'none' })
-  }
-  finally {
-    loading.value = false
-  }
+function goHome() {
+  uni.reLaunch({ url: '/pages/user/map/index' })
 }
 
 onLoad(async (query) => {
   if (typeof query?.redirect === 'string' && query.redirect.startsWith('/pages/'))
     redirect.value = decodeURIComponent(query.redirect)
 
-  if (query?.denied === '1') {
-    // 非管理员尝试进管理端的提示态：不清登录、不踢死
-    denied.value = true
-    return
-  }
+  denied.value = query?.denied === '1'
 
-  // 不能盲信本地 token（可能已过期）：先向服务器验证，失效则尝试 openid 静默续期，
-  // 都不行就留在登录页等用户手动授权——否则会和业务页来回横跳
-  if (!auth.isLogin && !auth.openId)
-    return
-  loading.value = true
-  try {
-    if (auth.isLogin) {
-      await auth.refreshUser(true)
-      goAfterLogin(false)
-      return
-    }
-    if (await auth.autoLogin())
-      goAfterLogin(false)
-  }
-  catch {
-    // token 已失效（401 已同步清理登录态），尝试 openid 静默续期
+  if (auth.isLogin) {
+    loading.value = true
     try {
-      if (await auth.autoLogin())
-        goAfterLogin(false)
+      await auth.refreshUser(true).catch(() => {})
+      goAfterLogin(false)
     }
-    catch {}
-  }
-  finally {
-    loading.value = false
+    finally {
+      loading.value = false
+    }
   }
 })
 </script>
 
 <template>
   <view class="sl-page login-page">
-    <view class="login-bg login-bg--one" />
-    <view class="login-bg login-bg--two" />
-
-    <view class="sl-hero login-hero">
-      <text class="sl-title">管理端微信授权登录</text>
-      <text class="sl-subtitle">使用当前微信身份进入深租宝典管理工作台，不再提供账号密码登录入口。</text>
-    </view>
-
-    <view v-if="denied" class="login-card sl-card">
-      <view class="denied-mark">
-        <wd-icon name="warn-bold" size="46px" color="#d2691e" />
+    <view class="login-card sl-card">
+      <view class="login-mark" :class="{ 'login-mark--warn': denied }">
+        <wd-icon :name="denied ? 'warn-bold' : 'user'" size="42px" :color="denied ? '#b46d08' : '#126b4f'" />
       </view>
-      <text class="card-title">仅管理员可使用本小程序</text>
-      <text class="card-desc">当前微信账号没有管理员权限。如需使用，请联系管理员开通后重新授权登录。</text>
-      <wd-button plain block type="success" @click="retryLogin">
-        重新授权登录
+      <text class="card-title">{{ denied ? '当前账号暂无管理权限' : '登录后继续' }}</text>
+      <text class="card-desc">
+        {{ denied ? '如需进入管理端，请使用已开通管理员权限的微信账号登录。' : '为了保护房源数据，查看完整信息或提交申请前需要先登录。' }}
+      </text>
+      <wd-button block type="success" :loading="loading" @click="startLogin">
+        {{ denied ? '重新登录' : '登录' }}
       </wd-button>
-    </view>
-
-    <view v-else-if="step === 'login'" class="login-card sl-card">
-      <view class="wx-mark">
-        <text>微</text>
-      </view>
-      <text class="card-title">授权后进入管理端</text>
-      <text class="card-desc">小程序会先通过 wx.login 获取微信登录凭证，再按旧版流程换取 OpenId 与后端 Token。</text>
-
-      <wd-button block type="success" :loading="loading" @click="onWxLogin">
-        {{ loading ? '授权中...' : '微信授权登录' }}
-      </wd-button>
-
-      <view class="login-note">
-        <wd-icon name="info-circle" size="16px" color="#5e756a" />
-        <text>登录即表示同意《用户服务协议》和《隐私政策》</text>
-      </view>
-    </view>
-
-    <view v-else class="login-card profile-card sl-card">
-      <text class="card-title">完善微信资料</text>
-      <text class="card-desc">首次登录需要选择头像并填写昵称，用于创建管理端用户资料。</text>
-
-      <button class="avatar-chooser" open-type="chooseAvatar" @chooseavatar="onChooseAvatar">
-        <image v-if="profileAvatarTemp" class="avatar-preview" :src="profileAvatarTemp" mode="aspectFill" />
-        <view v-else class="avatar-placeholder">
-          <wd-icon name="user" size="30px" color="#8ba095" />
-          <text>选择头像</text>
-        </view>
-      </button>
-
-      <input
-        v-model="profileNickName"
-        class="nickname-input"
-        type="nickname"
-        placeholder="请输入微信昵称"
-        placeholder-class="nickname-placeholder"
-      >
-
-      <wd-button block type="success" :loading="loading" :disabled="!canSubmitProfile" @click="onProfileSubmit">
-        {{ loading ? '提交中...' : '完成并登录' }}
+      <wd-button plain block @click="goHome">
+        先看看
       </wd-button>
     </view>
   </view>
@@ -185,159 +87,47 @@ onLoad(async (query) => {
 
 <style scoped lang="scss">
 .login-page {
-  position: relative;
+  display: flex;
   min-height: 100vh;
-  overflow: hidden;
-  padding-bottom: 56rpx;
-}
-
-.login-bg {
-  position: absolute;
-  z-index: 0;
-  border-radius: 999rpx;
-  filter: blur(6rpx);
-  opacity: 0.72;
-}
-
-.login-bg--one {
-  top: -120rpx;
-  right: -140rpx;
-  width: 360rpx;
-  height: 360rpx;
-  background: rgba(7, 193, 96, 0.18);
-}
-
-.login-bg--two {
-  left: -180rpx;
-  bottom: 120rpx;
-  width: 420rpx;
-  height: 420rpx;
-  background: rgba(211, 169, 85, 0.16);
-}
-
-.login-hero,
-.login-card {
-  position: relative;
-  z-index: 1;
-}
-
-.login-hero {
-  margin-top: 28rpx;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 80rpx;
 }
 
 .login-card {
   display: flex;
+  width: 100%;
   flex-direction: column;
   align-items: center;
   gap: 24rpx;
-  margin-top: 38rpx;
-  padding: 42rpx 30rpx 34rpx;
+  padding: 46rpx 32rpx 36rpx;
 }
 
-.denied-mark {
+.login-mark {
   display: flex;
+  width: 118rpx;
+  height: 118rpx;
   align-items: center;
   justify-content: center;
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: 34rpx;
-  background: rgba(210, 105, 30, 0.12);
+  border-radius: 36rpx;
+  background: #ecf5ee;
 }
 
-.wx-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: 34rpx;
-  background: linear-gradient(135deg, #07c160 0%, #1d8f58 100%);
-  box-shadow: 0 18rpx 42rpx rgba(7, 193, 96, 0.24);
-}
-
-.wx-mark text {
-  color: #fff;
-  font-size: 42rpx;
-  font-weight: 900;
+.login-mark--warn {
+  background: #fff2d7;
 }
 
 .card-title {
   color: var(--sl-ink);
-  font-size: 34rpx;
+  font-size: 36rpx;
   font-weight: 900;
 }
 
 .card-desc {
   max-width: 560rpx;
   color: var(--sl-muted);
-  font-size: 25rpx;
-  line-height: 1.55;
+  font-size: 26rpx;
+  line-height: 1.6;
   text-align: center;
-}
-
-.login-note {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  color: #5e756a;
-  font-size: 22rpx;
-}
-
-.profile-card {
-  gap: 26rpx;
-}
-
-.avatar-chooser {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 168rpx;
-  height: 168rpx;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-}
-
-.avatar-chooser::after {
-  border: 0;
-}
-
-.avatar-preview,
-.avatar-placeholder {
-  width: 168rpx;
-  height: 168rpx;
-  border-radius: 50%;
-}
-
-.avatar-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8rpx;
-  border: 2rpx dashed rgba(18, 107, 79, 0.28);
-  background: rgba(255, 255, 255, 0.7);
-  color: #8ba095;
-  font-size: 22rpx;
-}
-
-.nickname-input {
-  width: 100%;
-  height: 88rpx;
-  box-sizing: border-box;
-  padding: 0 26rpx;
-  border: 1rpx solid rgba(18, 107, 79, 0.16);
-  border-radius: 22rpx;
-  background: rgba(255, 255, 255, 0.86);
-  color: var(--sl-ink);
-  font-size: 28rpx;
-}
-
-.nickname-placeholder {
-  color: #9cac9f;
 }
 </style>

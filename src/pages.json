@@ -79,6 +79,10 @@
       }
     },
     {
+      "path": "pages/common/agreement/index",
+      "type": "page"
+    },
+    {
       "path": "pages/common/apply/index",
       "type": "page",
       "style": {
@@ -113,7 +117,7 @@
       "path": "pages/common/login/index",
       "type": "page",
       "style": {
-        "navigationBarTitleText": "微信授权登录"
+        "navigationBarTitleText": "登录确认"
       }
     },
     {

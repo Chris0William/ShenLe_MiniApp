@@ -59,7 +59,7 @@ async function submitApply() {
 
 async function signOut() {
   await auth.signOut()
-  uni.reLaunch({ url: '/pages/common/login/index' })
+  uni.reLaunch({ url: '/pages/user/map/index' })
 }
 
 onShow(() => {

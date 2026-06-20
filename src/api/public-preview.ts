@@ -1,4 +1,4 @@
-﻿import type { PagedList, SlPublicRegionPreviewOutput, SlPublicRegionQueryInput } from '@/types/shenle'
+import type { PagedList, SlPublicRegionPreviewOutput, SlPublicRegionQueryInput } from '@/types/shenle'
 import { post } from './request'
 
 export function getPublicRegionMap(input: Partial<SlPublicRegionQueryInput> = {}) {

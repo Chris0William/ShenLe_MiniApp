@@ -5,6 +5,7 @@ import { ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPropertyGlobalStats } from '@/api/property'
 import { useShenleAuthStore } from '@/store/auth'
+import { requestLogin } from '@/utils/login-flow'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney } from '@/utils/shenle'
 
@@ -25,7 +26,7 @@ const auth = useShenleAuthStore()
 function requireLogin() {
   if (auth.isLogin)
     return true
-  uni.navigateTo({ url: `/pages/common/login/index?redirect=${encodeURIComponent('/pages/admin/dashboard/index')}` })
+  requestLogin({ reason: '登录管理员账号后可查看工作台', redirect: '/pages/admin/dashboard/index' })
   return false
 }
 
