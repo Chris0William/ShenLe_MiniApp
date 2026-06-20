@@ -41,7 +41,6 @@ const previewRegions = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
 const locating = ref(false)
 const choosingReferencePoint = ref(false)
-const locationReady = ref(false)
 const locationLabel = ref('点击选择位置')
 let mapContext: UniApp.MapContext | null = null
 let referencePointVersion = 0
@@ -252,7 +251,6 @@ function fitMapToPreviewRegions() {
   mapContext.includePoints({ points, padding: [80, 80, 80, 80] })
 }
 
-
 function applyReferencePoint(longitude: number, latitude: number, label: string, moveMap = true) {
   filters.value = {
     ...filters.value,
@@ -260,7 +258,6 @@ function applyReferencePoint(longitude: number, latitude: number, label: string,
     userLat: latitude,
   }
   locationLabel.value = label
-  locationReady.value = true
   if (!moveMap)
     return
   mapLat.value = latitude
@@ -286,7 +283,6 @@ async function getLocation(showTip = false) {
   catch {
     if (requestVersion !== referencePointVersion)
       return
-    locationReady.value = false
     if (showTip)
       uni.showToast({ title: '定位失败，请手动选点', icon: 'none' })
   }
@@ -413,24 +409,10 @@ onPullDownRefresh(loadCommunities)
 <template>
   <view class="map-page" :style="safeTop">
     <view class="map-head">
-      <view>
-        <text class="map-head__title">楼盘地图</text>
-      </view>
-      <view class="map-head__actions">
-        <wd-button size="small" plain @click="chooseReferencePoint">
-          选点
-        </wd-button>
-        <wd-button size="small" type="primary" @click="loadCommunities">
-          刷新
-        </wd-button>
-      </view>
+      <text class="map-head__title">楼盘地图</text>
     </view>
 
-    <view class="location-strip sl-card" @tap="chooseReferencePoint">
-      <wd-icon name="location" size="18px" color="#126b4f" />
-      <text>{{ locating ? '定位中...' : locationLabel }}</text>
-      <text class="location-strip__state">{{ locationReady ? '距离参考点' : '未定位' }}</text>
-    </view>
+    <sl-location-card :locating="locating" :label="locationLabel" @choose="chooseReferencePoint" />
 
     <sl-property-filter-bar
       :filters="filters"
@@ -480,7 +462,9 @@ onPullDownRefresh(loadCommunities)
         <view class="map-card__main" @tap="previewCardAction">
           <text class="map-card__name">{{ selectedPreview.regionName }}</text>
           <view class="map-card__meta">
-            <wd-tag plain type="success">{{ selectedPreview.availableCountText }}</wd-tag>
+            <wd-tag plain type="success">
+              {{ selectedPreview.availableCountText }}
+            </wd-tag>
             <text>{{ selectedPreview.communityCountText }}</text>
             <text>{{ selectedPreview.rentRangeText }}</text>
             <text v-if="selectedPreview.distanceText">{{ selectedPreview.distanceText }}</text>
@@ -539,7 +523,6 @@ onPullDownRefresh(loadCommunities)
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
   gap: 18rpx;
 }
 
@@ -547,32 +530,6 @@ onPullDownRefresh(loadCommunities)
   display: block;
   font-size: 34rpx;
   font-weight: 850;
-}
-
-.map-head__actions {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 10rpx;
-}
-
-.location-strip {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-  margin-top: 18rpx;
-  padding: 16rpx 18rpx;
-  color: var(--sl-ink);
-  font-size: 25rpx;
-  font-weight: 850;
-}
-
-.location-strip__state {
-  margin-left: auto;
-  color: var(--sl-muted);
-  font-size: 22rpx;
-  font-weight: 600;
 }
 
 .active-summary {
@@ -678,5 +635,4 @@ onPullDownRefresh(loadCommunities)
   font-size: 22rpx;
   font-weight: 800;
 }
-
 </style>

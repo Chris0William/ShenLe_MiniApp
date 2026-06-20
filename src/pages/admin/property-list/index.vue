@@ -41,7 +41,6 @@ const loading = ref(false)
 const hasLoaded = ref(false)
 const locating = ref(false)
 const choosingReferencePoint = ref(false)
-const locationReady = ref(false)
 const locationLabel = ref('点击选择位置')
 let referencePointVersion = 0
 
@@ -121,7 +120,6 @@ function setReferencePoint(longitude: number, latitude: number, label: string) {
     userLng: longitude,
     userLat: latitude,
   }
-  locationReady.value = true
   locationLabel.value = label
 }
 
@@ -266,25 +264,14 @@ onReachBottom(() => {
     <view class="admin-head">
       <view>
         <text class="admin-head__title">{{ canManage ? '房源管理' : '找房' }}</text>
-        <text class="admin-head__desc">{{ canManage ? '先筛选楼盘，再进入楼盘管理房源' : '按楼盘浏览可租房源' }}</text>
+        <text v-if="canManage" class="admin-head__desc">先筛选楼盘，再进入楼盘管理房源</text>
       </view>
       <wd-button v-if="canManage" size="small" type="primary" icon="add" @click="openForm">
         新增
       </wd-button>
     </view>
 
-    <view class="location-card sl-card" @tap="chooseReferencePoint">
-      <view class="location-card__main">
-        <wd-icon name="location" size="18px" color="#126b4f" />
-        <view>
-          <text class="location-card__label">当前位置 / 距离参考点</text>
-          <text class="location-card__value">{{ locating ? '定位中...' : locationLabel }}</text>
-        </view>
-      </view>
-      <view class="location-card__actions">
-        <text class="location-card__action">选点</text>
-      </view>
-    </view>
+    <sl-location-card :locating="locating" :label="locationLabel" @choose="chooseReferencePoint" />
 
     <sl-property-filter-bar
       :filters="filters"
@@ -397,57 +384,6 @@ onReachBottom(() => {
   margin-top: 8rpx;
   color: var(--sl-muted);
   font-size: 23rpx;
-}
-
-.location-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18rpx;
-  margin-top: 22rpx;
-  padding: 18rpx 20rpx;
-}
-
-.location-card__main {
-  display: flex;
-  min-width: 0;
-  flex: 1;
-  align-items: center;
-  gap: 14rpx;
-}
-
-.location-card__label,
-.location-card__value {
-  display: block;
-}
-
-.location-card__label {
-  color: var(--sl-muted);
-  font-size: 22rpx;
-}
-
-.location-card__value {
-  max-width: 460rpx;
-  overflow: hidden;
-  margin-top: 4rpx;
-  color: var(--sl-ink);
-  font-size: 27rpx;
-  font-weight: 850;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.location-card__actions {
-  display: flex;
-  flex-shrink: 0;
-  gap: 14rpx;
-}
-
-.location-card__action {
-  flex-shrink: 0;
-  color: var(--sl-brand);
-  font-size: 24rpx;
-  font-weight: 850;
 }
 
 .active-summary {
@@ -565,7 +501,6 @@ onReachBottom(() => {
   height: 420rpx;
   background: #10261f;
 }
-
 
 .preview-list {
   display: flex;
