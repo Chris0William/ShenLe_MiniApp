@@ -18,6 +18,10 @@ definePage({
 
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
+
+function goBack() {
+  uni.navigateBack()
+}
 const keyword = ref('')
 const page = ref(1)
 const pageSize = 20
@@ -189,8 +193,13 @@ onReachBottom(() => {
 <template>
   <view class="sl-page user-page" :style="safeTop">
     <view class="head">
-      <text class="head__title">用户管理</text>
-      <text class="head__desc">审批游客申请、设置用户角色</text>
+      <view class="head__back" @tap="goBack">
+        <wd-icon name="arrow-left" size="20px" color="#126b4f" />
+      </view>
+      <view class="head__main">
+        <text class="head__title">用户管理</text>
+        <text class="head__desc">审批游客申请、设置用户角色</text>
+      </view>
     </view>
 
     <!-- 待审申请 -->
@@ -263,8 +272,12 @@ onReachBottom(() => {
         <text class="nickname-popup__title">修改用户昵称</text>
         <wd-input v-model="nicknameDraft" placeholder="请输入昵称" clearable :maxlength="32" />
         <view class="nickname-popup__actions">
-          <wd-button plain size="small" @click="nicknameVisible = false">取消</wd-button>
-          <wd-button type="primary" size="small" :loading="nicknameSaving" @click="submitUserNickname">保存</wd-button>
+          <wd-button plain size="small" @click="nicknameVisible = false">
+            取消
+          </wd-button>
+          <wd-button type="primary" size="small" :loading="nicknameSaving" @click="submitUserNickname">
+            保存
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -287,7 +300,25 @@ onReachBottom(() => {
 }
 
 .head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
   padding: 4rpx 2rpx 10rpx;
+}
+
+.head__back {
+  display: flex;
+  width: 56rpx;
+  height: 56rpx;
+  flex: 0 0 56rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgb(18 107 79 / 8%);
+}
+
+.head__main {
+  min-width: 0;
 }
 
 .head__title {
@@ -531,5 +562,4 @@ onReachBottom(() => {
   gap: 16rpx;
   margin-top: 24rpx;
 }
-
 </style>

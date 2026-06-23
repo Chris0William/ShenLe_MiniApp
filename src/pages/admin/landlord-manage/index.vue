@@ -18,6 +18,10 @@ definePage({
 })
 
 const safeTop = useSafeTopStyle()
+
+function goBack() {
+  uni.navigateBack()
+}
 const auth = useShenleAuthStore()
 
 // ── 待审申请 ─────────────────────────────────────────────────────────────────
@@ -309,8 +313,13 @@ onReachBottom(() => {
 <template>
   <view class="sl-page landlord-page" :style="safeTop">
     <view class="head">
-      <text class="head__title">房东管理</text>
-      <text class="head__desc">审批房东申请、分配楼盘</text>
+      <view class="head__back" @tap="goBack">
+        <wd-icon name="arrow-left" size="20px" color="#126b4f" />
+      </view>
+      <view class="head__main">
+        <text class="head__title">房东管理</text>
+        <text class="head__desc">审批房东申请、分配楼盘</text>
+      </view>
     </view>
 
     <!-- 待审申请 -->
@@ -481,7 +490,25 @@ onReachBottom(() => {
 }
 
 .head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
   padding: 4rpx 2rpx 10rpx;
+}
+
+.head__back {
+  display: flex;
+  width: 56rpx;
+  height: 56rpx;
+  flex: 0 0 56rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgb(18 107 79 / 8%);
+}
+
+.head__main {
+  min-width: 0;
 }
 
 .head__title {
