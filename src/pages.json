@@ -158,6 +158,14 @@
         "navigationBarTitleText": "标签管理",
         "enablePullDownRefresh": true
       }
+    },
+    {
+      "path": "pages/landlord/my-communities/index",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "我的楼盘",
+        "enablePullDownRefresh": true
+      }
     }
   ],
   "subPackages": [],

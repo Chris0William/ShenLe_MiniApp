@@ -1,5 +1,4 @@
 import { useShenleAuthStore } from '@/store/auth'
-import { promptProtectedLogin } from '@/utils/login-flow'
 /**
  * by 菲鸽 on 2025-08-19
  * 路由拦截，通常也是登录拦截
@@ -7,6 +6,7 @@ import { promptProtectedLogin } from '@/utils/login-flow'
  */
 import { tabbarStore } from '@/tabbar/store'
 import { getLastPage, parseUrlToObj } from '@/utils/index'
+import { promptProtectedLogin } from '@/utils/login-flow'
 
 export const FG_LOG_ENABLE = false
 
@@ -17,15 +17,24 @@ const PROTECTED_PATHS = [
   '/pages/admin/dashboard/index',
   '/pages/admin/sales-control/index',
   '/pages/admin/user-manage/index', // 超管页，登录+管理员先过守卫，999 由页面自守卫
-  '/pages/common/building-manage/index',
   '/pages/common/community-manage/index',
-  '/pages/common/property-form/index',
   '/pages/common/region-manage/index',
   '/pages/common/tag-manage/index',
 ]
 
+// 房东端也可访问的管理页：需登录，且须是管理员(888)或房东(isLandlord)。
+// building-manage 和 property-form 由后端 RequireCommunityOwnerOrAdmin 守卫实际写权限。
+const LANDLORD_OR_ADMIN_PATHS = [
+  '/pages/common/building-manage/index',
+  '/pages/common/property-form/index',
+]
+
 function needsLogin(path: string) {
   return PROTECTED_PATHS.some(item => path === item || path.startsWith(item))
+}
+
+function needsLandlordOrAdmin(path: string) {
+  return LANDLORD_OR_ADMIN_PATHS.some(item => path === item || path.startsWith(item))
 }
 
 export const navigateToInterceptor = {
@@ -73,6 +82,17 @@ export const navigateToInterceptor = {
       // 管理端独有页仅 888 可用；非 888 不踢死，提示后留在用户端
       if (!auth.isAdmin) {
         uni.showToast({ title: '仅管理员可使用管理端', icon: 'none' })
+        return false
+      }
+    }
+    if (needsLandlordOrAdmin(path)) {
+      if (!auth.isLogin) {
+        promptProtectedLogin('登录后可使用楼栋/房源管理功能')
+        return false
+      }
+      // 管理员或房东可访问；普通用户/游客不可
+      if (!auth.isAdmin && !auth.isLandlord) {
+        uni.showToast({ title: '仅管理员或房东可使用此功能', icon: 'none' })
         return false
       }
     }
