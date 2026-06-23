@@ -13,8 +13,8 @@ export function getMyAccess() {
   return get<MyAccessOutput>('/api/slAccess/myStatus')
 }
 
-export function applyAccess() {
-  return post<void>('/api/slAccess/apply')
+export function applyAccess(applyType = 0) {
+  return post<void>('/api/slAccess/apply', { applyType })
 }
 
 export function getPendingUsers() {

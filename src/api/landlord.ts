@@ -1,4 +1,4 @@
-import type { PagedList, PageSlLandlordInput, ShenLeId, SlLandlordOutput } from '@/types/shenle'
+import type { PagedList, PageSlLandlordInput, ShenLeId, SlLandlordApplyOutput, SlLandlordOutput } from '@/types/shenle'
 import { get, post } from './request'
 
 export function getLandlordPage(input: PageSlLandlordInput) {
@@ -15,4 +15,16 @@ export function assignOwner(communityId: ShenLeId, ownerUserId: ShenLeId) {
 
 export function unassignOwner(communityId: ShenLeId) {
   return post<void>('/api/slCommunity/unassignOwner', { communityId })
+}
+
+export function getLandlordPending() {
+  return get<SlLandlordApplyOutput[]>('/api/slLandlord/pendingApplications')
+}
+
+export function approveLandlord(userId: ShenLeId) {
+  return post<void>('/api/slLandlord/approveLandlord', { userId })
+}
+
+export function rejectLandlord(userId: ShenLeId) {
+  return post<void>('/api/slLandlord/rejectLandlord', { userId })
 }

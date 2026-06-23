@@ -528,6 +528,13 @@ export interface MyAccessOutput {
   accountType: number
   applyStatus: number
   isLandlord?: boolean
+  landlordApplyStatus?: number
+}
+
+export interface SlLandlordApplyOutput {
+  userId: ShenLeId
+  nickName?: string
+  applyTime?: string
 }
 
 export interface SlPendingUserOutput {
