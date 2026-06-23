@@ -116,7 +116,16 @@ Expected: 0 错误。
 
 **Files:**
 - Create: `Api/ShenLe.Application/Helper/SlAccessPolicy.cs`
+- Modify: `Api/ShenLe.Test/ShenLe.Test.csproj`（加对 ShenLe.Application 的引用）
 - Test: `Api/ShenLe.Test/Landlord/SlAccessPolicyTests.cs`
+
+- [ ] **Step 0: 让测试工程能引用 ShenLe.Application（否则测试编不过）**
+
+`ShenLe.Test.csproj` 当前只 `ProjectReference` 了 `ShenLe.Core`。在其 `<ItemGroup>` 里补一行(`SlAccessPolicy` 在 Application，按"业务写 Application"约定不放 Core)：
+
+```xml
+<ProjectReference Include="..\ShenLe.Application\ShenLe.Application.csproj" />
+```
 
 - [ ] **Step 1: 写失败测试**
 
@@ -218,7 +227,7 @@ public static void RequireLandlordOrAdmin()
 }
 
 /// <summary>要求某楼盘的 owner 或管理员（改/删该楼盘及其楼栋/房源用）</summary>
-public static void RequireCommunityOwner(long communityId)
+public static void RequireCommunityOwnerOrAdmin(long communityId)
 {
     var accountType = CurrentAccountType();
     if (accountType >= 888) return; // 管理员放行，免查
@@ -325,7 +334,7 @@ public class SlLandlordService : IDynamicApiController, ITransient
         {
             // 取消房东：级联清空其名下楼盘归属，避免孤儿
             await _communityRep.AsUpdateable()
-                .SetColumns(c => c.OwnerId == null).Where(c => c.OwnerId == input.UserId).ExecuteCommandAsync();
+                .SetColumns(c => new SlCommunity { OwnerId = null }).Where(c => c.OwnerId == input.UserId).ExecuteCommandAsync();
             await _rep.DeleteAsync(x => x.UserId == input.UserId);
         }
     }
@@ -379,7 +388,7 @@ SlAuth.RequireLandlordOrAdmin();
 var entity = input.Adapt<SlCommunity>();
 if (SlAuth.CurrentAccountType() < 888) entity.OwnerId = SlAuth.CurrentUserId(); // 房东自建强制归己
 ```
-`Update`/`Delete` 把 `RequireAdmin()` 改为 `SlAuth.RequireCommunityOwner(input.Id);`
+`Update`/`Delete` 把 `RequireAdmin()` 改为 `SlAuth.RequireCommunityOwnerOrAdmin(input.Id);`
 
 - [ ] **Step 4: 新增 assignOwner / unassignOwner**
 
@@ -409,10 +418,12 @@ public async Task AssignOwner(AssignOwnerInput input)
 public async Task UnassignOwner(UnassignOwnerInput input)
 {
     SlAuth.RequireAdmin();
-    await _rep.AsUpdateable().SetColumns(c => c.OwnerId == null)
+    await _rep.AsUpdateable().SetColumns(c => new SlCommunity { OwnerId = null })
         .Where(c => c.Id == input.CommunityId).ExecuteCommandAsync();
 }
 ```
+
+> 注：`AssignOwner`(本 Task) 与 `SlLandlordService.SetLandlord`(Task 4) 都有"确保目标用户 ≥777 + 在 `sl_landlord` 有行"的逻辑。建议抽一个共享私有方法 `EnsureLandlord(long userId)`(放 SlLandlordService 或一个 `LandlordHelper`)供两处调用，避免两份逻辑漂移。非阻塞，可在实现时顺手做。
 
 - [ ] **Step 5: 编译验证** — `dotnet build`，0 错误。
 - [ ] **Step 6: 接口集成断言**（本地起服务或部署后）
@@ -433,33 +444,38 @@ public async Task UnassignOwner(UnassignOwnerInput input)
 - Modify: `Api/ShenLe.Application/Service/SlProperty/SlPropertyService.cs`
 
 - [ ] **Step 1: SlBuilding** add/update/delete 把 `SlAuth.RequireAdmin()` 改为按所属楼盘校验：
-  - `Add(input)`：`SlAuth.RequireCommunityOwner(input.CommunityId);`
-  - `Update`/`Delete`：先 `var b = await _slBuildingRep.GetByIdAsync(input.Id) ?? throw Oops.Oh("楼栋不存在"); SlAuth.RequireCommunityOwner(b.CommunityId);`
+  - `Add(input)`：`SlAuth.RequireCommunityOwnerOrAdmin(input.CommunityId);`
+  - `Update`/`Delete`：先 `var b = await _slBuildingRep.GetByIdAsync(input.Id) ?? throw Oops.Oh("楼栋不存在"); SlAuth.RequireCommunityOwnerOrAdmin(b.CommunityId);`
 
 - [ ] **Step 2: SlProperty** add/update/delete/updateStatus 同理：
-  - `Add(input)`：`SlAuth.RequireCommunityOwner(input.CommunityId);`
-  - `Update`/`Delete`/`UpdateStatus`：先取房源 → `SlAuth.RequireCommunityOwner(p.CommunityId);`
+  - `Add(input)`：`SlAuth.RequireCommunityOwnerOrAdmin(input.CommunityId);`
+  - `Update`/`Delete`/`UpdateStatus`：先取房源 → `SlAuth.RequireCommunityOwnerOrAdmin(p.CommunityId);`
 
 - [ ] **Step 3: 编译验证** — `dotnet build`，0 错误。
 - [ ] **Step 4: 提交**（本地）
 
 ---
 
-### Task 7: getUserInfo 输出 isLandlord
+### Task 7: 前端获取 isLandlord（走 myStatus，不碰框架层）
+
+`LoginUserOutput` 与 `GetUserInfo` 都在 `ShenLe.Core/Service/Auth/`(框架层，CLAUDE.md 标注"勿改")。因此**首选**在 `ShenLe.Application` 的现有 `SlAccessService.MyStatus`(申请流程已用，前端 `getMyAccess` 已接)里加 `isLandlord`，避免改 Core。
 
 **Files:**
-- Modify: `Api/ShenLe.Core/Service/Auth/SysAuthService.cs`（GetUserInfo 所在；执行时 grep `GetUserInfo` 定位）
-- Modify: 对应 `LoginUserOutput`（加 `IsLandlord`）
+- Modify: `Api/ShenLe.Application/Service/SlAccess/SlAccessService.cs`（`MyStatus`）
+- Modify: `Api/ShenLe.Application/Service/SlAccess/Dto/SlAccessDto.cs`（MyStatus 输出 DTO 加 `IsLandlord`）
 
-- [ ] **Step 1:** 在 GetUserInfo 组装返回前查 `sl_landlord`：
+- [ ] **Step 1:** MyStatus 输出 DTO 加 `public bool IsLandlord { get; set; }`；`MyStatus` 里查并赋值：
 ```csharp
-var isLandlord = await App.GetRequiredService<SqlSugarRepository<SlLandlord>>().IsAnyAsync(x => x.UserId == user.Id);
-// 赋值到输出 IsLandlord（LoginUserOutput 已含 Id/AccountType，复用 Id 不新增 userId）
+var isLandlord = await App.GetRequiredService<SqlSugarRepository<SlLandlord>>()
+    .IsAnyAsync(x => x.UserId == SlAuth.CurrentUserId());
+// output.IsLandlord = isLandlord;
 ```
-> 若 `LoginUserOutput` 在 ShenLe.Core(框架层)不便改，则在 ShenLe.Application 另起一个轻量"我的状态"接口 `GET /api/slAccess/myStatus` 返回 `{ isLandlord }`，前端登录后补一次。**优先改 LoginUserOutput；不行走 myStatus 兜底。**
+前端在登录成功后 / app 启动时调一次 `myStatus`，把 `isLandlord` 并入 auth user(见 Task 8)。
 
-- [ ] **Step 2: 编译 + curl 验证** `getUserInfo` 含 `isLandlord` 字段。
+- [ ] **Step 2: 编译 + curl 验证** `slAccess/myStatus` 返回含 `isLandlord`。
 - [ ] **Step 3: 提交**（本地）
+
+> 备选(不推荐，触碰框架层)：给 `ShenLe.Core/Service/Auth/Dto/LoginUserOutput.cs` 加 `IsLandlord`、在 `SysAuthService.GetUserInfo` 赋值。仅当不愿新增 myStatus 调用时用。另注：小程序登录 claim 实际在 `SysWxOpenService.cs` 组装，将来若要把 `isLandlord` 做成 JWT claim 改那里。
 
 ---
 
@@ -470,8 +486,8 @@ var isLandlord = await App.GetRequiredService<SqlSugarRepository<SlLandlord>>().
 **Files:**
 - Modify: `src/store/mode.ts`, `src/store/auth.ts`, `src/tabbar/config.ts`, `src/types/shenle.ts`
 
-- [ ] **Step 1:** `mode.ts`：`export type AppMode = 'user' | 'admin' | 'landlord'`。`readInitialMode` 增：`saved==='landlord' && !!token && user?.isLandlord ? 'landlord' : ...`（注意先判 admin 再判 landlord 的优先级，或独立保存）。
-- [ ] **Step 2:** `auth.ts`：加 `const isLandlord = computed(() => !!user.value?.isLandlord)`，并 `return { ..., isLandlord }`。`applyWxSession`/storage 写入 user 时带上 isLandlord。`types/shenle.ts` 的 `LoginUserOutput` 加 `isLandlord?: boolean`。
+- [ ] **Step 1:** `mode.ts`：`export type AppMode = 'user' | 'admin' | 'landlord'`。`readInitialMode` 增 landlord 分支：`saved==='landlord' && !!token && user?.isLandlord ? 'landlord' : ...`。**关键：landlord 只看 `user?.isLandlord`，与 accountType 完全无关，不要写成 `>=888`**(房东正交于全局档位)。admin 分支仍是 `>=888`，两者独立判断。
+- [ ] **Step 2:** `auth.ts`：加 `const isLandlord = computed(() => !!user.value?.isLandlord)` 并导出。`isLandlord` 来源是 `slAccess/myStatus`(Task 7)——在登录成功(`applyWxSession`)与 `refreshUser` 后调一次 `myStatus`，把 `isLandlord` 合并进 `user.value` 并写 storage(`SHENLE_USER_KEY`)，这样 `mode.ts` 冷启动能从 storage 读到。`types/shenle.ts` 的 user 类型加 `isLandlord?: boolean`。
 - [ ] **Step 3:** `tabbar/config.ts`：`export const landlordTabbarList = [MAP_TAB, PROPERTY_TAB, MINE_TAB]`。tabbar 运行时按 `modeStore.mode` 选 list(找到现有按 mode 选 user/admin list 的位置，加 landlord 分支)。
 - [ ] **Step 4: 验证** `pnpm type-check` 0 错 + `npx eslint src/store src/tabbar` 0 错。
 - [ ] **Step 5: 提交**
