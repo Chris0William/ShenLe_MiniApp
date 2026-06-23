@@ -27,6 +27,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const isGuest = computed(() => isLogin.value && (user.value?.accountType || 0) < 777) // 666 游客需申请
   const canViewRealData = computed(() => canUseApp.value || isAdmin.value)
   const isLandlord = computed(() => !!user.value?.isLandlord)
+  const landlordApplyStatus = computed(() => user.value?.landlordApplyStatus)
   const displayName = computed(() => (isLogin.value ? user.value?.nickName || '微信用户' : '未登录'))
 
   function setToken(value: string) {
@@ -65,11 +66,19 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
 
   async function mergeIsLandlord() {
     try {
-      const status = await getMyAccess()
+      const access = await getMyAccess()
       if (user.value) {
-        user.value = { ...user.value, isLandlord: !!status.isLandlord }
+        user.value = {
+          ...user.value,
+          isLandlord: !!access.isLandlord,
+          landlordApplyStatus: access.landlordApplyStatus,
+        }
         uni.setStorageSync(SHENLE_USER_KEY, user.value)
       }
+      // 纯房东（非管理员）强制切换到房东端；setMode 写 storage，登录后 reLaunch 重建页面时
+      // readInitialMode（5.1）会读到正确模式。不在此处 reLaunch，避免与 finishLogin 的 reLaunch 重复。
+      if (user.value?.isLandlord && (user.value?.accountType || 0) < 888 && modeStore.mode !== 'landlord')
+        modeStore.setMode('landlord')
     }
     catch {}
   }
@@ -168,6 +177,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     canViewRealData,
     isGuest,
     isLandlord,
+    landlordApplyStatus,
     displayName,
     setToken,
     setOpenId,

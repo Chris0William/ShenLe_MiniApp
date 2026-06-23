@@ -16,7 +16,11 @@ function readInitialMode(): AppMode {
     const saved = uni.getStorageSync(APP_MODE_KEY)
     const token = uni.getStorageSync(SHENLE_TOKEN_KEY)
     const user = uni.getStorageSync(SHENLE_USER_KEY)
-    const isAdmin = !!token && (user?.accountType || 0) >= 888
+    const accountType = user?.accountType || 0
+    const isAdmin = !!token && accountType >= 888
+    // 纯房东（非管理员）强制锁定房东端，忽略 saved
+    if (!!token && user?.isLandlord && !isAdmin)
+      return 'landlord'
     if (saved === 'admin' && isAdmin)
       return 'admin'
     if (saved === 'landlord' && !!token && !!user?.isLandlord)

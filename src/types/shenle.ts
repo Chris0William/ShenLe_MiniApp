@@ -452,6 +452,7 @@ export interface LoginUserOutput {
   roleIds?: ShenLeId[]
   tenantId?: ShenLeId
   isLandlord?: boolean
+  landlordApplyStatus?: number
 }
 
 export interface SlPublicRegionQueryInput extends BasePageInput {
