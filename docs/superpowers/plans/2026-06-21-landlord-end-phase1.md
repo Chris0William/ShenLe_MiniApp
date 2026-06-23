@@ -464,11 +464,11 @@ public async Task UnassignOwner(UnassignOwnerInput input)
 - Modify: `Api/ShenLe.Application/Service/SlAccess/SlAccessService.cs`（`MyStatus`）
 - Modify: `Api/ShenLe.Application/Service/SlAccess/Dto/SlAccessDto.cs`（MyStatus 输出 DTO 加 `IsLandlord`）
 
-- [ ] **Step 1:** MyStatus 输出 DTO 加 `public bool IsLandlord { get; set; }`；`MyStatus` 里查并赋值：
+- [ ] **Step 1:** 给 MyStatus 的输出 DTO **`MyAccessOutput`**(在 `Service/SlAccess/Dto/SlAccessDto.cs`) 加 `public bool IsLandlord { get; set; }`；`MyStatus` 里查并赋值：
 ```csharp
 var isLandlord = await App.GetRequiredService<SqlSugarRepository<SlLandlord>>()
     .IsAnyAsync(x => x.UserId == SlAuth.CurrentUserId());
-// output.IsLandlord = isLandlord;
+// output.IsLandlord = isLandlord;  // output 即 MyAccessOutput 实例
 ```
 前端在登录成功后 / app 启动时调一次 `myStatus`，把 `isLandlord` 并入 auth user(见 Task 8)。
 
