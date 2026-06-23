@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { SlCommunityOutput, SlLandlordOutput, SlUserOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import type { SlCommunityOutput, SlLandlordApplyOutput, SlLandlordOutput, SlUserOutput } from '@/types/shenle'
+import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
-import { assignOwner, getLandlordPage, setLandlord, unassignOwner } from '@/api/landlord'
+import { approveLandlord, assignOwner, getLandlordPage, getLandlordPending, rejectLandlord, setLandlord, unassignOwner } from '@/api/landlord'
 import { getUserPage } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
@@ -19,6 +19,49 @@ definePage({
 
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
+
+// ── 待审申请 ─────────────────────────────────────────────────────────────────
+const pending = ref<SlLandlordApplyOutput[]>([])
+
+async function loadPending() {
+  pending.value = await getLandlordPending().catch(() => [])
+}
+
+async function approvePending(item: SlLandlordApplyOutput) {
+  uni.showModal({
+    title: '通过申请',
+    content: `通过「${item.nickName || '该用户'}」的房东申请？`,
+    success: async (res) => {
+      if (!res.confirm)
+        return
+      try {
+        await approveLandlord(item.userId)
+        pending.value = pending.value.filter(p => String(p.userId) !== String(item.userId))
+        uni.showToast({ title: '已通过', icon: 'success' })
+        load(true)
+      }
+      catch {}
+    },
+  })
+}
+
+async function rejectPending(item: SlLandlordApplyOutput) {
+  uni.showModal({
+    title: '拒绝申请',
+    content: `拒绝「${item.nickName || '该用户'}」的房东申请？对方可重新申请。`,
+    confirmColor: '#c94832',
+    success: async (res) => {
+      if (!res.confirm)
+        return
+      try {
+        await rejectLandlord(item.userId)
+        pending.value = pending.value.filter(p => String(p.userId) !== String(item.userId))
+        uni.showToast({ title: '已拒绝', icon: 'none' })
+      }
+      catch {}
+    },
+  })
+}
 
 // ── 房东列表 ────────────────────────────────────────────────────────────────
 const keyword = ref('')
@@ -232,15 +275,29 @@ function roleLabel(accountType: number) {
 }
 
 // ── 生命周期 ─────────────────────────────────────────────────────────────────
+let initialized = false
+
 onLoad(() => {
-  if (!auth.isAdmin || modeStore.mode !== 'admin') {
+  if (!auth.isSuperAdmin || modeStore.mode !== 'admin') {
     uni.showToast({ title: '无权限', icon: 'none' })
     setTimeout(() => uni.navigateBack(), 600)
     return
   }
+  initialized = true
   load(true)
+  loadPending()
 })
-onPullDownRefresh(() => load(true))
+
+onShow(() => {
+  if (initialized) {
+    loadPending()
+  }
+})
+
+onPullDownRefresh(() => {
+  load(true)
+  loadPending()
+})
 onReachBottom(() => {
   if (!finished.value) {
     page.value += 1
@@ -253,7 +310,31 @@ onReachBottom(() => {
   <view class="sl-page landlord-page" :style="safeTop">
     <view class="head">
       <text class="head__title">房东管理</text>
-      <text class="head__desc">设置房东资格、分配楼盘</text>
+      <text class="head__desc">审批房东申请、分配楼盘</text>
+    </view>
+
+    <!-- 待审申请 -->
+    <view v-if="pending.length" class="pending-block sl-card">
+      <view class="pending-head">
+        <text class="pending-title">待审申请</text>
+        <view class="pending-badge">
+          {{ pending.length }}
+        </view>
+      </view>
+      <view v-for="item in pending" :key="String(item.userId)" class="pending-row">
+        <view class="pending-info">
+          <text class="pending-name">{{ item.nickName || '微信用户' }}</text>
+          <text v-if="item.applyTime" class="pending-time">{{ item.applyTime }}</text>
+        </view>
+        <view class="pending-actions">
+          <view class="mini-btn mini-btn--reject" @tap="rejectPending(item)">
+            拒绝
+          </view>
+          <view class="mini-btn mini-btn--approve" @tap="approvePending(item)">
+            通过
+          </view>
+        </view>
+      </view>
     </view>
 
     <!-- 搜索 + 设为房东 -->
@@ -268,7 +349,7 @@ onReachBottom(() => {
       <view class="toolbar__divider" />
       <view class="set-btn" @tap="openSetLandlord">
         <wd-icon name="add" size="20px" color="#126b4f" />
-        <text>设为房东</text>
+        <text>直接设为房东</text>
       </view>
     </view>
 
@@ -414,6 +495,95 @@ onReachBottom(() => {
   margin-top: 6rpx;
   color: var(--sl-muted);
   font-size: 23rpx;
+}
+
+/* ── 待审申请区块 ── */
+.pending-block {
+  margin-top: 14rpx;
+  padding: 22rpx;
+}
+
+.pending-head {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.pending-title {
+  font-size: 28rpx;
+  font-weight: 850;
+}
+
+.pending-badge {
+  display: flex;
+  min-width: 34rpx;
+  height: 34rpx;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: #f5594e;
+  color: #fff;
+  font-size: 20rpx;
+  font-weight: 800;
+}
+
+.pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  padding: 16rpx 0;
+  border-bottom: 1rpx solid var(--sl-line);
+}
+
+.pending-row:last-child {
+  border-bottom: 0;
+}
+
+.pending-info {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.pending-name {
+  overflow: hidden;
+  font-size: 27rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-time {
+  color: var(--sl-muted);
+  font-size: 21rpx;
+}
+
+.pending-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12rpx;
+}
+
+.mini-btn {
+  padding: 10rpx 24rpx;
+  border-radius: 999rpx;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+
+.mini-btn--approve {
+  background: linear-gradient(135deg, var(--sl-brand, #126b4f), #24815f);
+  color: #fff;
+}
+
+.mini-btn--reject {
+  border: 1rpx solid rgb(201 72 50 / 40%);
+  color: #c94832;
 }
 
 .toolbar {
