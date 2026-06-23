@@ -25,6 +25,7 @@ const PROTECTED_PATHS = [
 // 房东端也可访问的管理页：需登录，且须是管理员(888)或房东(isLandlord)。
 // building-manage 和 property-form 由后端 RequireCommunityOwnerOrAdmin 守卫实际写权限。
 const LANDLORD_OR_ADMIN_PATHS = [
+  '/pages/landlord/my-communities/index',
   '/pages/common/building-manage/index',
   '/pages/common/property-form/index',
 ]
