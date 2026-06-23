@@ -91,7 +91,9 @@
 
 - `SlCommunityOutput` 增 `isMine: bool`(= `OwnerId == 当前用户Id`，服务端算，不暴露 owner 身份给租客)。
 - `SlPropertyListOutput` / `SlPropertyOutput` 增 `viewCount: int`。
-- `LoginUserOutput`(getUserInfo / 登录返回) 增 `userId: long` + `isLandlord: bool`。
+- `LoginUserOutput`(getUserInfo / 登录返回) **复用已有 `id`**(前端 auth store 已携带，不新增 `userId` 标识) + 增 `isLandlord: bool`。
+
+> 注：`isMine` / `viewCount` 是共享输出 DTO 上的**附加字段**，对用户端/管理端的响应无害(多返回、前端忽略即可)，无需为各端拆分 DTO。
 
 ---
 
@@ -134,12 +136,14 @@
 
 **房东自管 / 浏览:**
 - 「我的楼盘」列表：复用 `slCommunity/page`/`list` 增可选 `ownerScope=self`，服务端按 `OwnerId=CurrentUserId()` 过滤。
-- `POST /api/slProperty/recordView` `{ propertyId }` → 插 view 记录 + `ViewCount+1`。`RequireNormalUser`。**owner 本人 / 管理员自看不计数。**
+- `POST /api/slProperty/recordView` `{ propertyId }` → 插 view 记录 + `ViewCount+1`。`RequireNormalUser`。**owner 本人 / 管理员自看不计数**(排除 owner 需 `propertyId → CommunityId → 楼盘 OwnerId` 查一次，顺 §4.2 的继承判定)。
 
 ### 5.4 作用域查询
 
 - 房东端**地图/列表**：复用现有真实数据接口(房东 ≥777，看真实数据)，输出带 `isMine` 供前端高亮；「只看我的」= 前端过滤 isMine 或后端 `ownerScope=self`。
 - 房东端**我的楼盘**：`ownerScope=self`。
+
+> 注：`slCommunity/page` 与 `slCommunity/list` 当前是 `[HttpGet]` + `[FromQuery]`，故 `ownerScope=self` 是加在 `PageSlCommunityInput`/`ListSlCommunityInput` 上的**查询串字段**(GET)，不是 POST body。
 
 ---
 
