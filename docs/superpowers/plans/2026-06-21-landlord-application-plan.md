@@ -57,14 +57,17 @@
 public int ApplyType { get; set; }
 ```
 - [ ] **Step 2:** `SlAccessDto.cs`:`MyAccessOutput` 加 `public int LandlordApplyStatus { get; set; }`(`IsLandlord` 已有,勿重复加);`Apply` 的输入加可选 `ApplyType`(若现 `Apply` 无入参,新增 `ApplyAccessInput { int ApplyType }`,默认 0)。读现有 `Apply` 签名后决定最小改法。
-- [ ] **Step 3:** `SlAccessService.Apply`:按 `applyType` 写/复用申请行(`ApplyStatus=1`)。**兜底**:
+- [ ] **Step 3:** `SlAccessService.Apply`:按 `applyType` 写/复用申请行(`ApplyStatus=1`)。⚠️**关键改动**:现有 Apply 开头有 `if (accountType >= 777) throw Oops.Oh("你已拥有使用权限");`——这条只对**用户权限申请**成立,**必须条件化为 `applyType==0` 才触发**,否则 777/888 用户永远申请不了房东:
 ```csharp
-// applyType==1 且已是房东 → 拒绝
+// 仅"申请用户权限(type0)"时,已≥777 就无需申请
+if (applyType == 0 && accountType >= 777)
+    throw Oops.Oh("你已拥有使用权限");
+// 申请房东(type1)兜底:已是房东 → 拒绝
 if (applyType == 1 && await _landlordRep.IsAnyAsync(x => x.UserId == uid))
     throw Oops.Oh("您已是房东");
-// 同类型已有待审 → 复用该行更新时间（避免重复插入）；或提示"申请审核中"
+// 同 applyType 已有待审 → 复用该行(更新 ApplyTime)而非重复插入；写入/查询都带 ApplyType
 ```
-(读现有 Apply 看它如何取 uid / 是否已注入 `_landlordRep`;`SlLandlord` 仓储按需注入。)
+(`_landlordRep` 现已注入(构造函数已有);读现有 Apply 看它如何取 `uid`、如何插行,最小改成带 ApplyType。)
 - [ ] **Step 4:** `SlAccessService.MyStatus`:已返回 `IsLandlord`,加 `LandlordApplyStatus`(查 `sl_user_access` 中该用户 `ApplyType==1` 的 `ApplyStatus`,无记录=0):
 ```csharp
 var landlordApply = await _accessRep.AsQueryable()
@@ -79,14 +82,18 @@ var landlordApply = await _accessRep.AsQueryable()
 **Files:** `Service/SlUserManage/SlUserManageService.cs`
 
 - [ ] **Step 1:** `Pending` 查询加 `ApplyType == 0`(只列用户权限申请)。
-- [ ] **Step 2:** `Approve`/`Reject` 中所有对 `sl_user_access` 的删除/更新加 `&& a.ApplyType == 0`(防止误删该用户的房东申请)。现有 `DeleteAsync(a => a.UserId == input.UserId)` → `DeleteAsync(a => a.UserId == input.UserId && a.ApplyType == 0)`。
+- [ ] **Step 2:** 给**三处**对 `sl_user_access` 的访问都加 `&& a.ApplyType == 0`(防止误碰该用户的房东申请),注意各自的实际调用形态:
+  - `Approve`(约 :98):`DeleteAsync(a => a.UserId == input.UserId)` → `DeleteAsync(a => a.UserId == input.UserId && a.ApplyType == 0)`。
+  - `Reject`(约 :110-114):**不是 DeleteAsync**,是 `GetFirstAsync(a => a.UserId == input.UserId)` + `UpdateColumns(ApplyStatus=3)` → 给 `GetFirstAsync` 谓词加 `&& a.ApplyType == 0`。
+  - `SetRole`(约 :146):同样有一处 `DeleteAsync(a => a.UserId == input.UserId)` → 加 `&& a.ApplyType == 0`(否则管理员设角色会误删该用户的房东申请)。
 - [ ] **Step 3: 编译** 0 错。**Step 4: 提交**（本地）
 
 ### Task 3: `SlLandlordService` 收紧 999 + 审批/撤销;assignOwner 999
 
 **Files:** `Service/SlLandlord/SlLandlordService.cs`、`Service/SlLandlord/Dto/SlLandlordDto.cs`、`Service/SlCommunity/SlCommunityService.cs`
 
-- [ ] **Step 1:** `SlLandlordService` 所有方法守卫 `RequireAdmin()`→`RequireSuperAdmin()`(`Page` 等)。
+- [ ] **Step 1:** `SlLandlordService` 的**两个公开 API 方法** `Page`(约 :44)与 `SetLandlord`(约 :69)守卫 `RequireAdmin()`→`RequireSuperAdmin()`。**`EnsureLandlord` 保持 `internal`(无守卫,供 AssignOwner 复用),不要给它加守卫。**
+  - 注意:`SlCommunityService.AssignOwner` 直接调 `EnsureLandlord`,这是 999"分配楼盘即开通房东"的便捷路径(绕过 ApproveLandlord),是**有意保留**的——999 才能调 AssignOwner,安全。
 - [ ] **Step 2:** DTO 加房东申请项输出(昵称 + 申请时间 + userId)。
 - [ ] **Step 3:** 加方法(均 `RequireSuperAdmin`):
   - `PendingApplications` → 查 `sl_user_access` `ApplyType==1 && ApplyStatus==1`,join SysUser 取昵称。
@@ -105,7 +112,7 @@ var landlordApply = await _accessRep.AsQueryable()
 **Files:** `src/types/shenle.ts`、`src/api/user-manage.ts`、`src/api/landlord.ts`
 
 - [ ] **Step 1:** `MyAccessOutput` 加 `landlordApplyStatus?: number`。
-- [ ] **Step 2:** `applyAccess` 加可选 `applyType` 入参(默认 0),POST 带 `{ applyType }`;`getMyAccess` 返回类型含 `landlordApplyStatus`。
+- [ ] **Step 2:** `applyAccess` 签名加**带默认值**的 `applyType`(`applyAccess(applyType = 0)`),POST body 带 `{ applyType }`;现有无参调用(apply 页 `applyAccess()`)因默认 0 仍兼容。`getMyAccess` 返回类型含 `landlordApplyStatus`。
 - [ ] **Step 3:** `api/landlord.ts` 加 `getLandlordPending()`、`approveLandlord(userId)`、`rejectLandlord(userId)`、`revokeLandlord(userId)`(对应后端路由,长 id 用 `number|string`)。
 - [ ] **Step 4: 验证** `vue-tsc` 0 错 + `eslint` 改动文件 0 错。**Step 5: 提交**（前端自主)
 
@@ -114,15 +121,13 @@ var landlordApply = await _accessRep.AsQueryable()
 **Files:** `src/store/mode.ts`、`src/store/auth.ts`
 
 - [ ] **Step 1:** `mode.ts` `readInitialMode`:加强制——读 storage 的 user,若 `isLandlord===true && (accountType||0) < 888` → 恒返回 `'landlord'`(置于 admin 判定之后、user 兜底之前)。
-- [ ] **Step 2:** `auth.ts`:暴露 `landlordApplyStatus`(computed from user 或单独 ref,来自 myStatus)。`mergeIsLandlord` 写完 user/storage 后,加锁端再校正:
+- [ ] **Step 2:** `auth.ts`:暴露 `landlordApplyStatus`(来自 myStatus)。`mergeIsLandlord` 写完 user/storage 后,加锁端再校正——**默认只 `setMode`,不 reLaunch**:
 ```ts
-// 非管理员房东若不在 landlord 模式 → 纠正
-if (user.value?.isLandlord && (user.value?.accountType || 0) < 888 && modeStore.mode !== 'landlord') {
+// 非管理员房东 → 校正到 landlord 模式（只 setMode，靠登录大刷新/下次进入生效）
+if (user.value?.isLandlord && (user.value?.accountType || 0) < 888 && modeStore.mode !== 'landlord')
   modeStore.setMode('landlord')
-  uni.reLaunch({ url: '/pages/user/map/index' })
-}
 ```
-(注意避免与登录"大刷新"的 reLaunch 打架——若 finishLogin 已 reLaunch,这里再纠正一次是幂等的;读现有 mergeIsLandlord/login 流程确认时序,必要时只 setMode 不 reLaunch,靠下次进入生效。)
+**为什么不 reLaunch**:`mergeIsLandlord` 在登录 `applyWxSession` 链路里被调用,而登录成功的 `finishLogin` 已经会 reLaunch 一次;微信小程序对连续 reLaunch 会去重/丢弃第二次,这里再 reLaunch 反而不稳。`setMode` 改了 storage,登录的 reLaunch 重建页面时 tabbar/页面就按 landlord 渲染;即使没走登录(纯刷新),下次冷启动 `readInitialMode`(Step 1)也会兜住。
 - [ ] **Step 3: 验证** vue-tsc + eslint。**Step 4: 提交**
 
 ### Task 6: mine 页（去切端 / 业务员申请 / 菜单 999 / 标签）
