@@ -16,6 +16,7 @@ definePage({
 
 const auth = useShenleAuthStore()
 const isAdminView = computed(() => modeStore.mode === 'admin')
+const isLandlordView = computed(() => modeStore.mode === 'landlord')
 const pendingCount = ref(0)
 const nicknameVisible = ref(false)
 const nicknameDraft = ref('')
@@ -84,6 +85,20 @@ onShow(() => {
     getPendingUsers().then((list) => { pendingCount.value = list.length }).catch(() => {})
 })
 
+function toLandlord() {
+  if (!auth.isLogin) {
+    requestLogin({ reason: '登录账号后可切换房东端', redirect: '/pages/user/map/index' })
+    return
+  }
+  if (!auth.isLandlord) {
+    uni.showToast({ title: '仅房东可使用房东端', icon: 'none' })
+    return
+  }
+  modeStore.setMode('landlord')
+  tabbarStore.setCurIdx(0)
+  uni.reLaunch({ url: '/pages/user/map/index' })
+}
+
 // 切到管理端：未登录先授权；已登录且 888 才进
 function toAdmin() {
   if (!auth.isLogin) {
@@ -119,7 +134,7 @@ async function signOut() {
       <view class="profile-info">
         <text class="name">{{ auth.isLogin ? auth.displayName : '未登录' }}</text>
         <text class="meta">
-          {{ isAdminView ? '管理端' : '用户端' }} ·
+          {{ isAdminView ? '管理端' : isLandlordView ? '房东端' : '用户端' }} ·
           {{ auth.isLogin ? (auth.isAdmin ? '管理员账号' : '普通账号') : '登录后可进入管理端' }}
         </text>
         <text v-if="auth.isLogin" class="nickname-edit" @tap="openNicknameEditor">修改昵称</text>
@@ -157,10 +172,43 @@ async function signOut() {
       </view>
     </template>
 
+    <!-- 房东模式视图 -->
+    <template v-else-if="isLandlordView">
+      <view class="sl-section-head">
+        <text class="sl-section-title">房东中心</text>
+      </view>
+      <view class="menu sl-card user-menu">
+        <view class="menu-row" @tap="go('/pages/landlord/my-communities/index')">
+          <view class="menu-row__left">
+            <view class="menu-icon menu-icon--green">
+              <wd-icon name="home" size="21px" color="#126b4f" />
+            </view>
+            <text>我的楼盘</text>
+          </view>
+          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+        </view>
+      </view>
+
+      <view class="switch-card sl-card" @tap="toUser">
+        <view class="switch-card__main">
+          <wd-icon name="swap" size="22px" color="#126b4f" />
+          <text>切换到用户端</text>
+        </view>
+        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+      </view>
+      <view v-if="auth.isAdmin" class="switch-card sl-card" style="margin-top: 16rpx;" @tap="toAdmin">
+        <view class="switch-card__main">
+          <wd-icon name="setting" size="22px" color="#126b4f" />
+          <text>切换到管理端</text>
+        </view>
+        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+      </view>
+    </template>
+
     <!-- 用户模式视图 -->
     <template v-else>
-      <view v-if="auth.isAdmin" class="menu sl-card user-menu">
-        <view class="menu-row" @tap="toAdmin">
+      <view v-if="auth.isAdmin || auth.isLandlord" class="menu sl-card user-menu">
+        <view v-if="auth.isAdmin" class="menu-row" @tap="toAdmin">
           <view class="menu-row__left">
             <view class="menu-icon menu-icon--green">
               <wd-icon name="setting" size="21px" color="#126b4f" />
@@ -169,9 +217,18 @@ async function signOut() {
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
+        <view v-if="auth.isLandlord" class="menu-row" @tap="toLandlord">
+          <view class="menu-row__left">
+            <view class="menu-icon menu-icon--green">
+              <wd-icon name="home" size="21px" color="#126b4f" />
+            </view>
+            <text>切换到房东端</text>
+          </view>
+          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+        </view>
       </view>
 
-      <view v-if="!auth.isAdmin" class="hint">
+      <view v-if="!auth.isAdmin && !auth.isLandlord" class="hint">
         {{ auth.isLogin ? '管理员可在此切换到管理端' : '点击上方头像卡片登录或申请使用' }}
       </view>
     </template>
