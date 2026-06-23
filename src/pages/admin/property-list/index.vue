@@ -24,10 +24,12 @@ const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
 const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 const isPreviewMode = computed(() => !auth.canViewRealData)
+const isLandlordMode = computed(() => modeStore.mode === 'landlord')
 
 const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
 
 const keyword = ref('')
+const mineOnly = ref(false)
 const filters = ref<PropertyFilterState>({
   userLng: DEFAULT_LOCATION.longitude,
   userLat: DEFAULT_LOCATION.latitude,
@@ -57,6 +59,7 @@ function buildQuery(pageNumber = page.value, size = pageSize): PageSlCommunityIn
     name: keyword.value.trim() || undefined,
     status: 0,
     ...buildCommunityFilterQuery(filters.value),
+    ...(isLandlordMode.value && mineOnly.value ? { ownerScope: 'self' } : {}),
   }
 }
 
@@ -266,6 +269,10 @@ onReachBottom(() => {
         <text class="admin-head__title">{{ canManage ? '房源管理' : '找房' }}</text>
         <text v-if="canManage" class="admin-head__desc">先筛选楼盘，再进入楼盘管理房源</text>
       </view>
+      <view v-if="isLandlordMode" class="mine-toggle">
+        <text class="mine-toggle__label">只看我的楼盘</text>
+        <wd-switch v-model="mineOnly" size="20px" @change="load(true)" />
+      </view>
       <wd-button v-if="canManage" size="small" type="primary" icon="add" @click="openForm">
         新增
       </wd-button>
@@ -318,15 +325,18 @@ onReachBottom(() => {
         </view>
       </view>
       <template v-else>
-        <sl-community-card
-          v-for="item in items"
-          :key="String(item.id)"
-          :item="item"
-          show-navigate
-          @select="goProperties"
-          @navigate="openNavigation"
-          @preview-video="openVideoPreview"
-        />
+        <view v-for="item in items" :key="String(item.id)" class="community-wrap">
+          <wd-tag v-if="isLandlordMode && item.isMine" type="warning" class="mine-badge">
+            我的
+          </wd-tag>
+          <sl-community-card
+            :item="item"
+            show-navigate
+            @select="goProperties"
+            @navigate="openNavigation"
+            @preview-video="openVideoPreview"
+          />
+        </view>
       </template>
     </view>
 
@@ -543,5 +553,27 @@ onReachBottom(() => {
   margin-top: 6rpx;
   color: var(--sl-muted);
   font-size: 23rpx;
+}
+
+.community-wrap {
+  position: relative;
+}
+
+.mine-badge {
+  position: absolute;
+  top: 12rpx;
+  right: 12rpx;
+  z-index: 1;
+}
+
+.mine-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.mine-toggle__label {
+  color: var(--sl-muted);
+  font-size: 24rpx;
 }
 </style>

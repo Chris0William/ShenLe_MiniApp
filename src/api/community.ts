@@ -1,23 +1,30 @@
+import type { AddSlCommunityInput, ListSlCommunityInput, PagedList, PageSlCommunityInput, ShenLeId, SlCommunityOutput, SlCommunitySelectOutput, SlCommunityStatsOutput, UpdateSlCommunityInput } from '@/types/shenle'
 import { get, post } from './request'
-import type { AddSlCommunityInput, ListSlCommunityInput, PageSlCommunityInput, PagedList, ShenLeId, SlCommunityOutput, SlCommunitySelectOutput, SlCommunityStatsOutput, UpdateSlCommunityInput } from '@/types/shenle'
 
-export const getCommunityPage = (input: PageSlCommunityInput) =>
-  get<PagedList<SlCommunityOutput>>('/api/slCommunity/page', input as unknown as Record<string, unknown>)
+export function getCommunityPage(input: PageSlCommunityInput) {
+  return get<PagedList<SlCommunityOutput>>('/api/slCommunity/page', input as unknown as Record<string, unknown>)
+}
 
-export const getCommunityList = (input: ListSlCommunityInput = {}) =>
-  get<SlCommunitySelectOutput[]>('/api/slCommunity/list', input as unknown as Record<string, unknown>)
+export function getCommunityList(input: ListSlCommunityInput = {}) {
+  return get<SlCommunitySelectOutput[]>('/api/slCommunity/list', input as unknown as Record<string, unknown>)
+}
 
-export const getCommunityStats = () =>
-  get<SlCommunityStatsOutput[]>('/api/slCommunity/stats')
+export function getCommunityStats() {
+  return get<SlCommunityStatsOutput[]>('/api/slCommunity/stats')
+}
 
-export const getCommunityDetail = (id: ShenLeId) =>
-  get<SlCommunityOutput>('/api/slCommunity/detail', { id })
+export function getCommunityDetail(id: ShenLeId) {
+  return get<SlCommunityOutput>('/api/slCommunity/detail', { id })
+}
 
-export const addCommunity = (input: AddSlCommunityInput) =>
-  post<ShenLeId>('/api/slCommunity/add', input as unknown as Record<string, unknown>)
+export function addCommunity(input: AddSlCommunityInput) {
+  return post<ShenLeId>('/api/slCommunity/add', input as unknown as Record<string, unknown>)
+}
 
-export const updateCommunity = (input: UpdateSlCommunityInput) =>
-  post<void>('/api/slCommunity/update', input as unknown as Record<string, unknown>)
+export function updateCommunity(input: UpdateSlCommunityInput) {
+  return post<void>('/api/slCommunity/update', input as unknown as Record<string, unknown>)
+}
 
-export const deleteCommunity = (id: ShenLeId) =>
-  post<void>('/api/slCommunity/delete', { id })
+export function deleteCommunity(id: ShenLeId) {
+  return post<void>('/api/slCommunity/delete', { id })
+}

@@ -233,6 +233,7 @@ export interface PageSlCommunityInput extends BasePageInput {
   userLng?: number
   userLat?: number
   distanceKm?: number
+  ownerScope?: string
 }
 
 export interface ListSlCommunityInput {
@@ -287,6 +288,7 @@ export interface SlCommunityOutput {
   houseTypes?: string | null
   distance?: number | null
   images?: ImageOutput[]
+  isMine?: boolean
 }
 
 export interface SlCommunitySelectOutput {
