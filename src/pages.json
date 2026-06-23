@@ -45,6 +45,15 @@
       }
     },
     {
+      "path": "pages/admin/landlord-manage/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "房东管理",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
       "path": "pages/admin/mine/index",
       "type": "page",
       "style": {

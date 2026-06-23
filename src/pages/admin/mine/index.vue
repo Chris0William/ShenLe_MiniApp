@@ -30,6 +30,7 @@ const adminMenus = computed(() => {
     { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index', badge: 0 },
     { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 },
     { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index', badge: 0 },
+    { title: '房东管理', desc: '设置房东、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 },
   ]
   // 用户管理仅超级管理员(999)可见，带待审红点
   if (auth.isSuperAdmin)

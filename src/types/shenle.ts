@@ -534,3 +534,14 @@ export interface SlPendingUserOutput {
   avatar?: string | null
   applyTime?: string | null
 }
+
+export interface SlLandlordOutput {
+  userId: ShenLeId
+  nickName?: string | null
+  accountType: number
+  communityCount: number
+}
+
+export interface PageSlLandlordInput extends BasePageInput {
+  keyword?: string
+}
