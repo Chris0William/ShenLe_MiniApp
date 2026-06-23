@@ -107,6 +107,7 @@
   - `revokeLandlord(userId)`(= 原 `SetLandlord(false)`)撤销标记 + 清其 OwnerId
   - `assignOwner` / `unassignOwner`(现状 888)→ **改 RequireSuperAdmin 999**
 - 用户管理(`SlUserManageService`,**已是 999,守卫不变**):`Pending` 加 `ApplyType=0` 过滤(只列用户权限申请,不混入房东申请)。
+- ⚠️ **跨类型删除防护**:现有 `Approve`/`Reject` 用 `DeleteAsync(a => a.UserId == X)` 一刀切删该用户所有申请行。两种 ApplyType 共表后,**所有审批/删除必须按 ApplyType 限定**(类型0审批 → `a.UserId==X && a.ApplyType==0`;`approveLandlord` 同理 `==1`),否则审批一类会误删另一类的待审申请。
 
 ---
 
