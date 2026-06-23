@@ -30,7 +30,6 @@ const isPreviewMode = computed(() => !auth.canViewRealData)
 const isLandlordMode = computed(() => modeStore.mode === 'landlord')
 
 const keyword = ref('')
-const mineOnly = ref(false)
 const filters = ref<PropertyFilterState>({
   userLng: DEFAULT_CENTER.longitude,
   userLat: DEFAULT_CENTER.latitude,
@@ -101,9 +100,7 @@ function rebuildMarkers() {
   for (const item of communities.value.filter(hasCoordinate)) {
     markerMeta.push({ type: 'single', community: item })
     const rent = rentText(item)
-    const isMineHighlight = isLandlordMode.value && item.isMine
-    const calloutName = isMineHighlight ? `★ ${item.name}` : item.name
-    const calloutContent = rent ? `${calloutName}\n${rent}` : calloutName
+    const calloutContent = rent ? `${item.name}\n${rent}` : item.name
     list.push({
       id: markerMeta.length,
       latitude: Number(item.lat),
@@ -112,7 +109,7 @@ function rebuildMarkers() {
       width: 28,
       height: 34,
       anchor: { x: 0.5, y: 1 },
-      callout: { ...CALLOUT_BASE, content: calloutContent, bgColor: isMineHighlight ? '#b46d08' : '#126b4f' },
+      callout: { ...CALLOUT_BASE, content: calloutContent, bgColor: '#126b4f' },
     })
   }
   markers.value = list
@@ -154,7 +151,7 @@ function buildQuery(pageNumber = 1, size = 200): PageSlCommunityInput {
     name: keyword.value.trim() || undefined,
     status: 0,
     ...buildCommunityFilterQuery(filters.value),
-    ...(isLandlordMode.value && mineOnly.value ? { ownerScope: 'self' } : {}),
+    ...(isLandlordMode.value ? { ownerScope: 'self' } : {}),
   }
 }
 
@@ -416,10 +413,6 @@ onPullDownRefresh(loadCommunities)
   <view class="map-page" :style="safeTop">
     <view class="map-head">
       <text class="map-head__title">楼盘地图</text>
-      <view v-if="isLandlordMode" class="mine-toggle">
-        <text class="mine-toggle__label">只看我的楼盘</text>
-        <wd-switch v-model="mineOnly" size="20px" @change="loadCommunities(true)" />
-      </view>
     </view>
 
     <sl-location-card :locating="locating" :label="locationLabel" @choose="chooseReferencePoint" />
@@ -541,17 +534,6 @@ onPullDownRefresh(loadCommunities)
   display: block;
   font-size: 34rpx;
   font-weight: 850;
-}
-
-.mine-toggle {
-  display: flex;
-  align-items: center;
-  gap: 10rpx;
-}
-
-.mine-toggle__label {
-  color: var(--sl-muted);
-  font-size: 24rpx;
 }
 
 .active-summary {
