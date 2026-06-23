@@ -50,9 +50,9 @@
 
 现有 `sl_user_access` 表 + `SlAccessService`(Apply/MyStatus) + `SlUserManageService`(Pending/Approve/Reject) 已实现"游客 666 申请升 777"。**扩展它支持两种申请类型**,而非另造一套:
 
-- `sl_user_access` 加 `ApplyType int`:**0=用户权限申请**(游客→777),**1=房东申请**。
-- `Apply(applyType)`:写一条对应类型的申请(状态 1 待审核)。同一用户同一类型只保留一条活跃申请。
-- `MyStatus()` 返回:`accountType`、`applyStatus`(类型0)、`isLandlord`、`landlordApplyStatus`(类型1)。
+- `sl_user_access` 加 `ApplyType int`:**0=用户权限申请**(游客→777),**1=房东申请**。注意 `ApplyType`(申请种类)与 `ApplyStatus`(0=无记录/未申请、1=待审、3=拒绝)是两个不同维度;`ApplyType` 只在已存在的申请行上有意义。
+- `Apply(applyType = 0)`:写一条对应类型的申请(状态 1 待审核)。同一用户同一类型只保留一条活跃申请(重复提交则更新时间/复用现有行)。**后端兜底**:`applyType=1` 时若调用方**已是房东**(`sl_landlord` 有记录)→ 抛「您已是房东」;若该类型已有待审申请 → 抛/提示「申请审核中」。
+- `MyStatus()` 返回:`accountType`、`applyStatus`(类型0)、`isLandlord`(**Phase 1 已实现**)、`landlordApplyStatus`(类型1,**本轮新增**)。
 - 审批(999):
   - 类型0(用户权限):现有逻辑,通过→升 777,删申请记录。
   - 类型1(房东):通过→插 `sl_landlord` 标记 + 保证 ≥777,删申请记录;拒绝→状态 3。
@@ -67,7 +67,10 @@
 
 ## 4. 房东访问规则
 
-- **强制进房东端**:`readInitialMode` —— `isLandlord && !isAdmin` → 恒返回 `'landlord'`(忽略上次保存的 mode)。管理员仍按保存值,可切换。
+- **强制进房东端**(两处协同,解决冷启动时序):
+  - `readInitialMode`(同步,模块初始化读 storage)——若缓存 `SHENLE_USER_KEY` 中 `isLandlord===true && accountType<888` → 恒返回 `'landlord'`(忽略上次保存的 mode)。
+  - **登录/刷新后再校正**——`isLandlord` 来自 `myStatus`(异步,首次登录时 `readInitialMode` 还读不到)。因此在 `mergeIsLandlord` 把 `isLandlord` 写入 user/storage 之后,若 `isLandlord && !isAdmin && modeStore.mode !== 'landlord'` → `setMode('landlord')` + `reLaunch` 到地图。`mergeIsLandlord` 已 `setUser` 写 storage,下次冷启动 `readInitialMode` 即生效。
+  - 管理员(888+)不受此强制,按保存值,可切换。
 - **隐藏端切换**:房东端「我的」对**非管理员房东**不显示任何"切用户端/切管理端";若该房东同时是 888+(豁免),才显示切换。
 - **只看自己**:房东端地图/列表 **`ownerScope=self` 恒定**。移除 Phase 1 的「只看我的」开关与金色高亮(既然只看自己,不需要高亮区分)。
 - **写鉴权**:沿用 Phase 1 `RequireCommunityOwnerOrAdmin`(管理员 或 该楼盘 owner)。无订阅,无需活跃判定。
@@ -88,7 +91,7 @@
 - `sl_landlord`(沿用 Phase 1 简单标记):`UserId`(唯一)。**不加**订阅字段。
 - `sl_user_access` 加 `ApplyType int`(0/1)。
 - `SlCommunity.OwnerId`(Phase 1 已加)。
-- 输出:`MyAccessOutput` 加 `isLandlord` + `landlordApplyStatus`;`SlCommunityOutput.IsMine`(Phase 1 已加,房东端只看自己时可不强调,但保留无害)。
+- 输出:`MyAccessOutput` **已含 `isLandlord`(Phase 1 已加)**,本轮**只新增 `landlordApplyStatus`**;`SlCommunityOutput.IsMine`(Phase 1 已加,保留无害)。
 
 ---
 
@@ -96,14 +99,14 @@
 
 - `slAccess/apply` 加 `applyType` 入参(默认 0)。
 - `slAccess/myStatus` 输出加 `isLandlord` + `landlordApplyStatus`。
-- 房东管理(`SlLandlordService`,**全部 RequireSuperAdmin 999**):
-  - `page` 房东列表(沿用,改 999)
-  - `pendingApplications` 房东待审申请列表(ApplyType=1, 状态1)
-  - `approveLandlord(userId)` 通过 → 插标记 + 升≥777 + 删申请
-  - `rejectLandlord(userId)` 拒绝 → 申请置状态3
-  - `revokeLandlord(userId)`(= 原 setLandlord(false))撤销标记 + 清其 OwnerId
-  - `assignOwner` / `unassignOwner` 改 **RequireSuperAdmin**
-- 用户管理(`SlUserManageService`):Pending/Approve/Reject 加 ApplyType=0 过滤(只管用户权限申请)。
+- 房东管理(`SlLandlordService`,**全部 RequireSuperAdmin 999**;现状 `Page`/`SetLandlord` 是 888,需改 999):
+  - `page` 房东列表(沿用,**888→999**)
+  - `pendingApplications` 房东待审申请列表(ApplyType=1, ApplyStatus=1)
+  - `approveLandlord(userId)` 通过 → 复用 `EnsureLandlord`(插标记 + 升≥777)+ 删申请行
+  - `rejectLandlord(userId)` 拒绝 → 申请置 ApplyStatus=3
+  - `revokeLandlord(userId)`(= 原 `SetLandlord(false)`)撤销标记 + 清其 OwnerId
+  - `assignOwner` / `unassignOwner`(现状 888)→ **改 RequireSuperAdmin 999**
+- 用户管理(`SlUserManageService`,**已是 999,守卫不变**):`Pending` 加 `ApplyType=0` 过滤(只列用户权限申请,不混入房东申请)。
 
 ---
 
@@ -113,13 +116,16 @@
 - `mode.ts`:`readInitialMode` 强制——`isLandlord && !isAdmin` → `'landlord'`。
 - mine 页:
   - 非管理员房东视图:**移除端切换**;保留「我的楼盘」入口。
-  - 业务员(777,非房东)用户视图:加「申请成为房东」(据 landlordApplyStatus 显示申请中/可申请)。
+  - 业务员(777,非房东)用户视图:加「申请成为房东」(据 landlordApplyStatus 显示"可申请/申请中/已拒绝可重申")。
   - 管理员:三端切换照旧(含房东端若其也是房东)。
+  - **管理入口「房东管理」改为仅 `isSuperAdmin`(999)可见**——从 `adminMenus` 的 `base`(所有 888 可见)移到 `isSuperAdmin` 分支,与「用户管理」一致(现状是所有管理员可见,需收紧)。
   - 角色标签更新(777 业务员 / 888 管理人员)。
 - apply 页:加「申请成为房东」按钮(applyType=1),据状态显示。
 - map/list:landlord 模式 → `ownerScope=self` 恒定;**移除**「只看我的」开关与高亮。
-- landlord-manage 页:守卫 888→**999**;加**房东待审申请**区 + 审批/拒绝;撤销改 revoke。
-- api:`applyLandlord`、`getLandlordPending`、`approveLandlord`、`rejectLandlord`、`revokeLandlord`;`myStatus` 类型扩展。
+- landlord-manage 页:**前端守卫 `isAdmin`(888)→ `isSuperAdmin`(999)**;加**房东待审申请**区 + 审批/拒绝;撤销改 revoke。
+- api:
+  - 申请房东:**扩展现有 `applyAccess`**支持 `applyType` 入参(`applyAccess(applyType = 0)`),不另造 `applyLandlord` 重复 wrapper(若为可读性可加一行薄封装 `applyLandlord = () => applyAccess(1)`)。
+  - 新增 `getLandlordPending`、`approveLandlord`、`rejectLandlord`、`revokeLandlord`;`getMyAccess`/`myStatus` 返回类型加 `landlordApplyStatus`。
 
 ---
 
