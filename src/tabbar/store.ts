@@ -2,7 +2,7 @@ import type { CustomTabBarItem, CustomTabBarItemBadge } from './types'
 import { computed, reactive } from 'vue'
 
 import { modeStore } from '@/store/mode'
-import { adminTabbarList, selectedTabbarStrategy, TABBAR_STRATEGY_MAP, userTabbarList } from './config'
+import { adminTabbarList, landlordTabbarList, selectedTabbarStrategy, TABBAR_STRATEGY_MAP, userTabbarList } from './config'
 
 function normalize(list: CustomTabBarItem[]) {
   return list.map(item => ({
@@ -13,9 +13,16 @@ function normalize(list: CustomTabBarItem[]) {
 
 const baseUserList = reactive<CustomTabBarItem[]>(normalize(userTabbarList))
 const baseAdminList = reactive<CustomTabBarItem[]>(normalize(adminTabbarList))
+const baseLandlordList = reactive<CustomTabBarItem[]>(normalize(landlordTabbarList))
 
-/** 随 mode 切换的 tab 集（用户 3 项 / 管理 5 项） */
-const tabbarList = computed(() => (modeStore.mode === 'admin' ? baseAdminList : baseUserList))
+/** 随 mode 切换的 tab 集（用户 3 项 / 管理 5 项 / 房东 3 项） */
+const tabbarList = computed(() =>
+  modeStore.mode === 'admin'
+    ? baseAdminList
+    : modeStore.mode === 'landlord'
+      ? baseLandlordList
+      : baseUserList,
+)
 
 export function isPageTabbar(path: string) {
   if (selectedTabbarStrategy === TABBAR_STRATEGY_MAP.NO_TABBAR) {

@@ -449,8 +449,8 @@ export interface LoginUserOutput {
   buttons?: string[]
   roleIds?: ShenLeId[]
   tenantId?: ShenLeId
+  isLandlord?: boolean
 }
-
 
 export interface SlPublicRegionQueryInput extends BasePageInput {
   regionId?: ShenLeId
@@ -525,6 +525,7 @@ export interface SetSlUserRoleInput {
 export interface MyAccessOutput {
   accountType: number
   applyStatus: number
+  isLandlord?: boolean
 }
 
 export interface SlPendingUserOutput {

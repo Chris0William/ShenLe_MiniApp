@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import { SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
-export type AppMode = 'user' | 'admin'
+export type AppMode = 'user' | 'admin' | 'landlord'
 
 const APP_MODE_KEY = 'app-mode'
 
@@ -17,7 +17,11 @@ function readInitialMode(): AppMode {
     const token = uni.getStorageSync(SHENLE_TOKEN_KEY)
     const user = uni.getStorageSync(SHENLE_USER_KEY)
     const isAdmin = !!token && (user?.accountType || 0) >= 888
-    return saved === 'admin' && isAdmin ? 'admin' : 'user'
+    if (saved === 'admin' && isAdmin)
+      return 'admin'
+    if (saved === 'landlord' && !!token && !!user?.isLandlord)
+      return 'landlord'
+    return 'user'
   }
   catch {
     return 'user'

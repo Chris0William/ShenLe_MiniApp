@@ -2,6 +2,7 @@ import type { LoginUserOutput, WxLoginOutput } from '@/types/shenle'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { completeProfile, getUserInfo, getWxOpenId, logout, uploadAvatar, wxOpenIdLogin } from '@/api/auth'
+import { getMyAccess } from '@/api/user-manage'
 import { modeStore } from '@/store/mode'
 import { SHENLE_OPENID_KEY, SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
@@ -25,6 +26,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const canUseApp = computed(() => (user.value?.accountType || 0) >= 777) // 777 普通用户可正常使用
   const isGuest = computed(() => isLogin.value && (user.value?.accountType || 0) < 777) // 666 游客需申请
   const canViewRealData = computed(() => canUseApp.value || isAdmin.value)
+  const isLandlord = computed(() => !!user.value?.isLandlord)
   const displayName = computed(() => (isLogin.value ? user.value?.nickName || '微信用户' : '未登录'))
 
   function setToken(value: string) {
@@ -61,9 +63,21 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     }
   }
 
+  async function mergeIsLandlord() {
+    try {
+      const status = await getMyAccess()
+      if (user.value) {
+        user.value = { ...user.value, isLandlord: !!status.isLandlord }
+        uni.setStorageSync(SHENLE_USER_KEY, user.value)
+      }
+    }
+    catch {}
+  }
+
   async function applyWxSession(session: WxLoginOutput) {
     setToken(session.accessToken)
     setUser(toLoginUser(session))
+    await mergeIsLandlord()
   }
 
   async function refreshUser(silent = false) {
@@ -71,6 +85,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
       return null
     const profile = await getUserInfo(silent)
     setUser(profile)
+    await mergeIsLandlord()
     return profile
   }
 
@@ -152,6 +167,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     canUseApp,
     canViewRealData,
     isGuest,
+    isLandlord,
     displayName,
     setToken,
     setOpenId,
