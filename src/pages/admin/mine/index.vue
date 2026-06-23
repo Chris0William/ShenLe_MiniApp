@@ -2,7 +2,7 @@
 import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { setMyNickName } from '@/api/auth'
-import { getPendingUsers } from '@/api/user-manage'
+import { applyAccess, getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { tabbarStore } from '@/tabbar/store'
@@ -30,11 +30,12 @@ const adminMenus = computed(() => {
     { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index', badge: 0 },
     { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 },
     { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index', badge: 0 },
-    { title: '房东管理', desc: '设置房东、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 },
   ]
-  // 用户管理仅超级管理员(999)可见，带待审红点
-  if (auth.isSuperAdmin)
+  // 房东管理与用户管理仅超级管理员(999)可见
+  if (auth.isSuperAdmin) {
+    base.push({ title: '房东管理', desc: '设置房东、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 })
     base.push({ title: '用户管理', desc: '审批申请、设置用户角色', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index', badge: pendingCount.value })
+  }
   return base
 })
 
@@ -121,6 +122,17 @@ function toUser() {
   uni.reLaunch({ url: '/pages/user/map/index' })
 }
 
+async function submitLandlordApply() {
+  try {
+    await applyAccess(1)
+    uni.showToast({ title: '已提交申请', icon: 'success' })
+    await auth.refreshUser(true)
+  }
+  catch {
+    uni.showToast({ title: '提交失败，请稍后重试', icon: 'none' })
+  }
+}
+
 async function signOut() {
   await auth.signOut() // 内部已 setMode('user')
   tabbarStore.setCurIdx(0)
@@ -136,7 +148,7 @@ async function signOut() {
         <text class="name">{{ auth.isLogin ? auth.displayName : '未登录' }}</text>
         <text class="meta">
           {{ isAdminView ? '管理端' : isLandlordView ? '房东端' : '用户端' }} ·
-          {{ auth.isLogin ? (auth.isAdmin ? '管理员账号' : '普通账号') : '登录后可进入管理端' }}
+          {{ auth.isLogin ? (auth.isSuperAdmin ? '超级管理员' : auth.isAdmin ? '管理人员' : '业务员') : '登录后可进入管理端' }}
         </text>
         <text v-if="auth.isLogin" class="nickname-edit" @tap="openNicknameEditor">修改昵称</text>
       </view>
@@ -190,20 +202,22 @@ async function signOut() {
         </view>
       </view>
 
-      <view class="switch-card sl-card" @tap="toUser">
-        <view class="switch-card__main">
-          <wd-icon name="swap" size="22px" color="#126b4f" />
-          <text>切换到用户端</text>
+      <template v-if="auth.isAdmin">
+        <view class="switch-card sl-card" @tap="toUser">
+          <view class="switch-card__main">
+            <wd-icon name="swap" size="22px" color="#126b4f" />
+            <text>切换到用户端</text>
+          </view>
+          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
-        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
-      </view>
-      <view v-if="auth.isAdmin" class="switch-card sl-card" style="margin-top: 16rpx;" @tap="toAdmin">
-        <view class="switch-card__main">
-          <wd-icon name="setting" size="22px" color="#126b4f" />
-          <text>切换到管理端</text>
+        <view class="switch-card sl-card" style="margin-top: 16rpx;" @tap="toAdmin">
+          <view class="switch-card__main">
+            <wd-icon name="setting" size="22px" color="#126b4f" />
+            <text>切换到管理端</text>
+          </view>
+          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
-        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
-      </view>
+      </template>
     </template>
 
     <!-- 用户模式视图 -->
@@ -227,6 +241,34 @@ async function signOut() {
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
+      </view>
+
+      <!-- 申请成为房东入口：已登录且 canUseApp 且非房东 -->
+      <view v-if="auth.isLogin && auth.canUseApp && !auth.isLandlord" class="menu sl-card user-menu" style="margin-top: 24rpx;">
+        <template v-if="auth.landlordApplyStatus === 1">
+          <!-- 审核中：不可点击 -->
+          <view class="menu-row menu-row--disabled">
+            <view class="menu-row__left">
+              <view class="menu-icon menu-icon--gold">
+                <wd-icon name="home" size="21px" color="#b46d08" />
+              </view>
+              <text>房东申请审核中</text>
+            </view>
+            <wd-icon name="arrow-right" size="18px" color="#c5c5c5" />
+          </view>
+        </template>
+        <template v-else>
+          <!-- 未申请(0/undefined)或已拒绝(3)：可点击 -->
+          <view class="menu-row" @tap="submitLandlordApply">
+            <view class="menu-row__left">
+              <view class="menu-icon menu-icon--gold">
+                <wd-icon name="home" size="21px" color="#b46d08" />
+              </view>
+              <text>{{ auth.landlordApplyStatus === 3 ? '重新申请房东' : '申请成为房东' }}</text>
+            </view>
+            <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+          </view>
+        </template>
       </view>
 
       <view v-if="!auth.isAdmin && !auth.isLandlord" class="hint">
