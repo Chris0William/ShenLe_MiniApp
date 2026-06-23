@@ -15,8 +15,11 @@ definePage({
 const auth = useShenleAuthStore()
 // 申请状态：0=未申请，1=待审核，3=已拒绝
 const applyStatus = ref(0)
+// 房东申请状态：0=未申请，1=待审核，3=已拒绝
+const landlordApplyStatus = ref(0)
 const loading = ref(false)
 const submitting = ref(false)
+const submittingLandlord = ref(false)
 
 async function refresh() {
   if (loading.value)
@@ -25,6 +28,7 @@ async function refresh() {
   try {
     const res = await getMyAccess()
     applyStatus.value = res.applyStatus
+    landlordApplyStatus.value = res.landlordApplyStatus ?? 0
     // 已被通过（升到 777+）→ 刷新用户信息并进入 App
     if (res.accountType >= 777) {
       await auth.refreshUser(true).catch(() => {})
@@ -47,13 +51,28 @@ async function submitApply() {
     return
   submitting.value = true
   try {
-    await applyAccess()
+    await applyAccess(0)
     applyStatus.value = 1
     uni.showToast({ title: '已提交申请', icon: 'success' })
   }
   catch {}
   finally {
     submitting.value = false
+  }
+}
+
+async function submitLandlordApply() {
+  if (submittingLandlord.value)
+    return
+  submittingLandlord.value = true
+  try {
+    await applyAccess(1)
+    landlordApplyStatus.value = 1
+    uni.showToast({ title: '已提交申请', icon: 'success' })
+  }
+  catch {}
+  finally {
+    submittingLandlord.value = false
   }
 }
 
@@ -107,6 +126,26 @@ onShow(() => {
         <text class="state__pending">申请已提交，等待管理员通过</text>
         <wd-button plain block type="success" :loading="loading" @click="refresh">
           刷新状态
+        </wd-button>
+      </view>
+
+      <!-- 分隔线 -->
+      <view class="divider" />
+
+      <!-- 申请成为房东 -->
+      <view class="state">
+        <text class="state__tip">也可直接申请成为房东，享受更多功能。</text>
+        <wd-button
+          v-if="landlordApplyStatus !== 1"
+          block
+          type="warning"
+          :loading="submittingLandlord"
+          @click="submitLandlordApply"
+        >
+          {{ landlordApplyStatus === 3 ? '重新申请房东' : '申请成为房东' }}
+        </wd-button>
+        <wd-button v-else type="warning" plain disabled block>
+          房东申请审核中
         </wd-button>
       </view>
     </view>
@@ -213,6 +252,11 @@ onShow(() => {
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 800;
+}
+
+.divider {
+  margin-top: 28rpx;
+  border-top: 1rpx solid var(--sl-line);
 }
 
 .foot {
