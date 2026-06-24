@@ -14,7 +14,7 @@
 - 后端 `e:\WorkSpace\WorkSpace-MiniApp\深乐租项目\ShenLe`，分支 `admin.net`。**后端改完停下等用户 Git/部署指令，不自动提交、不自动部署。**
 - 前端 `e:\WorkSpace\WorkSpace-MiniApp\深乐租项目\ShenLe_MiniApp_Next`，可自主提交；体验版上传须在后端部署之后（功能依赖新端点）。
 - 后端编译：`dotnet build Api/ShenLe.sln -c Debug --nologo -clp:ErrorsOnly` → 0 错。
-- 后端单测：`dotnet test Api/ShenLe.Test/ShenLe.Test.csproj --nologo` → 全绿。
+- 后端单测：`dotnet test Api/ShenLe.Test/ShenLe.Test.csproj -f net8.0 --nologo` → 全绿。（测试工程 `net8.0;net9.0` 双目标，`-f net8.0` 跑单目标更快；测试工程 `<Nullable>disable</Nullable>` 但 `NoWarn` 含 `8632`，故 `string?` 形参可编译。）
 
 ---
 
@@ -99,7 +99,7 @@ public void CheckCanDeleteUser_AppliesGuards(int targetAccountType, long targetU
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `dotnet test Api/ShenLe.Test/ShenLe.Test.csproj --nologo`
+Run: `dotnet test Api/ShenLe.Test/ShenLe.Test.csproj -f net8.0 --nologo`
 Expected: 编译失败 / FAIL（`CheckCanDeleteUser` 不存在）。
 
 - [ ] **Step 3: 实现纯函数**（加到 `SlAccessPolicy` 类内）
@@ -124,7 +124,7 @@ public static string? CheckCanDeleteUser(int targetAccountType, long targetUserI
 
 - [ ] **Step 4: 运行测试确认通过**
 
-Run: `dotnet test Api/ShenLe.Test/ShenLe.Test.csproj --nologo`
+Run: `dotnet test Api/ShenLe.Test/ShenLe.Test.csproj -f net8.0 --nologo`
 Expected: PASS（新增 7 条 + 原有 8 条全绿）。
 
 - [ ] **Step 5: 提交**（本地）
@@ -179,7 +179,7 @@ Expected: 0 错。
 
 - [ ] **Step 3: 单测回归**
 
-Run: `dotnet test Api/ShenLe.Test/ShenLe.Test.csproj --nologo`
+Run: `dotnet test Api/ShenLe.Test/ShenLe.Test.csproj -f net8.0 --nologo`
 Expected: 全绿（不退化）。
 
 - [ ] **Step 4: 提交**（本地）
