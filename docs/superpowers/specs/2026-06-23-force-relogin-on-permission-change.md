@@ -23,35 +23,45 @@
 
 ## 3. 后端改动
 
-### 3.1 helper
-在 `SlAuth`(或一个小 helper)加:
+### 3.1 helper（async，避免死锁；TTL 用分钟）
+在 `SlAuth` 加 **async** 方法(所有调用方都是 async,直接 await,**不要用 `.GetAwaiter().GetResult()`**——会死锁):
 ```csharp
 /// <summary>把用户加入登录黑名单，强制其下次请求重新登录（权限变更后用）</summary>
-public static void ForceRelogin(long userId)
+public static async Task ForceRelogin(long userId)
 {
-    if (userId <= 0 || userId == CurrentUserId()) return; // 不踢自己
-    var cache = App.GetRequiredService<SysCacheService>();
-    var expire = App.GetRequiredService<SysConfigService>().GetTokenExpire().GetAwaiter().GetResult();
-    cache.Set($"{CacheConst.KeyBlacklist}{userId}", "perm-changed", TimeSpan.FromSeconds(expire));
+    if (userId <= 0 || userId == CurrentUserId()) return; // 不踢操作者自己
+    // GetTokenExpire() 返回的是“分钟”（与 JWTEncryption 用法一致），务必用 FromMinutes，
+    // 否则 7 天 token 会变成 7 分钟黑名单，用户等几分钟就能绕过。
+    var minutes = await App.GetRequiredService<SysConfigService>().GetTokenExpire();
+    App.GetRequiredService<SysCacheService>()
+        .Set($"{CacheConst.KeyBlacklist}{userId}", "perm-changed", TimeSpan.FromMinutes(minutes));
 }
 ```
-- TTL = token 有效期(到期自动失效,防止用户一直不重登导致永久残留;登录清除是主路径)。
-- **不踢操作者自己**(改自己时跳过)。
-- 验证 `SysCacheService.Set(key, value, TimeSpan)` 与 `SysConfigService.GetTokenExpire()` 的真实签名,按需调整取值方式(避免 `.GetAwaiter().GetResult()` 死锁——若在 async 方法里调用,改为传入已 await 的 expire,或让 ForceRelogin 为 async)。
+- `SysCacheService`(ISingleton)与 `SysConfigService` 经 `App.GetRequiredService<>()` 取(`JwtHandler` 即如此用,模式成立)。
+- TTL = token 有效期(到期自动失效;登录清除是主路径)。**不踢操作者自己。**
+- 调用方:`await SlAuth.ForceRelogin(targetUserId);`
 
-### 3.2 在"会改 accountType / 房东状态"的端点调用 ForceRelogin(目标用户)
-- `SlUserManageService.SetRole`(改 accountType)← **核心场景**
-- `SlUserManageService.Approve`(用户权限申请 666→777,token 仍 666 需刷新)
-- `SlLandlordService.ApproveLandlord`(可能升 777 + 变房东)
-- `SlLandlordService.SetLandlord(false)` / 撤房东(房东状态变,需踢出房东端)
-- 纯拒绝(`Reject` / `RejectLandlord`,不改角色)**不踢**。
+### 3.2 调用 ForceRelogin(目标用户) 的端点
+
+**关键区分**:`accountType` 在 JWT claim 里(改了必须重登才生效);**房东身份不在 JWT**——`SlAuth.IsLandlord()` 每次实时查 DB,前端 `isLandlord` 来自 `myStatus`(实时)。所以:
+
+- **accountType 变化 → 必须 ForceRelogin**(token claim 过期):
+  - `SlUserManageService.SetRole`(改 accountType)← **核心场景(撤管理员)**
+  - `SlUserManageService.Approve`(用户权限申请 666→777)
+  - `SlLandlordService.ApproveLandlord` / `SetLandlord(true)`:内部 `EnsureLandlord` 仅当用户 <777 时升 777——**这种情况 accountType 变了,必须重登**;若已是 777 则 token 不变。可**无条件调 ForceRelogin**(已正确的 token 重登一次无害,实现更简单),也可判断"确实升了 777"再调。
+- **房东身份变化(不改 accountType)→ ForceRelogin 为体验优化(非安全必需)**:
+  - `SlLandlordService.SetLandlord(false)` / 撤房东:后端写操作本就 live-check(撤了就拒),但前端 `isLandlord` 是缓存的,踢一次重登能让其**立刻退出房东端**(重登后 `myStatus` 返回非房东)。**纳入触发,标注其作用是"借重登刷新 myStatus 踢出房东端",而非 token 必需。**
+- 纯拒绝(`Reject` / `RejectLandlord`,不改任何角色)**不踢**。
 
 ### 3.3 登录时清黑名单(关键,不能漏)
-`SysWxOpenService.wxOpenIdLogin`(以及 `completeProfile`)发完新 token、确定 `sysUser.Id` 后:
+
+`SysWxOpenService`(ShenLe.Core)给两条**都会发新 token** 的登录路径清黑名单:`WxOpenIdLogin` 与 `CompleteProfile`(两者都 mint token,都要清,漏一个就会让对应路径登录后仍被挡)。
+
+**做法**:给 `SysWxOpenService` 构造函数注入 `SysCacheService`(该类已注入多个服务,加一个是纯 DI、非业务逻辑,在"勿改 Core"原则下属可接受的最小改动),在两个方法发完 token、拿到 `sysUser.Id` 后:
 ```csharp
-App.GetRequiredService<SysCacheService>().Remove($"{CacheConst.KeyBlacklist}{sysUser.Id}");
+_sysCacheService.Remove($"{CacheConst.KeyBlacklist}{sysUser.Id}");
 ```
-> `ShenLe.Core` 是框架层(约定勿改)。`SysWxOpenService` 在 ShenLe.Core —— 若不便改,退路:在 `ShenLe.Application` 提供一个登录后调用的清除点,或在前端登录成功后调一个 `slAccess` 下的"清自己黑名单"接口(需匿名+仅清自己)。**优先直接在 wxOpenIdLogin 清;不行再走 Application 兜底。**(实现时先确认 wxOpenIdLogin 能否最小改动。)
+> 兜底(仅当坚决不动 Core 时):前端登录成功后调一个 `ShenLe.Application` 里的匿名"清自己黑名单"接口(只清当前 openId 对应用户)。**优先直接注入清除,不走兜底。**
 
 ## 4. 前端改动(很小)
 
