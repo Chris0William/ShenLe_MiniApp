@@ -21,7 +21,8 @@
 - 超管忽略软删过滤的开关 `SuperAdminIgnoreIDeletedFilter` **当前未配置 = 默认 false** → 过滤器对超管也生效（999 的列表、匿名登录都会隐藏注销用户）。
 - 登录流程 `SysWxOpenService.WxOpenIdLogin`：`SysWechatUser` 按 OpenId 查、`.Includes(u => u.SysUser)`；判断 `if (wxUser.UserId == 0 || wxUser.SysUser == null)`（**OR**）→ 返回 `needProfile=true`；前端再调 `CompleteProfile`，其 `if (wxUser.UserId > 0 && wxUser.SysUser != null)`（**AND**）为 false → 走 `else` 分支 `CreateSysUserForWxUser` 建新 666 用户并把微信绑定 `UserId` 改指到新号。被软删用户 `UserId` 虽非 0，但 `SysUser==null`（被过滤）即触发 needProfile，逻辑成立。
 - `SysWechatUser : EntityBase`（无 `IsDelete`），不需改动。
-- **本仓库的 `DeleteAsync` 是物理删除**（已核实）：`SqlSugarRepository<T> : SimpleClient<T>` 未重写删除；AOP（`SqlSugarSetup.SetDbAop`）只处理新增/更新审计字段，**无 `OnExecutingChangeSql` 等 DELETE→UPDATE 改写**；生产库 `sl_community/sl_building/sl_property` 的 `IsDelete=1` 行数均为 0。结论：实现 `IDeletedFilter` **只影响 SELECT 查询过滤器（line 259）**，不改变任何 `DeleteAsync`/`AsDeleteable` 的物理删除行为。`IsDelete` 字段只能靠**显式 `UpdateColumns(IsDelete=true)`** 置位。
+- **本仓库的 `DeleteAsync` 是物理删除**（已核实，二轮评审比对上游 Admin.NET 源码确认）：`SqlSugarRepository<T> : SimpleClient<T>` 未重写删除；AOP（`SqlSugarSetup.SetDbAop`）只处理 `InsertByObject`/`UpdateByObject` 审计字段，**无 `DataFilterType.DeleteByObject` 分支、无 `OnExecutingChangeSql`、无逻辑删除配置**。**决定性反证**：仓库专门提供 `FakeDeleteAsync`（`RepositoryExtension.cs:88`，显式 `Updateable...ReSetValue(IsDelete=true)` 的 UPDATE）——若 `DeleteAsync` 本就软删，该方法毫无存在必要。（生产库相关表 `IsDelete=1` 行数为 0 仅作旁证，不单独作数。）结论：在 `SysUser` 上实现 `IDeletedFilter` **只新增 SELECT 查询过滤器（line 259）**，不改变任何 `DeleteAsync`/`AsDeleteable` 的物理删除行为。
+- **软删只能走显式 UPDATE**：`FakeDeleteAsync<T>` 约束 `where T : EntityBaseDel`，而本方案让 `SysUser` 仅实现 `IDeletedFilter` 接口（**不改其 `EntityBaseTenantOrg` 基类**），不满足该约束、**用不了 `FakeDelete`**；故注销用**显式 `AsUpdateable + UpdateColumns(IsDelete=true)`** 置位（详见 §4.2）。
 
 ## 3. 方案选型
 
