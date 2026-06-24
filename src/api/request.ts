@@ -25,7 +25,7 @@ function promptLoginAgain() {
   if (promptingLogin)
     return
   promptingLogin = true
-  promptProtectedLogin('登录状态已过期，请重新登录后继续')
+  promptProtectedLogin('登录状态已失效，请重新登录后继续')
   setTimeout(() => {
     promptingLogin = false
   }, 800)
@@ -50,7 +50,9 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
           return
         }
 
-        if (body?.code === 401 || res.statusCode === 401) {
+        // 401=token 失效/过期；403=被强制下线（权限变更后进登录黑名单，JwtHandler context.Fail()）。
+        // 本应用所有业务鉴权失败走 Oops.Oh()（200 信封 + 业务码），不会产生 403，故 403 只可能是黑名单 → 同样需重新登录。
+        if (body?.code === 401 || body?.code === 403 || res.statusCode === 401 || res.statusCode === 403) {
           uni.removeStorageSync(SHENLE_TOKEN_KEY)
           uni.removeStorageSync(SHENLE_USER_KEY)
           // 通知 auth store 同步清理内存登录态（storage 与 pinia 不同步会造成登录页/业务页来回横跳）
