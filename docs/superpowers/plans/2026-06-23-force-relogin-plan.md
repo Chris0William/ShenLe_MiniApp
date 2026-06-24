@@ -59,10 +59,11 @@ public static async Task ForceRelogin(long userId)
 > ShenLe.Core 约定勿改,但这是纯 DI + 一行清除,属可接受最小改动。**两条都发新 token 的路径都要清,漏一个对应路径登录后仍被黑名单挡。**
 
 - [ ] **Step 1:** 给 `SysWxOpenService` 构造函数注入 `SysCacheService _sysCacheService`(该类已注入多个服务,照其风格加一个)。
-- [ ] **Step 2:** 在 `WxOpenIdLogin` 拿到 `sysUser.Id`、发完 token、return 前:
+- [ ] **Step 2:** 在 `WxOpenIdLogin` **已认证、发 token 的那个 return**(取到 `var sysUser = wxUser.SysUser;` 之后、`return` 之前)加:
 ```csharp
 _sysCacheService.Remove($"{CacheConst.KeyBlacklist}{sysUser.Id}");
 ```
+⚠️ **`WxOpenIdLogin` 有一个 `needProfile:true` 的提前 return 分支(不发 token、无 sysUser)——那里不要加 Remove**(会 NRE/userId=0)。只在认证成功、有 `sysUser` 的 return 路径加。
 - [ ] **Step 3:** 在 `CompleteProfile`(也 mint token)同样在拿到 `sysUser.Id`、return 前加同一行。读两个方法确认 `sysUser` 变量名与位置。
 - [ ] **Step 4: 编译** 0 错。
 - [ ] **Step 5: 提交**（本地）
