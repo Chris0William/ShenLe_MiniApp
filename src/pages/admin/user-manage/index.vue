@@ -2,7 +2,7 @@
 import type { SlPendingUserOutput, SlUserOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { approveUser, getPendingUsers, getUserPage, rejectUser, setUserNickName, setUserRole } from '@/api/user-manage'
+import { approveUser, deleteUser, getPendingUsers, getUserPage, rejectUser, setUserNickName, setUserRole } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -171,6 +171,26 @@ function changeRole(item: SlUserOutput, target: number) {
   })
 }
 
+function removeUser(item: SlUserOutput) {
+  uni.showModal({
+    title: '注销用户',
+    content: `确定注销「${item.nickName || '该用户'}」？该用户会立即下线、从列表移除；之后需用微信重新注册才能再次使用。此操作不可在小程序内撤销。`,
+    confirmText: '注销',
+    confirmColor: '#c94832',
+    success: async (res) => {
+      if (!res.confirm)
+        return
+      try {
+        await deleteUser(item.userId)
+        items.value = items.value.filter(u => String(u.userId) !== String(item.userId))
+        total.value = Math.max(0, total.value - 1)
+        uni.showToast({ title: '已注销', icon: 'success' })
+      }
+      catch {}
+    },
+  })
+}
+
 onLoad(() => {
   // 仅超级管理员可用；非超管或非管理模式拦回
   if (!auth.isSuperAdmin || modeStore.mode !== 'admin') {
@@ -259,6 +279,9 @@ onReachBottom(() => {
                 @tap="changeRole(item, opt.value)"
               >
                 {{ opt.label }}
+              </view>
+              <view class="role-btn role-btn--danger" @tap="removeUser(item)">
+                注销
               </view>
             </template>
           </view>
@@ -435,6 +458,11 @@ onReachBottom(() => {
   color: #5e6c65;
   font-size: 23rpx;
   font-weight: 700;
+}
+
+.role-btn--danger {
+  border-color: rgb(201 72 50 / 40%);
+  color: #c94832;
 }
 
 /* 待审申请区块 */

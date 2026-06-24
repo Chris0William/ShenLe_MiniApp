@@ -32,3 +32,7 @@ export function rejectUser(userId: ShenLeId) {
 export function setUserNickName(input: SetSlUserNickNameInput) {
   return post<void>('/api/slUserManage/setNickName', input as unknown as Record<string, unknown>)
 }
+
+export function deleteUser(userId: ShenLeId) {
+  return post<void>('/api/slUserManage/deleteUser', { userId })
+}
