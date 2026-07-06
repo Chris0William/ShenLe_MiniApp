@@ -98,7 +98,8 @@
         "upload:mp": "node ./scripts/upload-weixin.js",
         "type-check": "vue-tsc --noEmit",
         "lint": "eslint",
-        "lint:fix": "eslint --fix"
+        "lint:fix": "eslint --fix",
+        "website:verify": "node website/scripts/verify-website.mjs"
     },
     "dependencies": {
         "@alova/adapter-uniapp": "^2.0.14",
