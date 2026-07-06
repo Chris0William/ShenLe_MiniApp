@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-07-06T10:32:31.841621+00:00",
+  "request": {
+    "original_request": "企业官网首页视觉稿，用于介绍深租宝典/深乐租产品",
+    "clarification_qa": [],
+    "output_intent": null
+  },
+  "design": {
+    "target_audience": null,
+    "style_direction": null,
+    "design_sources": [
+      "docs/superpowers/specs/2026-07-06-shenle-enterprise-website-design.md",
+      "visual companion selected B with A/C blended"
+    ],
+    "design_constraints": []
+  },
+  "prompt": {
+    "final_prompt": "Use case: enterprise website for a Chinese housing/rental operations SaaS product.\nAsset type: high-fidelity landing page homepage mockup bitmap, not functional code.\nPrimary request: design a polished homepage concept for “深租宝典 / 深乐租”, a platform for property listing management, map-based search, sale-control/status management, media asset reuse, and role-based data protection.\nAudience and goal: appeal to second-landlord teams, real-estate agency shops, regional property operation teams, and potential business partners. The image should communicate professionalism, trust, operational efficiency, and data asset management.\nDesign system/context: use a warm green and beige brand direction. Main colors: deep green #173325, primary green #1F7A4C, light green #E9F4E5, warm beige #F6F1E8, white cards, muted gray-green body text, small yellow accents for map/data points. Visual mood should match a serious but approachable Chinese enterprise product website.\nStyle/medium: modern high-fidelity enterprise SaaS website mockup, refined spacing, realistic product UI panels, soft shadows, rounded cards, clean Chinese business design. Avoid generic purple gradients and bland template aesthetics.\nComposition/framing: landscape 1536x1024. Desktop website homepage. Top navigation bar, large hero section, left-aligned headline and CTA, right-side abstract product dashboard mockup, lower part showing four core capability cards. Strong visual hierarchy with generous whitespace.\nContent details: hero tag “房源管理 · 地图找房 · 团队协作”; main headline “把分散房源变成可运营的数据资产”; supporting text can be represented as short readable Chinese lines, not dense paragraphs. CTA buttons “预约产品演示” and “查看核心功能”. Product mockup should include abstract KPI cards, map heat points, property operation dashboard, sale-control status blocks, media asset thumbnails, and role/security chips. Core capability cards: “楼盘与房源管理”, “地图找房与筛选”, “销控看板”, “媒体资产池”.\nLighting/mood: calm, premium, credible, warm daylight feel, soft depth, no dramatic dark mode.\nColor/materials: beige page background, white and deep-green product panels, green accents, subtle yellow map points, smooth card shadows.\nText: include only the specified large Chinese text and short labels; avoid large amounts of tiny generated text.\nConstraints: no real building names, no real addresses, no phone numbers, no private property photos, no watermark, no copied third-party UI, no generic stock-photo people, no e-commerce/payment/trading implication. The result should look like a custom Chinese enterprise product website, not a generic SaaS template.",
+    "negative_constraints": []
+  },
+  "generation": {
+    "model": "gpt-5.5",
+    "image_model": "gpt-image-2",
+    "endpoint": "http://202.104.182.126:3001/openai/v1/responses",
+    "preset": "landscape",
+    "preset_description": "Web hero, admin concept image, horizontal product or scene display.",
+    "size": "1536x1024",
+    "quality": "high",
+    "event_types": [
+      "keepalive",
+      "response.completed",
+      "response.content_part.added",
+      "response.content_part.done",
+      "response.created",
+      "response.image_generation_call.generating",
+      "response.image_generation_call.in_progress",
+      "response.image_generation_call.partial_image",
+      "response.in_progress",
+      "response.output_item.added",
+      "response.output_item.done",
+      "response.output_text.delta",
+      "response.output_text.done"
+    ],
+    "candidate_images": 2
+  },
+  "output": {
+    "path": "E:\\WorkSpace\\WorkSpace-MiniApp\\深乐租项目\\ShenLe_MiniApp_Next\\design\\website\\shenle-website-homepage-v1.png",
+    "bytes": 1660276,
+    "source_field": "partial_image_b64",
+    "sse_path": null
+  },
+  "qa": {
+    "status": "pending_manual_review"
+  }
+}

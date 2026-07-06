@@ -1,0 +1,10 @@
+{
+    "original_request":  "企业官网首页视觉稿，用于介绍深租宝典/深乐租产品",
+    "design_sources":  [
+                           "docs/superpowers/specs/2026-07-06-shenle-enterprise-website-design.md",
+                           "visual companion selected B with A/C blended"
+                       ],
+    "qa":  {
+               "status":  "pending_manual_review"
+           }
+}
