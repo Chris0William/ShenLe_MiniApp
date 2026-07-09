@@ -55,7 +55,7 @@ async function onReject() {
       <wd-icon name="computer" size="42px" color="#126b4f" />
       <text class="card-title">深乐租后台 · 确认登录</text>
       <text class="card-desc">
-        当前账号：{{ auth.displayName || auth.user?.account || '未登录' }}
+        当前账号：{{ auth.displayName }}
         <text v-if="auth.isLogin">（{{ auth.isAdmin ? '管理员' : '非管理员' }}）</text>
       </text>
       <template v-if="!done">
@@ -68,3 +68,28 @@ async function onReject() {
     </view>
   </view>
 </template>
+
+<style scoped lang="scss">
+.login-card {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: center;
+  gap: 24rpx;
+  padding: 46rpx 32rpx 36rpx;
+}
+
+.card-title {
+  color: var(--sl-ink);
+  font-size: 36rpx;
+  font-weight: 900;
+}
+
+.card-desc {
+  max-width: 560rpx;
+  color: var(--sl-muted);
+  font-size: 26rpx;
+  line-height: 1.6;
+  text-align: center;
+}
+</style>
