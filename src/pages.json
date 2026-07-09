@@ -36,6 +36,13 @@
       }
     },
     {
+      "path": "pages/scan-login/confirm",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "确认登录"
+      }
+    },
+    {
       "path": "pages/admin/dashboard/index",
       "type": "page",
       "style": {
