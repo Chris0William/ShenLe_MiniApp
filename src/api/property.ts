@@ -2,9 +2,15 @@ import { get, post } from './request'
 import type {
   AddSlPropertyInput,
   BaseIdInput,
+  BatchDeleteSlPropertyInput,
+  BatchSaveSlPropertyInput,
+  BatchSlPropertyResult,
+  BatchUpdateSlPropertyStatusInput,
   ListSlPropertyInput,
   PageSlPropertyInput,
   PagedList,
+  ShenLeId,
+  SlPropertyBatchRowOutput,
   SlPropertyGlobalStatsOutput,
   SlPropertyListOutput,
   SlPropertyOutput,
@@ -26,6 +32,9 @@ export const getPropertyPage = (input: PageSlPropertyInput) =>
 export const getPropertyList = (input: ListSlPropertyInput) =>
   get<SlPropertyListOutput[]>('/api/slProperty/list', input as unknown as Record<string, unknown>)
 
+export const getPropertyBatchList = (buildingId: ShenLeId) =>
+  get<SlPropertyBatchRowOutput[]>('/api/slProperty/batchList', { buildingId })
+
 export const getPropertyDetail = (id: string | number) =>
   get<SlPropertyOutput>('/api/slProperty/detail', { id })
 
@@ -43,3 +52,18 @@ export const deleteProperty = (input: BaseIdInput) =>
 
 export const updatePropertyStatus = (input: UpdateSlPropertyStatusInput) =>
   post<void>('/api/slProperty/updateStatus', input as unknown as Record<string, unknown>)
+
+export const batchAddProperties = (input: AddSlPropertyInput[]) =>
+  post<BatchSlPropertyResult>('/api/slProperty/batchAdd', input as unknown as Record<string, unknown>)
+
+export const batchUpdateProperties = (input: UpdateSlPropertyInput[]) =>
+  post<BatchSlPropertyResult>('/api/slProperty/batchUpdate', input as unknown as Record<string, unknown>)
+
+export const batchDeleteProperties = (input: BatchDeleteSlPropertyInput) =>
+  post<BatchSlPropertyResult>('/api/slProperty/batchDelete', input as unknown as Record<string, unknown>)
+
+export const batchUpdatePropertyStatus = (input: BatchUpdateSlPropertyStatusInput) =>
+  post<BatchSlPropertyResult>('/api/slProperty/batchUpdateStatus', input as unknown as Record<string, unknown>)
+
+export const batchSaveProperties = (input: BatchSaveSlPropertyInput) =>
+  post<BatchSlPropertyResult>('/api/slProperty/batchSave', input as unknown as Record<string, unknown>)

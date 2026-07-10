@@ -1,5 +1,5 @@
 import { get, post } from './request'
-import type { AddSlBuildingInput, ListSlBuildingInput, ShenLeId, SlBuildingOutput, SlBuildingStatsOutput, UpdateSlBuildingInput } from '@/types/shenle'
+import type { AddSlBuildingInput, BatchAddSlBuildingInput, BatchAddSlBuildingOutput, ListSlBuildingInput, ShenLeId, SlBuildingOutput, SlBuildingStatsOutput, UpdateSlBuildingInput } from '@/types/shenle'
 
 export const getBuildingStats = (communityId?: ShenLeId) =>
   get<SlBuildingStatsOutput[]>('/api/slBuilding/stats', { communityId })
@@ -12,6 +12,9 @@ export const getBuildingDetail = (id: ShenLeId) =>
 
 export const addBuilding = (input: AddSlBuildingInput) =>
   post<ShenLeId>('/api/slBuilding/add', input as unknown as Record<string, unknown>)
+
+export const batchAddBuildings = (input: BatchAddSlBuildingInput) =>
+  post<BatchAddSlBuildingOutput>('/api/slBuilding/batchAdd', input as unknown as Record<string, unknown>)
 
 export const updateBuilding = (input: UpdateSlBuildingInput) =>
   post<void>('/api/slBuilding/update', input as unknown as Record<string, unknown>)

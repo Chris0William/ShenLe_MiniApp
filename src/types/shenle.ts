@@ -122,6 +122,39 @@ export interface SlPropertyImageOutput extends ImageOutput {
   fileType?: string | null
 }
 
+export interface SlPropertyBatchRowOutput {
+  id: ShenLeId
+  title: string
+  communityId: ShenLeId
+  buildingId: ShenLeId
+  unit?: string | null
+  roomNo?: string | null
+  floor?: number | null
+  totalFloors?: number | null
+  area?: number | null
+  bedrooms: number
+  livingRooms: number
+  bathrooms: number
+  orientation?: string | null
+  decoration?: string | null
+  rentalType?: string | null
+  rentPrice: number
+  deposit?: number | null
+  depositRule?: string | null
+  minLease?: number | null
+  status: number
+  coverImageId?: ShenLeId | null
+  tagIds: ShenLeId[]
+  facilityIds: ShenLeId[]
+  description?: string | null
+  landlordName?: string | null
+  landlordPhone?: string | null
+  remark?: string | null
+  createTime: string
+  updateTime?: string | null
+  images: SlPropertyImageOutput[]
+}
+
 export interface SlPropertyOutput extends SlPropertyListOutput {
   communityId: ShenLeId
   buildingId: ShenLeId
@@ -152,37 +185,37 @@ export interface SlPropertyOutput extends SlPropertyListOutput {
 
 export interface AddSlPropertyImageInput {
   fileId: ShenLeId
-  fileType?: string
+  fileType?: string | null
 }
 
 export interface AddSlPropertyInput {
   title: string
   communityId: ShenLeId
   buildingId: ShenLeId
-  unit?: string
-  roomNo?: string
-  floor?: number
-  totalFloors?: number
-  area?: number
+  unit?: string | null
+  roomNo?: string | null
+  floor?: number | null
+  totalFloors?: number | null
+  area?: number | null
   bedrooms?: number
   livingRooms?: number
   bathrooms?: number
-  orientation?: string
-  decoration?: string
-  rentalType?: string
+  orientation?: string | null
+  decoration?: string | null
+  rentalType?: string | null
   rentPrice: number
-  deposit?: number
-  depositRule?: string
-  minLease?: number
+  deposit?: number | null
+  depositRule?: string | null
+  minLease?: number | null
   status?: number
   coverImageId?: ShenLeId | null
-  tagIds?: ShenLeId[]
-  facilityIds?: ShenLeId[]
-  description?: string
-  landlordName?: string
-  landlordPhone?: string
-  remark?: string
-  images?: AddSlPropertyImageInput[]
+  tagIds?: ShenLeId[] | null
+  facilityIds?: ShenLeId[] | null
+  description?: string | null
+  landlordName?: string | null
+  landlordPhone?: string | null
+  remark?: string | null
+  images?: AddSlPropertyImageInput[] | null
 }
 
 export interface UpdateSlPropertyInput extends AddSlPropertyInput {
@@ -192,6 +225,38 @@ export interface UpdateSlPropertyInput extends AddSlPropertyInput {
 export interface UpdateSlPropertyStatusInput {
   id: ShenLeId
   status: number
+}
+
+export interface BatchDeleteSlPropertyInput {
+  ids: ShenLeId[]
+}
+
+export interface BatchUpdateSlPropertyStatusInput {
+  ids: ShenLeId[]
+  status: number | null
+}
+
+export interface BatchSaveSlPropertyInput {
+  adds: AddSlPropertyInput[]
+  updates: UpdateSlPropertyInput[]
+  deleteIds: ShenLeId[]
+}
+
+export interface SlPropertyBatchError {
+  operation: 'add' | 'update' | 'delete' | 'updateStatus' | 'batchSave'
+  scope: 'items' | 'ids' | 'status' | 'adds' | 'updates' | 'deleteIds' | 'request'
+  index: number
+  field?: string | null
+  message: string
+}
+
+export interface BatchSlPropertyResult {
+  success: boolean
+  createdIds: ShenLeId[]
+  updatedCount: number
+  deletedCount: number
+  affectedCount: number
+  errors: SlPropertyBatchError[]
 }
 
 export interface SlPropertyStatsOutput {
@@ -381,6 +446,25 @@ export interface AddSlBuildingInput {
   imageIds?: ShenLeId[]
 }
 
+export interface BatchAddSlBuildingInput {
+  communityId: ShenLeId
+  count: number
+  seqMode: 'number' | 'alpha'
+  prefix?: string | null
+  suffix?: string | null
+  startNo?: number
+  startLetter?: string | null
+  totalFloors?: number | null
+  hasElevator?: boolean | null
+  orderNo?: number
+  status?: number
+}
+
+export interface BatchAddSlBuildingOutput {
+  created: ShenLeId[]
+  skipped: string[]
+}
+
 export interface UpdateSlBuildingInput extends AddSlBuildingInput {
   id: ShenLeId
 }
@@ -407,6 +491,11 @@ export interface SlBuildingStatsOutput {
   propertyCount: number
   availableCount: number
   rentedCount: number
+}
+
+export interface CleanupSlMediaDraftInput {
+  draftId: ShenLeId
+  fileIds: ShenLeId[]
 }
 
 export interface ListSlTagInput {

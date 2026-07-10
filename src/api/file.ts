@@ -1,7 +1,14 @@
-import type { AdminResult, ImageOutput } from '@/types/shenle'
+import { post } from './request'
+import type { AdminResult, CleanupSlMediaDraftInput, ImageOutput, ShenLeId } from '@/types/shenle'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY } from '@/utils/shenle'
 
 const fileCache = new Map<string, string>()
+
+export const createMediaDraftSession = () =>
+  post<ShenLeId>('/api/slMediaDraft/createSession')
+
+export const cleanupMediaDraft = (input: CleanupSlMediaDraftInput) =>
+  post<number>('/api/slMediaDraft/cleanup', input as unknown as Record<string, unknown>)
 
 export function uploadFile(filePath: string): Promise<ImageOutput> {
   return new Promise((resolve, reject) => {
