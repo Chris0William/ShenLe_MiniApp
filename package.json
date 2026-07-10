@@ -27,6 +27,7 @@
     },
     "scripts": {
         "openapi": "openapi-ts",
+        "test": "vitest run",
         "init-husky": "git init && husky",
         "init-baseFiles": "node ./scripts/create-base-files.js",
         "prepare": "pnpm init-baseFiles",
@@ -182,6 +183,7 @@
         "vite": "5.2.8",
         "vite-plugin-restart": "^1.0.0",
         "vite-plugin-vue-devtools": "^8.0.5",
+        "vitest": "1.6.1",
         "vue-tsc": "^3.0.6"
     },
     "pnpm": {
