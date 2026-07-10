@@ -14,7 +14,6 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
-import { videoSnapshotUrl } from '@/utils/media'
 import { resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -102,13 +101,6 @@ const uploading = ref(false)
 const communityMediaLoading = ref(false)
 const communityMediaVisible = ref(false)
 const communityMediaPool = ref<PropertyMedia[]>([])
-const snapFailedIds = ref<Record<string, boolean>>({})
-
-function mediaSnap(media: PropertyMedia) {
-  if (media.kind !== 'video' || snapFailedIds.value[String(media.id)])
-    return ''
-  return videoSnapshotUrl(media.remoteUrl || media.url)
-}
 const selectedCommunityMediaIds = ref<string[]>([])
 const previewVideo = ref<PropertyMedia | null>(null)
 const communities = ref<SlCommunitySelectOutput[]>([])
@@ -778,7 +770,6 @@ onLoad(async (query) => {
           <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
             <view v-else class="video-tile" @tap="previewMedia(index)">
-              <image v-if="mediaSnap(media)" class="video-tile__snap" :src="mediaSnap(media)" mode="aspectFill" @error="snapFailedIds[String(media.id)] = true" />
               <view class="video-tile__overlay">
                 <wd-icon name="play-circle" size="32px" color="#fff" />
                 <text>{{ media.fileName || '视频' }}</text>
@@ -845,7 +836,6 @@ onLoad(async (query) => {
           >
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
-              <image v-if="mediaSnap(media)" class="pool-media__snap" :src="mediaSnap(media)" mode="aspectFill" @error="snapFailedIds[String(media.id)] = true" />
               <view class="pool-media__overlay">
                 <wd-icon name="play-circle" size="30px" color="#fff" />
               </view>
@@ -1066,13 +1056,6 @@ onLoad(async (query) => {
   text-align: center;
 }
 
-.video-tile__snap {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
 .video-tile__overlay {
   position: absolute;
   inset: 0;
@@ -1206,13 +1189,6 @@ onLoad(async (query) => {
   position: relative;
   height: 100%;
   background: linear-gradient(135deg, #173f34, #0f6a4c);
-}
-
-.pool-media__snap {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
 }
 
 .pool-media__overlay {

@@ -2,7 +2,6 @@
 import type { SlPropertyListOutput } from '@/types/shenle'
 import { computed, ref, watch } from 'vue'
 import { downloadFile } from '@/api/file'
-import { videoSnapshotUrl } from '@/utils/media'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 
 const props = defineProps<{
@@ -19,13 +18,11 @@ const status = computed(() => getStatusMeta(props.item.status))
 const cover = ref(resolveAssetUrl(props.item.coverImage))
 const previewVideo = ref<{ url: string, title: string } | null>(null)
 let coverSeq = 0
-const snapFailed = ref(false)
 
 const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
 const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
 
 const coverKind = computed(() => mediaKind(props.item.coverFileType, props.item.coverSuffix || props.item.coverImage))
-const videoSnap = computed(() => coverKind.value === 'video' ? videoSnapshotUrl(resolveAssetUrl(props.item.coverImage)) : '')
 const videoPreviewVisible = computed({
   get: () => !!previewVideo.value,
   set: (visible: boolean) => {
@@ -86,10 +83,9 @@ watch(
   <view class="property sl-card" :class="{ 'property--compact': compact }" @tap="emit('select', item)">
     <image v-if="coverKind === 'image' && cover" class="property__cover" :src="cover" mode="aspectFill" />
     <view v-else-if="coverKind === 'video' && cover" class="property__cover property__cover--video" @tap.stop="previewCoverVideo">
-      <image v-if="videoSnap && !snapFailed" class="property__snap" :src="videoSnap" mode="aspectFill" @error="snapFailed = true" />
-      <view class="property__play" :class="{ 'property__play--bare': !videoSnap || snapFailed }">
+      <view class="property__play">
         <wd-icon name="play-circle" size="28px" color="#fff" />
-        <text v-if="!videoSnap || snapFailed">视频</text>
+        <text>视频</text>
       </view>
     </view>
     <view v-else class="property__cover property__cover--empty">
@@ -157,13 +153,6 @@ watch(
   font-weight: 800;
 }
 
-.property__snap {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
 .property__play {
   position: absolute;
   inset: 0;
@@ -173,10 +162,6 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 10rpx;
-  background: rgb(16 38 31 / 22%);
-}
-
-.property__play--bare {
   background: transparent;
 }
 

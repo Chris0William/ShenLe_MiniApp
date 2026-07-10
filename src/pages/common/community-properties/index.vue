@@ -10,7 +10,7 @@ import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
-import { mediaKindOf, videoSnapshotUrl } from '@/utils/media'
+import { mediaKindOf } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -121,12 +121,7 @@ interface CommunityMediaItem {
 }
 
 const mediaList = ref<CommunityMediaItem[]>([])
-const snapFailedIds = ref<Record<string, boolean>>({})
 const previewVideoMedia = ref<CommunityMediaItem | null>(null)
-
-function mediaSnap(media: CommunityMediaItem) {
-  return snapFailedIds.value[String(media.id)] ? '' : videoSnapshotUrl(media.url)
-}
 const videoPreviewVisible = computed({
   get: () => !!previewVideoMedia.value,
   set: (visible: boolean) => {
@@ -254,7 +249,6 @@ onReachBottom(() => {
         <view v-for="media in mediaList" :key="String(media.id)" class="media-item" @tap="openMedia(media)">
           <image v-if="media.kind === 'image'" class="media-item__thumb" :src="media.url" mode="aspectFill" />
           <view v-else class="media-item__thumb media-item__thumb--video">
-            <image v-if="mediaSnap(media)" class="media-item__snap" :src="mediaSnap(media)" mode="aspectFill" @error="snapFailedIds[String(media.id)] = true" />
             <view class="media-item__play">
               <wd-icon name="play-circle" size="26px" color="#fff" />
             </view>
@@ -389,13 +383,6 @@ onReachBottom(() => {
   align-items: center;
   justify-content: center;
   background: linear-gradient(135deg, #0f6a4c, #173f34);
-}
-
-.media-item__snap {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
 }
 
 .media-item__play {

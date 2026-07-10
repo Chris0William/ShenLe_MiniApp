@@ -2,7 +2,6 @@
 import type { SlCommunityOutput } from '@/types/shenle'
 import { computed, ref, watch } from 'vue'
 import { downloadFile } from '@/api/file'
-import { videoSnapshotUrl } from '@/utils/media'
 import { formatMoney, resolveAssetUrl } from '@/utils/shenle'
 
 const props = defineProps<{
@@ -20,13 +19,11 @@ const emit = defineEmits<{
 
 const cover = ref(resolveAssetUrl(props.item.coverImage))
 let coverSeq = 0
-const snapFailed = ref(false)
 
 const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
 const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
 
 const coverKind = computed(() => mediaKind(props.item.coverFileType, props.item.coverSuffix || props.item.coverImage))
-const videoSnap = computed(() => coverKind.value === 'video' ? videoSnapshotUrl(resolveAssetUrl(props.item.coverImage)) : '')
 
 function extensionOf(value?: string | null) {
   const clean = String(value || '').split('?')[0].toLowerCase()
@@ -93,10 +90,9 @@ watch(
   <view class="community sl-card" :class="{ 'community--compact': compact }" @tap="emit('select', item)">
     <image v-if="coverKind === 'image' && cover" class="community__cover" :src="cover" mode="aspectFill" />
     <view v-else-if="coverKind === 'video'" class="community__cover community__cover--video" @tap.stop="emit('previewVideo', item)">
-      <image v-if="videoSnap && !snapFailed" class="community__snap" :src="videoSnap" mode="aspectFill" @error="snapFailed = true" />
-      <view class="community__play" :class="{ 'community__play--bare': !videoSnap || snapFailed }">
+      <view class="community__play">
         <wd-icon name="play-circle" size="28px" color="#fff" />
-        <text v-if="!videoSnap || snapFailed">视频</text>
+        <text>视频</text>
       </view>
     </view>
     <view v-else class="community__cover community__cover--empty">
@@ -162,13 +158,6 @@ watch(
   font-weight: 800;
 }
 
-.community__snap {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
 .community__play {
   position: absolute;
   inset: 0;
@@ -178,10 +167,6 @@ watch(
   align-items: center;
   justify-content: center;
   gap: 10rpx;
-  background: rgb(16 38 31 / 22%);
-}
-
-.community__play--bare {
   background: transparent;
 }
 
