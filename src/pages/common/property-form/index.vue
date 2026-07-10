@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { AddSlPropertyInput, ImageOutput, ShenLeId, SlBuildingOutput, SlCommunitySelectOutput, SlPropertyImageOutput, SlPropertyOutput, SlTagOutput } from '@/types/shenle'
+import type { AddSlPropertyInput, ImageOutput, ShenLeId, SlPropertyImageOutput, SlPropertyOutput, SlTagOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
-import { getBuildingList } from '@/api/building'
-import { getCommunityDetail, getCommunityList } from '@/api/community'
+import { getBuildingDetail } from '@/api/building'
+import { getCommunityDetail } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
 import { addProperty, getPropertyDetail, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
@@ -14,6 +14,7 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
+import { PROPERTY_MEDIA_SOURCE_ACTIONS, resolvePropertyMediaSource, toOptionalNumber } from '@/utils/property-management'
 import { resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -97,18 +98,20 @@ const isEdit = ref(false)
 const editId = ref('')
 const submitting = ref(false)
 const loading = ref(false)
+const invalidEntry = ref(false)
 const uploading = ref(false)
+const mediaSourceVisible = ref(false)
 const communityMediaLoading = ref(false)
 const communityMediaVisible = ref(false)
 const communityMediaPool = ref<PropertyMedia[]>([])
 const selectedCommunityMediaIds = ref<string[]>([])
 const previewVideo = ref<PropertyMedia | null>(null)
-const communities = ref<SlCommunitySelectOutput[]>([])
-const buildings = ref<SlBuildingOutput[]>([])
 const houseTags = ref<SlTagOutput[]>([])
 const facilityTags = ref<SlTagOutput[]>([])
-const communityPickerIdx = ref(0)
-const buildingPickerIdx = ref(0)
+const contextCommunityName = ref('')
+const contextBuildingName = ref('')
+
+const mediaSourceActions = PROPERTY_MEDIA_SOURCE_ACTIONS
 
 const form = reactive<FormState>({
   communityId: '',
@@ -139,10 +142,7 @@ const form = reactive<FormState>({
   coverImageId: '',
 })
 
-const communityNames = computed(() => communities.value.map(item => item.name))
-const buildingNames = computed(() => buildings.value.map(item => item.name))
-const selectedCommunity = computed(() => communities.value[communityPickerIdx.value])
-const selectedBuilding = computed(() => buildings.value[buildingPickerIdx.value])
+const contextTotalFloorsLabel = computed(() => form.totalFloors ? `${form.totalFloors} 层` : '未设置')
 const effectiveCoverId = computed(() => String(form.coverImageId || form.media[0]?.id || ''))
 const videoPreviewVisible = computed({
   get: () => !!previewVideo.value,
@@ -224,20 +224,6 @@ function optionIndex(options: readonly { value: string, label: string }[], value
   return options.findIndex(item => item.value === value || item.label === value)
 }
 
-async function loadCommunities() {
-  communities.value = await getCommunityList({})
-}
-
-async function loadBuildings(communityId: string) {
-  if (!communityId) {
-    buildings.value = []
-    buildingPickerIdx.value = 0
-    return
-  }
-  buildings.value = await getBuildingList({ communityId })
-  buildingPickerIdx.value = Math.max(0, buildings.value.findIndex(item => idEquals(item.id, form.buildingId)))
-}
-
 async function loadTags() {
   const [house, facility] = await Promise.allSettled([
     getTagList({ category: 'house', status: 0 }),
@@ -247,25 +233,6 @@ async function loadTags() {
     houseTags.value = house.value
   if (facility.status === 'fulfilled')
     facilityTags.value = facility.value
-}
-
-async function onCommunityChange(event: any) {
-  const idx = Number(event.detail.value)
-  communityPickerIdx.value = idx
-  form.communityId = String(communities.value[idx]?.id || '')
-  form.buildingId = ''
-  communityMediaPool.value = []
-  selectedCommunityMediaIds.value = []
-  await loadBuildings(form.communityId)
-}
-
-function onBuildingChange(event: any) {
-  const idx = Number(event.detail.value)
-  buildingPickerIdx.value = idx
-  const building = buildings.value[idx]
-  form.buildingId = String(building?.id || '')
-  if (building?.totalFloors)
-    form.totalFloors = String(building.totalFloors)
 }
 
 function toggleId(list: ShenLeId[], id: ShenLeId) {
@@ -343,6 +310,24 @@ function chooseMedia() {
         chooseImageFallback(remain)
     },
   })
+}
+
+function openMediaSourceSheet() {
+  if (!uploading.value)
+    mediaSourceVisible.value = true
+}
+
+function selectMediaSource(event: { item: { value?: unknown } }) {
+  const source = resolvePropertyMediaSource(event.item.value)
+  if (!source)
+    return
+  mediaSourceVisible.value = false
+  setTimeout(() => {
+    if (source === 'community')
+      void openCommunityMediaPicker()
+    else if (source === 'upload')
+      chooseMedia()
+  }, 220)
 }
 
 function removeMedia(index: number) {
@@ -485,6 +470,14 @@ function cancel() {
   uni.navigateBack()
 }
 
+function leaveInvalidEntry() {
+  const pages = getCurrentPages()
+  if (pages.length > 1)
+    uni.navigateBack()
+  else
+    uni.switchTab({ url: '/pages/admin/property-list/index' })
+}
+
 function buildSubmitData(): AddSlPropertyInput {
   const mediaIds = form.media.map(item => item.id)
   return {
@@ -493,7 +486,7 @@ function buildSubmitData(): AddSlPropertyInput {
     buildingId: form.buildingId,
     roomNo: form.roomNo || undefined,
     floor: toNumber(form.floor),
-    totalFloors: toNumber(form.totalFloors),
+    totalFloors: toOptionalNumber(form.totalFloors),
     area: toNumber(form.area),
     bedrooms: form.bedrooms,
     livingRooms: form.livingRooms,
@@ -544,6 +537,8 @@ async function submit() {
 async function fillDetail(detail: SlPropertyOutput) {
   form.communityId = String(detail.communityId || '')
   form.buildingId = String(detail.buildingId || '')
+  contextCommunityName.value = detail.communityName || `楼盘 ${detail.communityId}`
+  contextBuildingName.value = detail.buildingName || `楼栋 ${detail.buildingId}`
   form.floor = detail.floor === null || detail.floor === undefined ? '' : String(detail.floor)
   form.totalFloors = detail.totalFloors === null || detail.totalFloors === undefined ? '' : String(detail.totalFloors)
   form.roomNo = detail.roomNo || ''
@@ -591,24 +586,46 @@ async function fillDetail(detail: SlPropertyOutput) {
 onLoad(async (query) => {
   loading.value = true
   try {
-    await Promise.all([loadCommunities(), loadTags()])
+    await loadTags()
     if (query?.id) {
       isEdit.value = true
       editId.value = String(query.id)
       const detail = await getPropertyDetail(editId.value)
       await fillDetail(detail)
-      communityPickerIdx.value = Math.max(0, communities.value.findIndex(item => idEquals(item.id, form.communityId)))
-      await loadBuildings(form.communityId)
-      buildingPickerIdx.value = Math.max(0, buildings.value.findIndex(item => idEquals(item.id, form.buildingId)))
+      try {
+        const building = await getBuildingDetail(detail.buildingId)
+        contextBuildingName.value = building.name || contextBuildingName.value
+        form.totalFloors = building.totalFloors === null || building.totalFloors === undefined ? '' : String(building.totalFloors)
+      }
+      catch {}
       uni.setNavigationBarTitle({ title: '编辑房源' })
       return
     }
 
-    if (query?.communityId) {
-      form.communityId = String(query.communityId)
-      communityPickerIdx.value = Math.max(0, communities.value.findIndex(item => idEquals(item.id, form.communityId)))
-      await loadBuildings(form.communityId)
+    if (!query?.communityId || !query?.buildingId) {
+      invalidEntry.value = true
+      uni.showToast({ title: '请从具体楼栋进入新增房源', icon: 'none' })
+      setTimeout(leaveInvalidEntry, 700)
+      return
     }
+
+    form.buildingId = String(query.buildingId)
+    contextCommunityName.value = decodeURIComponent(String(query.communityName || '当前楼盘'))
+    try {
+      const building = await getBuildingDetail(form.buildingId)
+      if (String(building.communityId) !== String(query.communityId))
+        throw new Error('楼栋不属于当前楼盘')
+      form.communityId = String(building.communityId)
+      contextBuildingName.value = building.name
+      form.totalFloors = building.totalFloors === null || building.totalFloors === undefined ? '' : String(building.totalFloors)
+    }
+    catch {
+      invalidEntry.value = true
+      uni.showToast({ title: '楼栋信息加载失败，请重新进入', icon: 'none' })
+      setTimeout(leaveInvalidEntry, 700)
+      return
+    }
+    uni.setNavigationBarTitle({ title: '新增房源' })
   }
   finally {
     loading.value = false
@@ -622,34 +639,30 @@ onLoad(async (query) => {
       房源加载中...
     </view>
 
+    <view v-else-if="invalidEntry" class="loading sl-card">
+      正在返回楼栋管理...
+    </view>
+
     <view v-else class="form-content">
       <view class="form-card sl-card">
         <text class="form-card__title">位置归属</text>
-        <view class="form-item">
-          <text class="form-label">楼盘 *</text>
-          <picker :range="communityNames" :value="communityPickerIdx" @change="onCommunityChange">
-            <view class="picker-value">
-              {{ selectedCommunity?.name || '请选择楼盘' }}
-            </view>
-          </picker>
+        <view class="ownership-grid">
+          <view class="ownership-item">
+            <text class="form-label">所属楼盘</text>
+            <text class="ownership-value">{{ contextCommunityName }}</text>
+          </view>
+          <view class="ownership-item">
+            <text class="form-label">所属楼栋</text>
+            <text class="ownership-value">{{ contextBuildingName }}</text>
+          </view>
+          <view class="ownership-item">
+            <text class="form-label">楼栋总层数</text>
+            <text class="ownership-value">{{ contextTotalFloorsLabel }}</text>
+          </view>
         </view>
         <view class="form-item">
-          <text class="form-label">楼栋 *</text>
-          <picker :range="buildingNames" :value="buildingPickerIdx" :disabled="!form.communityId" @change="onBuildingChange">
-            <view class="picker-value" :class="{ disabled: !form.communityId }">
-              {{ selectedBuilding?.name || (form.communityId ? '请选择楼栋' : '请先选择楼盘') }}
-            </view>
-          </picker>
-        </view>
-        <view class="form-grid">
-          <view class="form-item">
-            <text class="form-label">楼层 *</text>
-            <input v-model="form.floor" class="form-input" type="number" placeholder="如 6">
-          </view>
-          <view class="form-item">
-            <text class="form-label">总楼层</text>
-            <input v-model="form.totalFloors" class="form-input" type="number" placeholder="如 12">
-          </view>
+          <text class="form-label">楼层 *</text>
+          <input v-model="form.floor" class="form-input" type="number" placeholder="如 6">
         </view>
         <view class="form-item">
           <text class="form-label">房间号</text>
@@ -758,14 +771,6 @@ onLoad(async (query) => {
           <text class="form-card__title">媒体与标签</text>
           <text class="media-count">{{ form.media.length }}/9</text>
         </view>
-        <view class="media-actions">
-          <wd-button size="small" plain @click="openCommunityMediaPicker">
-            从楼盘选择
-          </wd-button>
-          <wd-button size="small" type="primary" plain :loading="uploading" @click="chooseMedia">
-            {{ uploading ? '上传中' : '上传媒体' }}
-          </wd-button>
-        </view>
         <view class="image-grid">
           <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
@@ -783,9 +788,9 @@ onLoad(async (query) => {
               设为封面
             </view>
           </view>
-          <view class="image-add" @tap="chooseMedia">
+          <view class="image-add" @tap="openMediaSourceSheet">
             <wd-icon name="add" size="24px" color="#126b4f" />
-            <text>{{ uploading ? '上传中' : '上传媒体' }}</text>
+            <text>添加媒体</text>
           </view>
         </view>
         <view v-if="houseTags.length" class="tag-section">
@@ -856,6 +861,15 @@ onLoad(async (query) => {
       </view>
     </wd-popup>
 
+    <wd-action-sheet
+      v-model="mediaSourceVisible"
+      title="添加媒体"
+      cancel-text="取消"
+      :actions="mediaSourceActions"
+      root-portal
+      @select="selectMediaSource"
+    />
+
     <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
       <view class="video-preview" @tap.stop>
         <view class="video-preview__head">
@@ -911,6 +925,33 @@ onLoad(async (query) => {
   color: #4d5e56;
   font-size: 25rpx;
   font-weight: 800;
+}
+
+.ownership-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14rpx;
+}
+
+.ownership-item {
+  min-width: 0;
+  padding: 18rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f3f7f1;
+}
+
+.ownership-item:last-child {
+  grid-column: 1 / -1;
+}
+
+.ownership-value {
+  display: block;
+  overflow: hidden;
+  color: var(--sl-ink);
+  font-size: 27rpx;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .form-input,
@@ -992,7 +1033,6 @@ onLoad(async (query) => {
 }
 
 .media-head,
-.media-actions,
 .media-picker__head,
 .media-picker__actions {
   display: flex;
@@ -1009,11 +1049,6 @@ onLoad(async (query) => {
 .media-picker__empty {
   color: var(--sl-muted);
   font-size: 24rpx;
-}
-
-.media-actions {
-  gap: 14rpx;
-  margin-bottom: 18rpx;
 }
 
 .image-grid {

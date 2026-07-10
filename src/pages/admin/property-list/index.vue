@@ -226,13 +226,12 @@ function openVideoPreview(item: SlCommunityOutput) {
 function goProperties(item: SlCommunityOutput) {
   if (!canManage.value && !ensureCanUse('登录并通过审核后可查看具体楼盘与房源'))
     return
+  const target = canManage.value
+    ? `/pages/common/building-manage/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`
+    : `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`
   uni.navigateTo({
-    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`,
+    url: target,
   })
-}
-
-function openForm() {
-  uni.navigateTo({ url: '/pages/common/property-form/index' })
 }
 
 function openNavigation(item: SlCommunityOutput) {
@@ -268,9 +267,6 @@ onReachBottom(() => {
         <text class="admin-head__title">{{ canManage ? '房源管理' : '找房' }}</text>
         <text v-if="canManage" class="admin-head__desc">先筛选楼盘，再进入楼盘管理房源</text>
       </view>
-      <wd-button v-if="canManage" size="small" type="primary" icon="add" @click="openForm">
-        新增
-      </wd-button>
     </view>
 
     <sl-location-card :locating="locating" :label="locationLabel" @choose="chooseReferencePoint" />
@@ -301,7 +297,7 @@ onReachBottom(() => {
     <view class="result-head">
       <view>
         <text class="result-head__title">匹配楼盘</text>
-        <text class="result-head__desc">点击楼盘进入房源列表</text>
+        <text class="result-head__desc">{{ canManage ? '点击楼盘进入楼栋管理' : '点击楼盘进入房源列表' }}</text>
       </view>
       <text class="result-head__total">{{ total }} 个</text>
     </view>

@@ -78,23 +78,11 @@ onPullDownRefresh(load)
     </view>
 
     <view class="actions sl-card">
-      <view class="action-item" @tap="go('/pages/admin/property-list/index', true)">
-        <view class="action-icon action-icon--green">
-          <wd-icon name="view-list" size="25px" color="#126b4f" />
-        </view>
-        <text>房源管理</text>
-      </view>
       <view class="action-item" @tap="go('/pages/admin/sales-control/index')">
         <view class="action-icon action-icon--gold">
           <wd-icon name="chart" size="25px" color="#b46d08" />
         </view>
         <text>销控表</text>
-      </view>
-      <view class="action-item" @tap="go('/pages/common/property-form/index')">
-        <view class="action-icon action-icon--green">
-          <wd-icon name="add" size="25px" color="#126b4f" />
-        </view>
-        <text>发布房源</text>
       </view>
       <view class="action-item" @tap="go('/pages/common/community-manage/index')">
         <view class="action-icon action-icon--green">

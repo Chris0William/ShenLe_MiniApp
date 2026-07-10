@@ -11,6 +11,7 @@ import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { mediaKindOf } from '@/utils/media'
+import { canManagePropertyWrites } from '@/utils/property-management'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -22,6 +23,9 @@ definePage({
 
 const communityId = ref<ShenLeId>('')
 const communityName = ref('')
+const buildingId = ref<ShenLeId>('')
+const buildingName = ref('')
+const buildingTotalFloors = ref<number | null>(null)
 const keyword = ref('')
 const status = ref<number | undefined>()
 const page = ref(1)
@@ -32,13 +36,19 @@ const loading = ref(false)
 const hasLoaded = ref(false)
 const auth = useShenleAuthStore()
 const finished = computed(() => total.value > 0 && items.value.length >= total.value)
-const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const canManage = computed(() => canManagePropertyWrites({
+  isAdmin: auth.isAdmin,
+  isLandlord: auth.isLandlord,
+  mode: modeStore.mode,
+}))
+const canManageBuildingScope = computed(() => canManage.value && !!buildingId.value)
 
 function buildQuery(): PageSlPropertyInput {
   return {
     page: page.value,
     pageSize,
     communityId: communityId.value || undefined,
+    buildingId: buildingId.value || undefined,
     title: keyword.value.trim() || undefined,
     status: status.value,
   }
@@ -82,6 +92,7 @@ async function loadAvailableForUser() {
         page: pageNo,
         pageSize: 100,
         communityId: communityId.value || undefined,
+        buildingId: buildingId.value || undefined,
         title: keyword.value.trim() || undefined,
       })
       all.push(...result.items)
@@ -182,8 +193,30 @@ function openDetail(item: SlPropertyListOutput) {
 }
 
 function openForm(item?: SlPropertyListOutput) {
-  const query = item ? `id=${idToQuery(item.id)}` : `communityId=${idToQuery(communityId.value)}`
+  if (item) {
+    uni.navigateTo({ url: `/pages/common/property-form/index?id=${idToQuery(item.id)}` })
+    return
+  }
+  if (!canManageBuildingScope.value) {
+    uni.showToast({ title: '请先进入具体楼栋', icon: 'none' })
+    return
+  }
+  const query = [
+    `communityId=${idToQuery(communityId.value)}`,
+    `communityName=${encodeURIComponent(communityName.value)}`,
+    `buildingId=${idToQuery(buildingId.value)}`,
+    `buildingName=${encodeURIComponent(buildingName.value)}`,
+    `buildingTotalFloors=${encodeURIComponent(String(buildingTotalFloors.value ?? ''))}`,
+  ].join('&')
   uni.navigateTo({ url: `/pages/common/property-form/index?${query}` })
+}
+
+function openBatchManager() {
+  if (!canManageBuildingScope.value) {
+    uni.showToast({ title: '请先进入具体楼栋', icon: 'none' })
+    return
+  }
+  uni.showToast({ title: '批量管理功能正在接入', icon: 'none' })
 }
 
 async function changeStatus(item: SlPropertyListOutput, nextStatus: number) {
@@ -225,8 +258,12 @@ onLoad((query) => {
   }
   communityId.value = String(query?.communityId || '')
   communityName.value = decodeURIComponent(String(query?.communityName || ''))
-  if (communityName.value)
-    uni.setNavigationBarTitle({ title: communityName.value })
+  buildingId.value = String(query?.buildingId || '')
+  buildingName.value = decodeURIComponent(String(query?.buildingName || ''))
+  const totalFloors = Number(query?.buildingTotalFloors)
+  buildingTotalFloors.value = Number.isFinite(totalFloors) && totalFloors > 0 ? totalFloors : null
+  if (communityName.value || buildingName.value)
+    uni.setNavigationBarTitle({ title: buildingName.value || communityName.value })
   load(true)
   loadMedia()
 })
@@ -266,7 +303,7 @@ onReachBottom(() => {
       </wd-button>
     </view>
 
-    <scroll-view v-if="canManage" scroll-x class="chips">
+    <scroll-view v-if="canManageBuildingScope" scroll-x class="chips">
       <view class="chips__inner">
         <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
           全部
@@ -285,13 +322,22 @@ onReachBottom(() => {
 
     <view class="result-head">
       <text class="result-head__title">{{ total }} 套{{ canManage ? '房源' : '可租房源' }}</text>
-      <text class="result-head__desc">{{ canManage ? '支持状态快捷切换和编辑。' : '点击房源查看详情。' }}</text>
+      <text class="result-head__desc">{{ canManageBuildingScope ? `${buildingName} · 支持编辑与批量管理` : '点击房源查看详情。' }}</text>
+    </view>
+
+    <view v-if="canManageBuildingScope" class="scope-actions">
+      <wd-button plain type="default" @click="openBatchManager">
+        批量管理
+      </wd-button>
+      <wd-button type="primary" icon="add" @click="openForm()">
+        新增房源
+      </wd-button>
     </view>
 
     <view class="list">
       <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card">
         <sl-property-card :item="item" compact @select="openDetail" />
-        <view v-if="canManage" class="row-actions">
+        <view v-if="canManageBuildingScope" class="row-actions">
           <wd-button size="small" type="default" plain @click="openForm(item)">
             编辑
           </wd-button>
@@ -318,20 +364,13 @@ onReachBottom(() => {
     <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
       <wd-icon name="home" size="42px" color="#8ea099" />
       <text class="empty__title">暂无房源数据</text>
-      <text class="empty__desc">{{ canManage ? '这个楼盘还没有房源，先新增一套。' : '这个楼盘暂时没有可展示房源。' }}</text>
-      <wd-button v-if="canManage" size="small" type="primary" @click="openForm()">
-        新增房源
-      </wd-button>
-      <wd-button v-else size="small" plain @click="backToMap">
+      <text class="empty__desc">{{ canManageBuildingScope ? '这个楼栋还没有房源，可以新增或批量创建。' : '这个楼盘暂时没有可展示房源。' }}</text>
+      <wd-button v-if="!canManage" size="small" plain @click="backToMap">
         返回地图
       </wd-button>
     </view>
     <view v-else-if="finished" class="loading">
       已经到底了
-    </view>
-
-    <view v-if="canManage" class="fab" @tap="openForm()">
-      <wd-icon name="add" size="26px" color="#fff" />
     </view>
 
     <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
@@ -468,6 +507,13 @@ onReachBottom(() => {
   font-size: 23rpx;
 }
 
+.scope-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14rpx;
+  margin-bottom: 18rpx;
+}
+
 .list {
   display: flex;
   flex-direction: column;
@@ -519,21 +565,6 @@ onReachBottom(() => {
 .empty__desc {
   color: var(--sl-muted);
   font-size: 24rpx;
-}
-
-.fab {
-  position: fixed;
-  right: 34rpx;
-  bottom: calc(92rpx + env(safe-area-inset-bottom));
-  z-index: 8;
-  display: flex;
-  width: 96rpx;
-  height: 96rpx;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999rpx;
-  background: linear-gradient(135deg, var(--sl-brand, #126b4f), #24815f);
-  box-shadow: 0 18rpx 38rpx rgb(18 107 79 / 28%);
 }
 
 .video-preview {

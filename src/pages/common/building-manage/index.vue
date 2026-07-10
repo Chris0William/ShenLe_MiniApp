@@ -37,6 +37,7 @@ const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
 const uploading = ref(false)
+const oneClickCreating = ref(false)
 
 const form = reactive<BuildingForm>({
   id: '',
@@ -306,6 +307,55 @@ async function submitForm() {
   }
 }
 
+async function createDefaultBuilding() {
+  if (oneClickCreating.value)
+    return
+  if (!communityId.value || headerTitle.value === '请选择楼盘') {
+    uni.showToast({ title: '请先选择楼盘', icon: 'none' })
+    return
+  }
+
+  const payload: AddSlBuildingInput = {
+    communityId: communityId.value,
+    name: headerTitle.value,
+    totalFloors: null,
+    orderNo: 100,
+    status: 0,
+    coverImageId: null,
+    imageIds: [],
+  }
+
+  oneClickCreating.value = true
+  try {
+    try {
+      await addBuilding(payload)
+    }
+    catch {
+      try {
+        await loadData()
+      }
+      catch {}
+
+      if (list.value.some(item => item.name === headerTitle.value))
+        uni.showToast({ title: '同名楼栋已存在', icon: 'success' })
+      else
+        uni.showToast({ title: '创建楼栋失败，请重试', icon: 'none' })
+      return
+    }
+
+    try {
+      await loadData()
+      uni.showToast({ title: '楼栋已创建', icon: 'success' })
+    }
+    catch {
+      uni.showToast({ title: '楼栋已创建，请下拉刷新', icon: 'none' })
+    }
+  }
+  finally {
+    oneClickCreating.value = false
+  }
+}
+
 function confirmDelete(item: SlBuildingOutput) {
   uni.showModal({
     title: '删除楼栋',
@@ -322,7 +372,7 @@ function confirmDelete(item: SlBuildingOutput) {
 
 function goProperties(item: SlBuildingOutput) {
   uni.navigateTo({
-    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.communityId)}&communityName=${encodeURIComponent(headerTitle.value)}`,
+    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.communityId)}&communityName=${encodeURIComponent(headerTitle.value)}&buildingId=${idToQuery(item.id)}&buildingName=${encodeURIComponent(item.name)}&buildingTotalFloors=${encodeURIComponent(String(item.totalFloors ?? ''))}`,
   })
 }
 
@@ -356,14 +406,17 @@ onPullDownRefresh(reloadAll)
       </wd-button>
     </view>
 
-    <view v-if="!list.length && !loading" class="empty sl-card">
+    <view v-if="communityId && !list.length && !loading" class="empty sl-card">
       <wd-icon name="home" size="38px" color="#8ea099" />
       <text>暂无楼栋数据</text>
-      <text>先新增楼栋，再到房源表单里挂接房间。</text>
+      <text>可以直接创建与楼盘同名的默认楼栋。</text>
+      <wd-button type="primary" :loading="oneClickCreating" @click="createDefaultBuilding">
+        一键创建楼栋
+      </wd-button>
     </view>
 
     <view class="building-list">
-      <view v-for="item in list" :key="String(item.id)" class="building-card sl-card">
+      <view v-for="item in list" :key="String(item.id)" class="building-card sl-card" @tap="goProperties(item)">
         <view class="building-card__main">
           <image v-if="coverUrl(item)" class="card-cover" :src="coverUrl(item)" mode="aspectFill" />
           <view class="card-content">
@@ -384,13 +437,13 @@ onPullDownRefresh(reloadAll)
             </view>
             <text class="remark">{{ item.remark || '暂无备注' }}</text>
             <view class="actions">
-              <wd-button size="small" plain @click="goProperties(item)">
+              <wd-button size="small" plain @click.stop="goProperties(item)">
                 房源
               </wd-button>
-              <wd-button size="small" type="primary" plain @click="openEdit(item)">
+              <wd-button size="small" type="primary" plain @click.stop="openEdit(item)">
                 编辑
               </wd-button>
-              <wd-button size="small" type="danger" plain @click="confirmDelete(item)">
+              <wd-button size="small" type="danger" plain @click.stop="confirmDelete(item)">
                 删除
               </wd-button>
             </view>

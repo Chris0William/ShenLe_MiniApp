@@ -373,7 +373,7 @@ export interface ListSlBuildingInput {
 export interface AddSlBuildingInput {
   communityId: ShenLeId
   name: string
-  totalFloors?: number
+  totalFloors?: number | null
   orderNo?: number
   status?: number
   remark?: string
