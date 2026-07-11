@@ -54,8 +54,6 @@ const BATCH_EDITABLE_FIELDS = new Set<keyof UpdateSlPropertyInput>([
   'deposit',
   'depositRule',
   'minLease',
-  'landlordName',
-  'landlordPhone',
   'description',
   'remark',
   'tagIds',
@@ -189,8 +187,6 @@ function snapshotToUpdateInput(snapshot: SlPropertyBatchRowOutput): UpdateSlProp
     tagIds: [...snapshot.tagIds],
     facilityIds: [...snapshot.facilityIds],
     description: snapshot.description ?? null,
-    landlordName: snapshot.landlordName ?? null,
-    landlordPhone: snapshot.landlordPhone ?? null,
     remark: snapshot.remark ?? null,
     images: snapshot.images.map(media => ({ fileId: media.id, fileType: media.fileType ?? null })),
   }

@@ -56,7 +56,7 @@
       "type": "page",
       "style": {
         "navigationStyle": "custom",
-        "navigationBarTitleText": "房东管理",
+        "navigationBarTitleText": "盘源对接人管理",
         "enablePullDownRefresh": true
       }
     },

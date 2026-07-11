@@ -15,7 +15,7 @@ definePage({
 const auth = useShenleAuthStore()
 // 申请状态：0=未申请，1=待审核，3=已拒绝
 const applyStatus = ref(0)
-// 房东申请状态：0=未申请，1=待审核，3=已拒绝
+// 盘源对接人申请状态：0=未申请，1=待审核，3=已拒绝
 const landlordApplyStatus = ref(0)
 const loading = ref(false)
 const submitting = ref(false)
@@ -132,9 +132,9 @@ onShow(() => {
       <!-- 分隔线 -->
       <view class="divider" />
 
-      <!-- 申请成为房东 -->
+      <!-- 申请成为盘源对接人 -->
       <view class="state">
-        <text class="state__tip">也可直接申请成为房东，享受更多功能。</text>
+        <text class="state__tip">也可直接申请成为盘源对接人，享受更多功能。</text>
         <wd-button
           v-if="landlordApplyStatus !== 1"
           block
@@ -142,10 +142,10 @@ onShow(() => {
           :loading="submittingLandlord"
           @click="submitLandlordApply"
         >
-          {{ landlordApplyStatus === 3 ? '重新申请房东' : '申请成为房东' }}
+          {{ landlordApplyStatus === 3 ? '重新申请盘源对接人' : '申请成为盘源对接人' }}
         </wd-button>
         <wd-button v-else type="warning" plain disabled block>
-          房东申请审核中
+          盘源对接人申请审核中
         </wd-button>
       </view>
     </view>

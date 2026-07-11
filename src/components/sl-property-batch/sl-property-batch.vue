@@ -142,8 +142,6 @@ const EDIT_FIELDS: Array<{ key: BatchEditableField, label: string }> = [
   { key: 'deposit', label: '押金' },
   { key: 'depositRule', label: '押付方式' },
   { key: 'minLease', label: '最短租期' },
-  { key: 'landlordName', label: '联系人' },
-  { key: 'landlordPhone', label: '联系电话' },
   { key: 'description', label: '房源描述' },
   { key: 'remark', label: '内部备注' },
   { key: 'tagIds', label: '房源标签' },
@@ -168,8 +166,6 @@ const editValues = reactive({
   deposit: '',
   depositRule: '',
   minLease: '',
-  landlordName: '',
-  landlordPhone: '',
   description: '',
   remark: '',
   tagIds: [] as ShenLeId[],
@@ -266,8 +262,6 @@ function setEditDefaults(snapshot: SlPropertyBatchRowOutput) {
   editValues.deposit = String(snapshot.deposit ?? '')
   editValues.depositRule = snapshot.depositRule || ''
   editValues.minLease = String(snapshot.minLease ?? '')
-  editValues.landlordName = snapshot.landlordName || ''
-  editValues.landlordPhone = snapshot.landlordPhone || ''
   editValues.description = snapshot.description || ''
   editValues.remark = snapshot.remark || ''
   editValues.tagIds = [...snapshot.tagIds]
@@ -428,10 +422,6 @@ function buildEditValues(): Partial<UpdateSlPropertyInput> {
     values.depositRule = editValues.depositRule
   if (enabled.minLease)
     values.minLease = optionalNumber(editValues.minLease, '最短租期')
-  if (enabled.landlordName)
-    values.landlordName = editValues.landlordName
-  if (enabled.landlordPhone)
-    values.landlordPhone = editValues.landlordPhone
   if (enabled.description)
     values.description = editValues.description
   if (enabled.remark)
@@ -797,8 +787,6 @@ defineExpose({ openAdd, openEdit, requestDelete })
           </view>
 
           <view class="batch-section">
-            <view class="edit-row"><view class="edit-row__head"><text>联系人</text><wd-switch v-model="enabled.landlordName" size="22px" /></view><input v-if="enabled.landlordName" v-model="editValues.landlordName" class="edit-input" :maxlength="50" placeholder="可清空"></view>
-            <view class="edit-row"><view class="edit-row__head"><text>联系电话</text><wd-switch v-model="enabled.landlordPhone" size="22px" /></view><input v-if="enabled.landlordPhone" v-model="editValues.landlordPhone" class="edit-input" :maxlength="20" placeholder="可清空"></view>
             <view class="edit-row"><view class="edit-row__head"><text>房源描述</text><wd-switch v-model="enabled.description" size="22px" /></view><textarea v-if="enabled.description" v-model="editValues.description" class="edit-textarea" placeholder="可清空" /></view>
             <view class="edit-row"><view class="edit-row__head"><text>内部备注</text><wd-switch v-model="enabled.remark" size="22px" /></view><textarea v-if="enabled.remark" v-model="editValues.remark" class="edit-textarea" placeholder="可清空" /></view>
           </view>

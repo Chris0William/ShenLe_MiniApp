@@ -134,15 +134,6 @@ async function loadDetail() {
   }
 }
 
-function callLandlord() {
-  const phone = detail.value?.landlordPhone
-  if (!phone) {
-    uni.showToast({ title: '暂无房东电话', icon: 'none' })
-    return
-  }
-  uni.makePhoneCall({ phoneNumber: phone })
-}
-
 onLoad((query) => {
   // 房源详情需登录（深链/直达兜底）：未登录或游客拦回
   if (!ensureCanUse('登录后即可查看房源详情')) {
@@ -230,12 +221,6 @@ onLoad((query) => {
       <view class="section sl-card">
         <text class="section__title">描述</text>
         <text class="description">{{ detail.description || detail.remark || '暂无描述' }}</text>
-      </view>
-
-      <view class="bottom-bar sl-safe-bottom">
-        <wd-button block type="primary" @click="callLandlord">
-          联系房东
-        </wd-button>
       </view>
 
       <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
@@ -398,16 +383,6 @@ onLoad((query) => {
   color: #4e5d56;
   font-size: 27rpx;
   line-height: 1.7;
-}
-
-.bottom-bar {
-  position: fixed;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  padding: 18rpx 28rpx 22rpx;
-  border-top: 1rpx solid rgb(18 107 79 / 10%);
-  background: rgb(255 255 255 / 96%);
 }
 
 .video-preview {

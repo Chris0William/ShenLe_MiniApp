@@ -75,7 +75,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
         }
         uni.setStorageSync(SHENLE_USER_KEY, user.value)
       }
-      // 纯房东（非管理员）强制切换到房东端；setMode 写 storage，登录后 reLaunch 重建页面时
+      // 纯盘源对接人（非管理员）强制切换到盘源对接人端；setMode 写 storage，登录后 reLaunch 重建页面时
       // readInitialMode（5.1）会读到正确模式。不在此处 reLaunch，避免与 finishLogin 的 reLaunch 重复。
       if (user.value?.isLandlord && (user.value?.accountType || 0) < 888 && modeStore.mode !== 'landlord')
         modeStore.setMode('landlord')

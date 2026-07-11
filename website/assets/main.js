@@ -21,13 +21,3 @@ document.querySelectorAll('a[href^="#"]').forEach((link) => {
     navToggle?.setAttribute('aria-expanded', 'false')
   })
 })
-
-const contactForm = document.querySelector('.contact-form')
-const formResult = document.querySelector('.form-result')
-
-contactForm?.addEventListener('submit', (event) => {
-  event.preventDefault()
-  if (formResult) {
-    formResult.textContent = '已记录你的咨询意向。正式上线时这里会接入微信或表单服务。'
-  }
-})

@@ -12,7 +12,7 @@ import { useSafeTopStyle } from '@/utils/safe-area'
 definePage({
   style: {
     navigationStyle: 'custom',
-    navigationBarTitleText: '房东管理',
+    navigationBarTitleText: '盘源对接人管理',
     enablePullDownRefresh: true,
   },
 })
@@ -34,7 +34,7 @@ async function loadPending() {
 async function approvePending(item: SlLandlordApplyOutput) {
   uni.showModal({
     title: '通过申请',
-    content: `通过「${item.nickName || '该用户'}」的房东申请？`,
+    content: `通过「${item.nickName || '该用户'}」的盘源对接人申请？`,
     success: async (res) => {
       if (!res.confirm)
         return
@@ -52,7 +52,7 @@ async function approvePending(item: SlLandlordApplyOutput) {
 async function rejectPending(item: SlLandlordApplyOutput) {
   uni.showModal({
     title: '拒绝申请',
-    content: `拒绝「${item.nickName || '该用户'}」的房东申请？对方可重新申请。`,
+    content: `拒绝「${item.nickName || '该用户'}」的盘源对接人申请？对方可重新申请。`,
     confirmColor: '#c94832',
     success: async (res) => {
       if (!res.confirm)
@@ -67,7 +67,7 @@ async function rejectPending(item: SlLandlordApplyOutput) {
   })
 }
 
-// ── 房东列表 ────────────────────────────────────────────────────────────────
+// ── 盘源对接人列表 ────────────────────────────────────────────────────────────────
 const keyword = ref('')
 const page = ref(1)
 const pageSize = 20
@@ -100,15 +100,15 @@ async function load(reset = false) {
 
 function cancelLandlord(item: SlLandlordOutput) {
   uni.showModal({
-    title: '取消房东',
-    content: `确定取消「${item.nickName || '该用户'}」的房东资格？`,
+    title: '取消盘源对接人',
+    content: `确定取消「${item.nickName || '该用户'}」的盘源对接人资格？`,
     confirmColor: '#c94832',
     success: async (res) => {
       if (!res.confirm)
         return
       try {
         await setLandlord(item.userId, false)
-        uni.showToast({ title: '已取消房东', icon: 'success' })
+        uni.showToast({ title: '已取消盘源对接人', icon: 'success' })
         load(true)
       }
       catch {}
@@ -116,7 +116,7 @@ function cancelLandlord(item: SlLandlordOutput) {
   })
 }
 
-// ── 设为房东弹窗（用户选择）────────────────────────────────────────────────
+// ── 设为盘源对接人弹窗（用户选择）────────────────────────────────────────────────
 const setLandlordVisible = ref(false)
 const userKeyword = ref('')
 const userPage = ref(1)
@@ -161,7 +161,7 @@ function onUserSearch() {
 async function confirmSetLandlord(user: SlUserOutput) {
   try {
     await setLandlord(user.userId, true)
-    uni.showToast({ title: `已将「${user.nickName || '该用户'}」设为房东`, icon: 'success' })
+    uni.showToast({ title: `已将「${user.nickName || '该用户'}」设为盘源对接人`, icon: 'success' })
     setLandlordVisible.value = false
     load(true)
   }
@@ -224,7 +224,7 @@ async function confirmAssign(community: SlCommunityOutput) {
     return
   try {
     await assignOwner(community.id, assignTarget.value.userId)
-    uni.showToast({ title: `已将「${community.name}」分配给${assignTarget.value.nickName || '该房东'}`, icon: 'success' })
+    uni.showToast({ title: `已将「${community.name}」分配给${assignTarget.value.nickName || '该盘源对接人'}`, icon: 'success' })
     assignVisible.value = false
     load(true)
   }
@@ -234,7 +234,7 @@ async function confirmAssign(community: SlCommunityOutput) {
 async function confirmUnassign(community: SlCommunityOutput) {
   uni.showModal({
     title: '取消分配',
-    content: `确定将「${community.name}」从当前房东移除？`,
+    content: `确定将「${community.name}」从当前盘源对接人移除？`,
     confirmColor: '#c94832',
     success: async (res) => {
       if (!res.confirm)
@@ -317,8 +317,8 @@ onReachBottom(() => {
         <wd-icon name="arrow-left" size="20px" color="#126b4f" />
       </view>
       <view class="head__main">
-        <text class="head__title">房东管理</text>
-        <text class="head__desc">审批房东申请、分配楼盘</text>
+        <text class="head__title">盘源对接人管理</text>
+        <text class="head__desc">审批盘源对接人申请、分配楼盘</text>
       </view>
     </view>
 
@@ -346,7 +346,7 @@ onReachBottom(() => {
       </view>
     </view>
 
-    <!-- 搜索 + 设为房东 -->
+    <!-- 搜索 + 设为盘源对接人 -->
     <view class="toolbar sl-card">
       <view class="toolbar__search">
         <wd-icon name="search" size="20px" color="#7a8780" />
@@ -358,15 +358,15 @@ onReachBottom(() => {
       <view class="toolbar__divider" />
       <view class="set-btn" @tap="openSetLandlord">
         <wd-icon name="add" size="20px" color="#126b4f" />
-        <text>直接设为房东</text>
+        <text>直接设为盘源对接人</text>
       </view>
     </view>
 
     <view class="result-head">
-      <text>{{ total }} 位房东</text>
+      <text>{{ total }} 位盘源对接人</text>
     </view>
 
-    <!-- 房东列表 -->
+    <!-- 盘源对接人列表 -->
     <view class="list">
       <view v-for="item in items" :key="String(item.userId)" class="landlord sl-card">
         <view class="landlord__body">
@@ -383,7 +383,7 @@ onReachBottom(() => {
             分配楼盘
           </view>
           <view class="action-btn action-btn--cancel" @tap="cancelLandlord(item)">
-            取消房东
+            取消盘源对接人
           </view>
         </view>
       </view>
@@ -393,17 +393,17 @@ onReachBottom(() => {
       加载中...
     </view>
     <view v-else-if="hasLoaded && !items.length" class="tip">
-      暂无房东
+      暂无盘源对接人
     </view>
     <view v-else-if="finished && items.length" class="tip">
       已经到底了
     </view>
 
-    <!-- ── 设为房东 弹窗 ── -->
+    <!-- ── 设为盘源对接人 弹窗 ── -->
     <wd-popup v-model="setLandlordVisible" position="bottom" :z-index="2000" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
       <view class="picker-popup">
         <view class="picker-popup__head">
-          <text class="picker-popup__title">选择用户设为房东</text>
+          <text class="picker-popup__title">选择用户设为盘源对接人</text>
           <view class="picker-popup__close" @tap="setLandlordVisible = false">
             <wd-icon name="close" size="22px" color="#6b7770" />
           </view>
@@ -442,7 +442,7 @@ onReachBottom(() => {
     <wd-popup v-model="assignVisible" position="bottom" :z-index="2000" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
       <view class="picker-popup">
         <view class="picker-popup__head">
-          <text class="picker-popup__title">分配楼盘给「{{ assignTarget?.nickName || '房东' }}」</text>
+          <text class="picker-popup__title">分配楼盘给「{{ assignTarget?.nickName || '盘源对接人' }}」</text>
           <view class="picker-popup__close" @tap="assignVisible = false">
             <wd-icon name="close" size="22px" color="#6b7770" />
           </view>

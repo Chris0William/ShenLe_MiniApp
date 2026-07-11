@@ -85,8 +85,8 @@ describe('batch add inputs', () => {
 describe('batch update inputs', () => {
   it('changes only enabled fields and preserves ownership, floor, room and title', () => {
     const [updated] = buildBatchUpdateInputs([snapshot], {
-      enabledFields: ['rentPrice', 'area', 'landlordName'],
-      values: { rentPrice: 0, area: null, landlordName: '' },
+      enabledFields: ['rentPrice', 'area'],
+      values: { rentPrice: 0, area: null },
       mediaMode: 'unchanged',
       media: [],
     })
@@ -100,7 +100,6 @@ describe('batch update inputs', () => {
       floor: 1,
       rentPrice: 0,
       area: null,
-      landlordName: '',
       remark: '保留备注',
       coverImageId: 'image-1',
     })

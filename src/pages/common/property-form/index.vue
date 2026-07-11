@@ -42,8 +42,6 @@ interface FormState {
   deposit: string
   depositRuleIdx: number
   minLease: string
-  landlordName: string
-  landlordPhone: string
   description: string
   remark: string
   status: number
@@ -133,8 +131,6 @@ const form = reactive<FormState>({
   deposit: '',
   depositRuleIdx: -1,
   minLease: '',
-  landlordName: '',
-  landlordPhone: '',
   description: '',
   remark: '',
   status: 0,
@@ -500,8 +496,6 @@ function buildSubmitData(): AddSlPropertyInput {
     deposit: form.deposit ? toNumber(form.deposit) : undefined,
     depositRule: DEPOSIT_RULE_OPTIONS[form.depositRuleIdx]?.value,
     minLease: form.minLease ? toNumber(form.minLease) : undefined,
-    landlordName: form.landlordName || undefined,
-    landlordPhone: form.landlordPhone || undefined,
     description: form.description || undefined,
     remark: form.remark || undefined,
     status: form.status,
@@ -568,8 +562,6 @@ async function fillDetail(detail: SlPropertyOutput) {
   form.deposit = detail.deposit ? String(detail.deposit) : ''
   form.depositRuleIdx = optionIndex(DEPOSIT_RULE_OPTIONS, detail.depositRule)
   form.minLease = detail.minLease ? String(detail.minLease) : ''
-  form.landlordName = detail.landlordName || ''
-  form.landlordPhone = detail.landlordPhone || ''
   form.description = detail.description || ''
   form.remark = detail.remark || ''
   form.status = detail.status ?? 0
@@ -762,16 +754,6 @@ onLoad(async (query) => {
             <wd-tag v-for="item in PROPERTY_STATUS_OPTIONS" :key="item.value" :type="form.status === item.value ? item.tone as any : 'default'" @click="form.status = item.value">
               {{ item.label }}
             </wd-tag>
-          </view>
-        </view>
-        <view class="form-grid">
-          <view class="form-item">
-            <text class="form-label">房东姓名</text>
-            <input v-model="form.landlordName" class="form-input" placeholder="姓名/称呼">
-          </view>
-          <view class="form-item">
-            <text class="form-label">房东电话</text>
-            <input v-model="form.landlordPhone" class="form-input" type="number" placeholder="手机号">
           </view>
         </view>
         <view class="form-item">

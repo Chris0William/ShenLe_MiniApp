@@ -42,14 +42,14 @@ const requiredSnippets = [
   '深租宝典',
   '深乐租',
   '把分散房源变成可运营的数据资产',
-  '预约产品演示',
-  '查看核心功能',
+  '查看产品能力',
+  '了解数据安全',
   '楼盘与房源管理',
   '地图找房与筛选',
   '销控看板',
   '媒体资产池',
   '数据与权限保护',
-  '想把你的房源团队数字化',
+  '盘源规模化运营',
   '不提供在线交易、支付或用户自行发布',
 ]
 
@@ -57,15 +57,20 @@ for (const snippet of requiredSnippets) {
   assert(plainText.includes(snippet.replace(/\s+/g, '')), `missing required copy: ${snippet}`)
 }
 
-const requiredIds = ['hero', 'features', 'scenarios', 'security', 'contact']
+const requiredIds = ['hero', 'features', 'scenarios', 'security']
 for (const id of requiredIds) {
   assert(html.includes(`id="${id}"`), `missing section id: ${id}`)
 }
 
-const forbiddenClaims = ['保证成交', '自动匹配客户', '官方认证房源', '真实房号', '房东电话']
+const legacyRoleTerm = '\u623f\u4e1c'
+const forbiddenClaims = ['保证成交', '自动匹配客户', '官方认证房源', '真实房号']
 for (const claim of forbiddenClaims) {
   assert(!html.includes(claim), `forbidden claim or sensitive wording found: ${claim}`)
 }
+
+assert(!html.includes(legacyRoleTerm), 'legacy role terminology remains')
+assert(!html.includes('id="contact"'), 'consultation section must be removed')
+assert(!html.includes('contact-form'), 'consultation form must be removed')
 
 assert(html.includes('assets/styles.css'), 'stylesheet is not linked')
 assert(html.includes('assets/main.js'), 'main script is not linked')

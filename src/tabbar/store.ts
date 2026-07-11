@@ -15,7 +15,7 @@ const baseUserList = reactive<CustomTabBarItem[]>(normalize(userTabbarList))
 const baseAdminList = reactive<CustomTabBarItem[]>(normalize(adminTabbarList))
 const baseLandlordList = reactive<CustomTabBarItem[]>(normalize(landlordTabbarList))
 
-/** 随 mode 切换的 tab 集（用户 3 项 / 管理 5 项 / 房东 3 项） */
+/** 随 mode 切换的 tab 集（用户 3 项 / 管理 5 项 / 盘源对接人 3 项） */
 const tabbarList = computed(() =>
   modeStore.mode === 'admin'
     ? baseAdminList

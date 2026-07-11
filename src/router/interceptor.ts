@@ -22,7 +22,7 @@ const PROTECTED_PATHS = [
   '/pages/common/tag-manage/index',
 ]
 
-// 房东端也可访问的管理页：需登录，且须是管理员(888)或房东(isLandlord)。
+// 盘源对接人端也可访问的管理页：需登录，且须是管理员(888)或盘源对接人(isLandlord)。
 // building-manage 和 property-form 由后端 RequireCommunityOwnerOrAdmin 守卫实际写权限。
 const LANDLORD_OR_ADMIN_PATHS = [
   '/pages/landlord/my-communities/index',
@@ -91,9 +91,9 @@ export const navigateToInterceptor = {
         promptProtectedLogin('登录后可使用楼栋/房源管理功能')
         return false
       }
-      // 管理员或房东可访问；普通用户/游客不可
+      // 管理员或盘源对接人可访问；普通用户/游客不可
       if (!auth.isAdmin && !auth.isLandlord) {
-        uni.showToast({ title: '仅管理员或房东可使用此功能', icon: 'none' })
+        uni.showToast({ title: '仅管理员或盘源对接人可使用此功能', icon: 'none' })
         return false
       }
     }

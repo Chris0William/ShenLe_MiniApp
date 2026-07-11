@@ -243,8 +243,7 @@ textarea {
 
 .hero h1,
 .section-title h2,
-.security-card h2,
-.contact-copy h2 {
+.security-card h2 {
   margin: 0;
   color: var(--green-950);
   font-size: clamp(40px, 5.2vw, 66px);
@@ -540,8 +539,7 @@ textarea {
 
 .section-block,
 .scenario-section,
-.security-section,
-.contact-section {
+.security-section {
   padding: clamp(56px, 8vw, 100px) 0;
 }
 
@@ -552,14 +550,12 @@ textarea {
 }
 
 .section-title h2,
-.security-card h2,
-.contact-copy h2 {
+.security-card h2 {
   font-size: clamp(32px, 4vw, 52px);
 }
 
 .section-title p:not(.eyebrow),
 .security-card p,
-.contact-copy p,
 .compliance-note {
   color: var(--muted);
   font-size: 17px;
@@ -695,70 +691,6 @@ textarea {
   text-align: center;
 }
 
-.contact-section {
-  display: grid;
-  grid-template-columns: 0.82fr 1.18fr;
-  gap: 34px;
-  align-items: start;
-}
-
-.contact-copy {
-  position: sticky;
-  top: 110px;
-  padding: 34px;
-  border-radius: var(--radius-lg);
-  background: rgba(255, 253, 248, 0.78);
-  box-shadow: 0 16px 52px rgba(23, 51, 37, 0.08);
-}
-
-.contact-form {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-  padding: 28px;
-  border: 1px solid rgba(23, 51, 37, 0.08);
-  border-radius: var(--radius-lg);
-  background: var(--paper);
-  box-shadow: var(--shadow);
-}
-
-.contact-form label {
-  display: grid;
-  gap: 8px;
-  color: #315544;
-  font-weight: 900;
-}
-
-.contact-form input,
-.contact-form select,
-.contact-form textarea {
-  width: 100%;
-  border: 1px solid rgba(31, 122, 76, 0.16);
-  border-radius: 14px;
-  outline: none;
-  background: #f8fbf4;
-  color: var(--text);
-  padding: 13px 14px;
-}
-
-.contact-form input:focus,
-.contact-form select:focus,
-.contact-form textarea:focus {
-  border-color: var(--green-700);
-  box-shadow: 0 0 0 4px rgba(31, 122, 76, 0.12);
-}
-
-.full {
-  grid-column: 1 / -1;
-}
-
-.form-result {
-  min-height: 24px;
-  margin: 0;
-  color: var(--green-700);
-  font-weight: 800;
-}
-
 .site-footer {
   display: flex;
   flex-wrap: wrap;
@@ -791,7 +723,6 @@ textarea {
 
 @media (max-width: 1120px) {
   .hero,
-  .contact-section,
   .security-card {
     grid-template-columns: 1fr;
   }
@@ -816,9 +747,6 @@ textarea {
     grid-template-columns: repeat(2, 1fr);
   }
 
-  .contact-copy {
-    position: static;
-  }
 }
 
 @media (max-width: 860px) {
@@ -885,8 +813,7 @@ textarea {
   .metric-grid,
   .dash-panels,
   .scenario-grid,
-  .feature-grid,
-  .contact-form {
+  .feature-grid {
     grid-template-columns: 1fr;
   }
 
@@ -905,9 +832,6 @@ textarea {
     width: min(100% - 28px, 1440px);
   }
 
-  .contact-form {
-    padding: 20px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

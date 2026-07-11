@@ -31,9 +31,9 @@ const adminMenus = computed(() => {
     { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 },
     { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index', badge: 0 },
   ]
-  // 房东管理与用户管理仅超级管理员(999)可见
+  // 盘源对接人管理与用户管理仅超级管理员(999)可见
   if (auth.isSuperAdmin) {
-    base.push({ title: '房东管理', desc: '设置房东、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 })
+    base.push({ title: '盘源对接人管理', desc: '设置盘源对接人、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 })
     base.push({ title: '用户管理', desc: '审批申请、设置用户角色', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index', badge: pendingCount.value })
   }
   return base
@@ -89,11 +89,11 @@ onShow(() => {
 
 function toLandlord() {
   if (!auth.isLogin) {
-    requestLogin({ reason: '登录账号后可切换房东端', redirect: '/pages/user/map/index' })
+    requestLogin({ reason: '登录账号后可切换盘源对接人端', redirect: '/pages/user/map/index' })
     return
   }
   if (!auth.isLandlord) {
-    uni.showToast({ title: '仅房东可使用房东端', icon: 'none' })
+    uni.showToast({ title: '仅盘源对接人可使用盘源对接人端', icon: 'none' })
     return
   }
   modeStore.setMode('landlord')
@@ -147,7 +147,7 @@ async function signOut() {
       <view class="profile-info">
         <text class="name">{{ auth.isLogin ? auth.displayName : '未登录' }}</text>
         <text class="meta">
-          {{ isAdminView ? '管理端' : isLandlordView ? '房东端' : '用户端' }} ·
+          {{ isAdminView ? '管理端' : isLandlordView ? '盘源对接人端' : '用户端' }} ·
           {{ auth.isLogin ? (auth.isSuperAdmin ? '超级管理员' : auth.isAdmin ? '管理人员' : '业务员') : '登录后可进入管理端' }}
         </text>
         <text v-if="auth.isLogin" class="nickname-edit" @tap="openNicknameEditor">修改昵称</text>
@@ -185,10 +185,10 @@ async function signOut() {
       </view>
     </template>
 
-    <!-- 房东模式视图 -->
+    <!-- 盘源对接人模式视图 -->
     <template v-else-if="isLandlordView">
       <view class="sl-section-head">
-        <text class="sl-section-title">房东中心</text>
+        <text class="sl-section-title">盘源对接人中心</text>
       </view>
       <view class="menu sl-card user-menu">
         <view class="menu-row" @tap="go('/pages/landlord/my-communities/index')">
@@ -237,13 +237,13 @@ async function signOut() {
             <view class="menu-icon menu-icon--green">
               <wd-icon name="home" size="21px" color="#126b4f" />
             </view>
-            <text>切换到房东端</text>
+            <text>切换到盘源对接人端</text>
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
       </view>
 
-      <!-- 申请成为房东入口：已登录且 canUseApp 且非房东 -->
+      <!-- 申请成为盘源对接人入口：已登录且 canUseApp 且非盘源对接人 -->
       <view v-if="auth.isLogin && auth.canUseApp && !auth.isLandlord" class="menu sl-card user-menu" style="margin-top: 24rpx;">
         <template v-if="auth.landlordApplyStatus === 1">
           <!-- 审核中：不可点击 -->
@@ -252,7 +252,7 @@ async function signOut() {
               <view class="menu-icon menu-icon--gold">
                 <wd-icon name="home" size="21px" color="#b46d08" />
               </view>
-              <text>房东申请审核中</text>
+              <text>盘源对接人申请审核中</text>
             </view>
             <wd-icon name="arrow-right" size="18px" color="#c5c5c5" />
           </view>
@@ -264,7 +264,7 @@ async function signOut() {
               <view class="menu-icon menu-icon--gold">
                 <wd-icon name="home" size="21px" color="#b46d08" />
               </view>
-              <text>{{ auth.landlordApplyStatus === 3 ? '重新申请房东' : '申请成为房东' }}</text>
+              <text>{{ auth.landlordApplyStatus === 3 ? '重新申请盘源对接人' : '申请成为盘源对接人' }}</text>
             </view>
             <wd-icon name="arrow-right" size="18px" color="#8ea099" />
           </view>
