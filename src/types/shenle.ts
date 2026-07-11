@@ -439,6 +439,7 @@ export interface AddSlBuildingInput {
   communityId: ShenLeId
   name: string
   totalFloors?: number | null
+  hasElevator?: boolean | null
   orderNo?: number
   status?: number
   remark?: string
@@ -474,6 +475,7 @@ export interface SlBuildingOutput {
   communityId: ShenLeId
   name: string
   totalFloors?: number | null
+  hasElevator?: boolean | null
   orderNo: number
   status: number
   remark?: string | null

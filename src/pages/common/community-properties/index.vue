@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import type { PageSlPropertyInput, ShenLeId, SlPropertyListOutput } from '@/types/shenle'
 import type { MediaKind } from '@/utils/media'
-import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
-import { computed, ref } from 'vue'
+import { onLoad, onPageScroll, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { computed, nextTick, ref } from 'vue'
 import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
-import { deleteProperty, getPropertyPage, updatePropertyStatus } from '@/api/property'
+import { deleteProperty, getPropertyDetail, getPropertyPage, updatePropertyStatus } from '@/api/property'
+import SlPropertyBatch from '@/components/sl-property-batch/sl-property-batch.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
+import { useEntityChangeStore } from '@/store/entity-change'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { mediaKindOf } from '@/utils/media'
@@ -34,7 +36,16 @@ const total = ref(0)
 const items = ref<SlPropertyListOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
+const currentScrollTop = ref(0)
 const auth = useShenleAuthStore()
+const changeStore = useEntityChangeStore()
+const selectionMode = ref(false)
+const selectedIds = ref<ShenLeId[]>([])
+const batchRef = ref<{
+  openAdd: () => void
+  openEdit: () => void
+  requestDelete: () => void
+} | null>(null)
 const finished = computed(() => total.value > 0 && items.value.length >= total.value)
 const canManage = computed(() => canManagePropertyWrites({
   isAdmin: auth.isAdmin,
@@ -42,6 +53,7 @@ const canManage = computed(() => canManagePropertyWrites({
   mode: modeStore.mode,
 }))
 const canManageBuildingScope = computed(() => canManage.value && !!buildingId.value)
+const canBatchManage = computed(() => auth.isAdmin && modeStore.mode === 'admin' && !!buildingId.value)
 
 function buildQuery(): PageSlPropertyInput {
   return {
@@ -109,6 +121,39 @@ async function loadAvailableForUser() {
     loading.value = false
     uni.stopPullDownRefresh()
   }
+}
+
+async function reloadLoadedRangePreservingScroll() {
+  if (!communityId.value || loading.value)
+    return
+  const loadedPages = Math.max(1, page.value)
+  const restoreTop = currentScrollTop.value
+  loading.value = true
+  try {
+    const responses = []
+    for (let pageNo = 1; pageNo <= loadedPages; pageNo++) {
+      responses.push(await getPropertyPage({
+        ...buildQuery(),
+        page: pageNo,
+      }))
+    }
+    items.value = responses.flatMap(result => result.items)
+    total.value = responses[0]?.total || 0
+    page.value = loadedPages
+    hasLoaded.value = true
+    await nextTick()
+    uni.pageScrollTo({ scrollTop: restoreTop, duration: 0 })
+  }
+  finally {
+    loading.value = false
+    uni.stopPullDownRefresh()
+  }
+}
+
+async function patchBatchUpdatedItems(ids: readonly ShenLeId[]) {
+  const details = await Promise.all(ids.map(id => getPropertyDetail(id)))
+  const detailById = new Map(details.map(detail => [String(detail.id), detail]))
+  items.value = items.value.map(item => detailById.get(String(item.id)) || item)
 }
 
 function selectStatus(value?: number) {
@@ -192,6 +237,26 @@ function openDetail(item: SlPropertyListOutput) {
   uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(item.id)}` })
 }
 
+function isSelected(id: ShenLeId) {
+  return selectedIds.value.some(item => String(item) === String(id))
+}
+
+function toggleSelected(item: SlPropertyListOutput) {
+  const index = selectedIds.value.findIndex(id => String(id) === String(item.id))
+  if (index >= 0)
+    selectedIds.value.splice(index, 1)
+  else
+    selectedIds.value.push(item.id)
+}
+
+function handlePropertySelect(item: SlPropertyListOutput) {
+  if (selectionMode.value) {
+    toggleSelected(item)
+    return
+  }
+  openDetail(item)
+}
+
 function openForm(item?: SlPropertyListOutput) {
   if (item) {
     uni.navigateTo({ url: `/pages/common/property-form/index?id=${idToQuery(item.id)}` })
@@ -212,11 +277,65 @@ function openForm(item?: SlPropertyListOutput) {
 }
 
 function openBatchManager() {
-  if (!canManageBuildingScope.value) {
+  if (!canBatchManage.value) {
     uni.showToast({ title: '请先进入具体楼栋', icon: 'none' })
     return
   }
-  uni.showToast({ title: '批量管理功能正在接入', icon: 'none' })
+  selectionMode.value = true
+  selectedIds.value = []
+}
+
+function exitBatchManager() {
+  selectionMode.value = false
+  selectedIds.value = []
+}
+
+function openBatchAdd() {
+  if (!canBatchManage.value)
+    return
+  batchRef.value?.openAdd()
+}
+
+function openBatchEdit() {
+  if (!selectedIds.value.length)
+    return
+  batchRef.value?.openEdit()
+}
+
+function openBatchDelete() {
+  if (!selectedIds.value.length)
+    return
+  batchRef.value?.requestDelete()
+}
+
+interface BatchCompletedEvent {
+  action: 'added' | 'updated' | 'deleted'
+  ids: ShenLeId[]
+  affectedCount: number
+  totalFloors?: number | null
+}
+
+async function handleBatchCompleted(event: BatchCompletedEvent) {
+  if (event.totalFloors !== undefined)
+    buildingTotalFloors.value = event.totalFloors
+
+  changeStore.publishPropertyChange({
+    action: event.action === 'updated' ? 'updated' : 'structural',
+    ids: event.ids,
+    communityId: communityId.value,
+    buildingId: buildingId.value,
+  })
+
+  if (event.action === 'deleted') {
+    const deleted = new Set(event.ids.map(id => String(id)))
+    items.value = items.value.filter(item => !deleted.has(String(item.id)))
+    total.value = Math.max(0, total.value - event.affectedCount)
+  }
+  else if (event.action === 'updated')
+    await patchBatchUpdatedItems(event.ids)
+  else
+    await reloadLoadedRangePreservingScroll()
+  exitBatchManager()
 }
 
 async function changeStatus(item: SlPropertyListOutput, nextStatus: number) {
@@ -268,6 +387,7 @@ onLoad((query) => {
   loadMedia()
 })
 onPullDownRefresh(() => load(true))
+onPageScroll(event => { currentScrollTop.value = event.scrollTop })
 onReachBottom(() => {
   // 用户模式一次性全量加载，不分页
   if (!canManage.value)
@@ -322,11 +442,14 @@ onReachBottom(() => {
 
     <view class="result-head">
       <text class="result-head__title">{{ total }} 套{{ canManage ? '房源' : '可租房源' }}</text>
-      <text class="result-head__desc">{{ canManageBuildingScope ? `${buildingName} · 支持编辑与批量管理` : '点击房源查看详情。' }}</text>
+      <text class="result-head__desc">{{ canBatchManage ? `${buildingName} · 支持编辑与批量管理` : (canManageBuildingScope ? `${buildingName} · 支持编辑和状态管理` : '点击房源查看详情。') }}</text>
     </view>
 
     <view v-if="canManageBuildingScope" class="scope-actions">
-      <wd-button plain type="default" @click="openBatchManager">
+      <wd-button v-if="canBatchManage" plain type="default" icon="add" @click="openBatchAdd">
+        批量新增
+      </wd-button>
+      <wd-button v-if="canBatchManage" plain type="default" @click="openBatchManager">
         批量管理
       </wd-button>
       <wd-button type="primary" icon="add" @click="openForm()">
@@ -335,9 +458,16 @@ onReachBottom(() => {
     </view>
 
     <view class="list">
-      <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card">
-        <sl-property-card :item="item" compact @select="openDetail" />
-        <view v-if="canManageBuildingScope" class="row-actions">
+      <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card" :class="{ 'property-wrap--selected': isSelected(item.id) }">
+        <view class="property-select-row">
+          <view v-if="selectionMode" class="selection-checkbox" :class="{ selected: isSelected(item.id) }" @tap.stop="toggleSelected(item)">
+            <wd-icon v-if="isSelected(item.id)" name="check" size="14px" color="#fff" />
+          </view>
+          <view class="property-card-main">
+            <sl-property-card :item="item" compact @select="handlePropertySelect" />
+          </view>
+        </view>
+        <view v-if="canManageBuildingScope && !selectionMode" class="row-actions">
           <wd-button size="small" type="default" plain @click="openForm(item)">
             编辑
           </wd-button>
@@ -364,7 +494,7 @@ onReachBottom(() => {
     <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
       <wd-icon name="home" size="42px" color="#8ea099" />
       <text class="empty__title">暂无房源数据</text>
-      <text class="empty__desc">{{ canManageBuildingScope ? '这个楼栋还没有房源，可以新增或批量创建。' : '这个楼盘暂时没有可展示房源。' }}</text>
+      <text class="empty__desc">{{ canBatchManage ? '这个楼栋还没有房源，可以新增或批量创建。' : (canManageBuildingScope ? '这个楼栋还没有房源，可以新增一套。' : '这个楼盘暂时没有可展示房源。') }}</text>
       <wd-button v-if="!canManage" size="small" plain @click="backToMap">
         返回地图
       </wd-button>
@@ -382,6 +512,33 @@ onReachBottom(() => {
         <video v-if="previewVideoMedia" class="video-preview__player" :src="previewVideoMedia.url" controls autoplay />
       </view>
     </wd-popup>
+
+    <sl-property-batch
+      v-if="canBatchManage"
+      ref="batchRef"
+      :community-id="communityId"
+      :community-name="communityName"
+      :building-id="buildingId"
+      :building-name="buildingName"
+      :building-total-floors="buildingTotalFloors"
+      :selected-ids="selectedIds"
+      @completed="handleBatchCompleted"
+    />
+
+    <view v-if="canBatchManage && selectionMode" class="batch-toolbar sl-safe-bottom">
+      <view class="batch-toolbar__count">
+        <text>已选 {{ selectedIds.length }} 套</text>
+      </view>
+      <wd-button size="small" type="primary" :disabled="!selectedIds.length" @click="openBatchEdit">
+        修改
+      </wd-button>
+      <wd-button size="small" type="danger" :disabled="!selectedIds.length" @click="openBatchDelete">
+        删除
+      </wd-button>
+      <wd-button size="small" plain @click="exitBatchManager">
+        退出
+      </wd-button>
+    </view>
   </view>
 </template>
 
@@ -522,6 +679,42 @@ onReachBottom(() => {
 
 .property-wrap {
   overflow: hidden;
+  border: 2rpx solid transparent;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.property-wrap--selected {
+  border-color: #126b4f;
+  background: #f3faf6;
+}
+
+.property-select-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.property-card-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.selection-checkbox {
+  display: flex;
+  width: 42rpx;
+  height: 42rpx;
+  flex: 0 0 42rpx;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  margin-left: 18rpx;
+  border: 2rpx solid #9aaba3;
+  border-radius: 6rpx;
+  background: #fff;
+}
+
+.selection-checkbox.selected {
+  border-color: #126b4f;
+  background: #126b4f;
 }
 
 .property-wrap :deep(.property) {
@@ -586,5 +779,28 @@ onReachBottom(() => {
   width: 680rpx;
   height: 420rpx;
   background: #10261f;
+}
+
+.batch-toolbar {
+  position: fixed;
+  z-index: 1200;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12rpx;
+  padding: 16rpx 22rpx calc(16rpx + env(safe-area-inset-bottom));
+  border-top: 1rpx solid rgb(18 107 79 / 12%);
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 -12rpx 34rpx rgb(29 54 45 / 10%);
+}
+
+.batch-toolbar__count {
+  min-width: 0;
+  color: #33443d;
+  font-size: 25rpx;
+  font-weight: 750;
 }
 </style>
