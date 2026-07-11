@@ -2,7 +2,7 @@
 import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { setMyNickName } from '@/api/auth'
-import { applyAccess, getPendingUsers } from '@/api/user-manage'
+import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { tabbarStore } from '@/tabbar/store'
@@ -122,17 +122,6 @@ function toUser() {
   uni.reLaunch({ url: '/pages/user/map/index' })
 }
 
-async function submitLandlordApply() {
-  try {
-    await applyAccess(1)
-    uni.showToast({ title: '已提交申请', icon: 'success' })
-    await auth.refreshUser(true)
-  }
-  catch {
-    uni.showToast({ title: '提交失败，请稍后重试', icon: 'none' })
-  }
-}
-
 async function signOut() {
   await auth.signOut() // 内部已 setMode('user')
   tabbarStore.setCurIdx(0)
@@ -241,34 +230,6 @@ async function signOut() {
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
-      </view>
-
-      <!-- 申请成为盘源对接人入口：已登录且 canUseApp 且非盘源对接人 -->
-      <view v-if="auth.isLogin && auth.canUseApp && !auth.isLandlord" class="menu sl-card user-menu" style="margin-top: 24rpx;">
-        <template v-if="auth.landlordApplyStatus === 1">
-          <!-- 审核中：不可点击 -->
-          <view class="menu-row menu-row--disabled">
-            <view class="menu-row__left">
-              <view class="menu-icon menu-icon--gold">
-                <wd-icon name="home" size="21px" color="#b46d08" />
-              </view>
-              <text>盘源对接人申请审核中</text>
-            </view>
-            <wd-icon name="arrow-right" size="18px" color="#c5c5c5" />
-          </view>
-        </template>
-        <template v-else>
-          <!-- 未申请(0/undefined)或已拒绝(3)：可点击 -->
-          <view class="menu-row" @tap="submitLandlordApply">
-            <view class="menu-row__left">
-              <view class="menu-icon menu-icon--gold">
-                <wd-icon name="home" size="21px" color="#b46d08" />
-              </view>
-              <text>{{ auth.landlordApplyStatus === 3 ? '重新申请盘源对接人' : '申请成为盘源对接人' }}</text>
-            </view>
-            <wd-icon name="arrow-right" size="18px" color="#8ea099" />
-          </view>
-        </template>
       </view>
 
       <view v-if="!auth.isAdmin && !auth.isLandlord" class="hint">
