@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PageSlPropertyInput, ShenLeId, SlPropertyListOutput } from '@/types/shenle'
 import type { MediaKind } from '@/utils/media'
-import { onLoad, onPageScroll, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { onLoad, onPageScroll, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, nextTick, ref } from 'vue'
 import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
@@ -54,6 +54,7 @@ const canManage = computed(() => canManagePropertyWrites({
 }))
 const canManageBuildingScope = computed(() => canManage.value && !!buildingId.value)
 const canBatchManage = computed(() => auth.isAdmin && modeStore.mode === 'admin' && !!buildingId.value)
+const CHANGE_CONSUMER = 'community-properties'
 
 function buildQuery(): PageSlPropertyInput {
   return {
@@ -325,6 +326,7 @@ async function handleBatchCompleted(event: BatchCompletedEvent) {
     communityId: communityId.value,
     buildingId: buildingId.value,
   })
+  changeStore.consumePropertyChange(CHANGE_CONSUMER)
 
   if (event.action === 'deleted') {
     const deleted = new Set(event.ids.map(id => String(id)))
@@ -342,8 +344,15 @@ async function changeStatus(item: SlPropertyListOutput, nextStatus: number) {
   if (item.status === nextStatus)
     return
   await updatePropertyStatus({ id: item.id, status: nextStatus })
+  item.status = nextStatus
+  changeStore.publishPropertyChange({
+    action: 'status-changed',
+    ids: [item.id],
+    communityId: communityId.value,
+    buildingId: buildingId.value,
+  })
+  changeStore.consumePropertyChange(CHANGE_CONSUMER)
   uni.showToast({ title: '状态已更新', icon: 'success' })
-  await load(true)
 }
 
 function removeItem(item: SlPropertyListOutput) {
@@ -355,8 +364,16 @@ function removeItem(item: SlPropertyListOutput) {
       if (!res.confirm)
         return
       await deleteProperty({ id: item.id })
+      items.value = items.value.filter(current => String(current.id) !== String(item.id))
+      total.value = Math.max(0, total.value - 1)
+      changeStore.publishPropertyChange({
+        action: 'deleted',
+        ids: [item.id],
+        communityId: communityId.value,
+        buildingId: buildingId.value,
+      })
+      changeStore.consumePropertyChange(CHANGE_CONSUMER)
       uni.showToast({ title: '删除成功', icon: 'success' })
-      await load(true)
     },
   })
 }
@@ -385,6 +402,24 @@ onLoad((query) => {
     uni.setNavigationBarTitle({ title: buildingName.value || communityName.value })
   load(true)
   loadMedia()
+})
+onShow(async () => {
+  const change = changeStore.consumePropertyChange(CHANGE_CONSUMER)
+  if (!change || !hasLoaded.value)
+    return
+  const sameCommunity = !change.payload.communityId || String(change.payload.communityId) === String(communityId.value)
+  const sameBuilding = !buildingId.value || !change.payload.buildingId || String(change.payload.buildingId) === String(buildingId.value)
+  if (!sameCommunity || !sameBuilding)
+    return
+  try {
+    if (!change.requiresReload && (change.payload.action === 'updated' || change.payload.action === 'status-changed'))
+      await patchBatchUpdatedItems(change.payload.ids)
+    else
+      await reloadLoadedRangePreservingScroll()
+  }
+  catch {
+    uni.showToast({ title: '房源刷新失败，请下拉重试', icon: 'none' })
+  }
 })
 onPullDownRefresh(() => load(true))
 onPageScroll(event => { currentScrollTop.value = event.scrollTop })

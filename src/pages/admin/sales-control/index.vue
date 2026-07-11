@@ -8,13 +8,14 @@ import type {
   SlRegionStatsOutput,
   SlRegionTreeOutput,
 } from '@/types/shenle'
-import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getBuildingStats } from '@/api/building'
 import { getCommunityPage } from '@/api/community'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
 import { getRegionStats, getRegionTree } from '@/api/region'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
+import { useEntityChangeStore } from '@/store/entity-change'
 import { sameId } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney, getStatusMeta, idToQuery } from '@/utils/shenle'
@@ -28,6 +29,7 @@ definePage({
 })
 
 const safeTop = useSafeTopStyle()
+const changeStore = useEntityChangeStore()
 
 interface RegionRow {
   id: ShenLeId
@@ -306,6 +308,13 @@ async function changeStatus(status: number) {
   if (!activeProperty.value)
     return
   await updatePropertyStatus({ id: activeProperty.value.id, status })
+  changeStore.publishPropertyChange({
+    action: 'status-changed',
+    ids: [activeProperty.value.id],
+    communityId: selectedCommunity.value?.id,
+    buildingId: selectedBuilding.value?.id,
+  })
+  changeStore.consumePropertyChange('sales-control')
   uni.showToast({ title: '状态已更新', icon: 'success' })
   actionVisible.value = false
   await refreshCurrent()
@@ -332,6 +341,15 @@ function goCommunityProperties(community: SlCommunityOutput) {
 }
 
 onLoad(initPage)
+onShow(() => {
+  const changes = [
+    changeStore.consumePropertyChange('sales-control'),
+    changeStore.consumeCommunityChange('sales-control'),
+    changeStore.consumeBuildingChange('sales-control'),
+  ]
+  if (changes.some(Boolean))
+    void refreshCurrent()
+})
 onPullDownRefresh(refreshCurrent)
 </script>
 

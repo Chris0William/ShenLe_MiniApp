@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { AddSlCommunityInput, ImageOutput, ShenLeId, SlCommunityOutput, SlRegionTreeOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, updateCommunity } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
 import { getRegionTree } from '@/api/region'
+import { useEntityChangeStore } from '@/store/entity-change'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -87,6 +88,13 @@ const finished = ref(false)
 const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
+const changeStore = useEntityChangeStore()
+const CHANGE_CONSUMER = 'community-manage'
+
+function publishCommunityChange(action: 'created' | 'updated' | 'deleted' | 'structural', ids: ShenLeId[]) {
+  changeStore.publishCommunityChange({ action, ids })
+  changeStore.consumeCommunityChange(CHANGE_CONSUMER)
+}
 const uploading = ref(false)
 const picking = ref(false)
 const previewVideo = ref<CommunityMedia | null>(null)
@@ -626,9 +634,11 @@ async function submitForm() {
       const updatePayload = { ...payload, id: form.id }
       await updateCommunity(updatePayload)
       patchCommunityListItem(updatePayload)
+      publishCommunityChange('updated', [form.id])
     }
     else {
-      await addCommunity(payload)
+      const createdId = await addCommunity(payload)
+      publishCommunityChange('created', [createdId])
       await loadData(true)
     }
     uni.showToast({ title: isEdit.value ? '更新成功' : '新增成功', icon: 'success' })
@@ -647,6 +657,7 @@ function confirmDelete(item: SlCommunityOutput) {
       if (!res.confirm)
         return
       await deleteCommunity(item.id)
+      publishCommunityChange('deleted', [item.id])
       uni.showToast({ title: '删除成功', icon: 'success' })
       await loadData(true)
     },
@@ -668,6 +679,15 @@ onLoad(async (query) => {
   const editId = typeof query?.editId === 'string' ? query.editId : ''
   if (editId)
     openEdit({ id: editId } as SlCommunityOutput)
+})
+onShow(() => {
+  const changes = [
+    changeStore.consumeCommunityChange(CHANGE_CONSUMER),
+    changeStore.consumeBuildingChange(CHANGE_CONSUMER),
+    changeStore.consumePropertyChange(CHANGE_CONSUMER),
+  ]
+  if (changes.some(Boolean))
+    void loadData(true)
 })
 onPullDownRefresh(() => loadData(true))
 onReachBottom(() => loadData())

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { SlCommunityOutput, SlPropertyGlobalStatsOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPropertyGlobalStats } from '@/api/property'
 import { useShenleAuthStore } from '@/store/auth'
+import { useEntityChangeStore } from '@/store/entity-change'
 import { requestLogin } from '@/utils/login-flow'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney } from '@/utils/shenle'
@@ -23,6 +24,7 @@ const stats = ref<SlPropertyGlobalStatsOutput>({ totalCount: 0, vacantCount: 0, 
 const communities = ref<SlCommunityOutput[]>([])
 const loading = ref(false)
 const auth = useShenleAuthStore()
+const changeStore = useEntityChangeStore()
 function requireLogin() {
   if (auth.isLogin)
     return true
@@ -60,6 +62,15 @@ function go(url: string, tab = false) {
 }
 
 onLoad(load)
+onShow(() => {
+  const changes = [
+    changeStore.consumePropertyChange('dashboard'),
+    changeStore.consumeCommunityChange('dashboard'),
+    changeStore.consumeBuildingChange('dashboard'),
+  ]
+  if (changes.some(Boolean))
+    void load()
+})
 onPullDownRefresh(load)
 </script>
 

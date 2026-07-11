@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { AddSlBuildingInput, ShenLeId, SlBuildingOutput, SlCommunitySelectOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { addBuilding, deleteBuilding, getBuildingDetail, getBuildingList, updateBuilding } from '@/api/building'
 import { getCommunityList } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
+import { useEntityChangeStore } from '@/store/entity-change'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -38,6 +39,13 @@ const isEdit = ref(false)
 const submitting = ref(false)
 const uploading = ref(false)
 const oneClickCreating = ref(false)
+const changeStore = useEntityChangeStore()
+const CHANGE_CONSUMER = 'building-manage'
+
+function publishBuildingChange(action: 'created' | 'updated' | 'deleted' | 'structural', ids: ShenLeId[]) {
+  changeStore.publishBuildingChange({ action, ids, communityId: communityId.value })
+  changeStore.consumeBuildingChange(CHANGE_CONSUMER)
+}
 
 const form = reactive<BuildingForm>({
   id: '',
@@ -293,10 +301,14 @@ async function submitForm() {
   submitting.value = true
   try {
     const payload = buildPayload()
-    if (isEdit.value)
+    if (isEdit.value) {
       await updateBuilding({ ...payload, id: form.id })
-    else
-      await addBuilding(payload)
+      publishBuildingChange('updated', [form.id])
+    }
+    else {
+      const createdId = await addBuilding(payload)
+      publishBuildingChange('created', [createdId])
+    }
     uni.showToast({ title: isEdit.value ? '更新成功' : '新增成功', icon: 'success' })
     formVisible.value = false
     communityId.value = String(payload.communityId)
@@ -328,7 +340,8 @@ async function createDefaultBuilding() {
   oneClickCreating.value = true
   try {
     try {
-      await addBuilding(payload)
+      const createdId = await addBuilding(payload)
+      publishBuildingChange('created', [createdId])
     }
     catch {
       try {
@@ -364,6 +377,7 @@ function confirmDelete(item: SlBuildingOutput) {
       if (!res.confirm)
         return
       await deleteBuilding(item.id)
+      publishBuildingChange('deleted', [item.id])
       uni.showToast({ title: '删除成功', icon: 'success' })
       await loadData()
     },
@@ -380,6 +394,15 @@ onLoad(async (query) => {
   communityId.value = String(query?.communityId || '')
   communityNameFromQuery.value = String(query?.communityName || '')
   await reloadAll()
+})
+onShow(() => {
+  const changes = [
+    changeStore.consumeBuildingChange(CHANGE_CONSUMER),
+    changeStore.consumePropertyChange(CHANGE_CONSUMER),
+    changeStore.consumeCommunityChange(CHANGE_CONSUMER),
+  ]
+  if (changes.some(Boolean))
+    void reloadAll()
 })
 onPullDownRefresh(reloadAll)
 </script>

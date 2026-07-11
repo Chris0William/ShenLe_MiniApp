@@ -14,6 +14,7 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
+import { useEntityChangeStore } from '@/store/entity-change'
 import { PROPERTY_MEDIA_SOURCE_ACTIONS, resolvePropertyMediaSource, toOptionalNumber } from '@/utils/property-management'
 import { resolveAssetUrl } from '@/utils/shenle'
 
@@ -110,6 +111,7 @@ const houseTags = ref<SlTagOutput[]>([])
 const facilityTags = ref<SlTagOutput[]>([])
 const contextCommunityName = ref('')
 const contextBuildingName = ref('')
+const changeStore = useEntityChangeStore()
 
 const mediaSourceActions = PROPERTY_MEDIA_SOURCE_ACTIONS
 
@@ -521,10 +523,22 @@ async function submit() {
     const data = buildSubmitData()
     if (isEdit.value) {
       await updateProperty({ ...data, id: editId.value })
+      changeStore.publishPropertyChange({
+        action: 'updated',
+        ids: [editId.value],
+        communityId: form.communityId,
+        buildingId: form.buildingId,
+      })
       uni.showToast({ title: '更新成功', icon: 'success' })
     }
     else {
-      await addProperty(data)
+      const createdId = await addProperty(data)
+      changeStore.publishPropertyChange({
+        action: 'created',
+        ids: [createdId],
+        communityId: form.communityId,
+        buildingId: form.buildingId,
+      })
       uni.showToast({ title: '新增成功', icon: 'success' })
     }
     setTimeout(() => uni.navigateBack(), 700)

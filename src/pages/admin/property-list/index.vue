@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
-import { computed, ref } from 'vue'
+import { onLoad, onPageScroll, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
+import { computed, nextTick, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPublicRegionPage } from '@/api/public-preview'
 import { useShenleAuthStore } from '@/store/auth'
+import { useEntityChangeStore } from '@/store/entity-change'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
@@ -43,6 +44,8 @@ const hasLoaded = ref(false)
 const locating = ref(false)
 const choosingReferencePoint = ref(false)
 const locationLabel = ref('点击选择位置')
+const currentScrollTop = ref(0)
+const changeStore = useEntityChangeStore()
 let referencePointVersion = 0
 
 const currentCount = computed(() => isPreviewMode.value ? previewItems.value.length : items.value.length)
@@ -234,6 +237,27 @@ function goProperties(item: SlCommunityOutput) {
   })
 }
 
+async function reloadLoadedRangePreservingScroll() {
+  if (loading.value || isPreviewMode.value)
+    return
+  const loadedPages = Math.max(1, page.value)
+  const restoreTop = currentScrollTop.value
+  loading.value = true
+  try {
+    const responses = []
+    for (let pageNo = 1; pageNo <= loadedPages; pageNo++)
+      responses.push(await getCommunityPage(buildQuery(pageNo)))
+    items.value = responses.flatMap(result => result.items)
+    total.value = responses[0]?.total || 0
+    page.value = loadedPages
+    await nextTick()
+    uni.pageScrollTo({ scrollTop: restoreTop, duration: 0 })
+  }
+  finally {
+    loading.value = false
+  }
+}
+
 function openNavigation(item: SlCommunityOutput) {
   if (!item.lat || !item.lng) {
     uni.showToast({ title: '暂无坐标', icon: 'none' })
@@ -251,6 +275,16 @@ onLoad(() => {
   load(true)
   autoLocate()
 })
+onShow(() => {
+  const changes = [
+    changeStore.consumePropertyChange('property-list'),
+    changeStore.consumeCommunityChange('property-list'),
+    changeStore.consumeBuildingChange('property-list'),
+  ]
+  if (changes.some(Boolean))
+    void reloadLoadedRangePreservingScroll()
+})
+onPageScroll(event => { currentScrollTop.value = event.scrollTop })
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
   if (!finished.value) {
