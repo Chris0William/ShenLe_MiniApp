@@ -1,4 +1,14 @@
-import type { PagedList, PageSlLandlordInput, ShenLeId, SlLandlordApplyOutput, SlLandlordOutput } from '@/types/shenle'
+import type {
+  BatchAssignOwnerInput,
+  BatchAssignOwnerOutput,
+  CommunityAssignmentOutput,
+  PagedList,
+  PageCommunityAssignmentInput,
+  PageSlLandlordInput,
+  ShenLeId,
+  SlLandlordApplyOutput,
+  SlLandlordOutput,
+} from '@/types/shenle'
 import { get, post } from './request'
 
 export function getLandlordPage(input: PageSlLandlordInput) {
@@ -7,6 +17,18 @@ export function getLandlordPage(input: PageSlLandlordInput) {
 
 export function setLandlord(userId: ShenLeId, isLandlord: boolean) {
   return post<void>('/api/slLandlord/setLandlord', { userId, isLandlord })
+}
+
+export function batchSetLandlords(userIds: ShenLeId[]) {
+  return post<number>('/api/slLandlord/batchSetLandlord', { userIds })
+}
+
+export function getCommunityAssignmentPage(input: PageCommunityAssignmentInput) {
+  return get<PagedList<CommunityAssignmentOutput>>('/api/slCommunity/assignmentPage', input as unknown as Record<string, unknown>)
+}
+
+export function batchAssignOwner(input: BatchAssignOwnerInput) {
+  return post<BatchAssignOwnerOutput>('/api/slCommunity/batchAssignOwner', input as unknown as Record<string, unknown>)
 }
 
 export function assignOwner(communityId: ShenLeId, ownerUserId: ShenLeId) {

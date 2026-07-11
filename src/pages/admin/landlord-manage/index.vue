@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import type { SlCommunityOutput, SlLandlordApplyOutput, SlLandlordOutput, SlUserOutput } from '@/types/shenle'
+import type { CommunityAssignmentOutput, ShenLeId, SlLandlordApplyOutput, SlLandlordOutput, SlUserOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { getCommunityPage } from '@/api/community'
-import { approveLandlord, assignOwner, getLandlordPage, getLandlordPending, rejectLandlord, setLandlord, unassignOwner } from '@/api/landlord'
+import { approveLandlord, batchAssignOwner, batchSetLandlords, getCommunityAssignmentPage, getLandlordPage, getLandlordPending, rejectLandlord, setLandlord } from '@/api/landlord'
 import { getUserPage } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
+import { assignmentState, buildAssignmentDelta, toggleCommunityAssignment, toggleUserSelection } from '@/utils/landlord-batch'
 import { useSafeTopStyle } from '@/utils/safe-area'
 
 definePage({
@@ -69,32 +69,41 @@ async function rejectPending(item: SlLandlordApplyOutput) {
 
 // ── 盘源对接人列表 ────────────────────────────────────────────────────────────────
 const keyword = ref('')
-const page = ref(1)
+const page = ref(0)
 const pageSize = 20
 const total = ref(0)
 const items = ref<SlLandlordOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
 const finished = computed(() => total.value > 0 && items.value.length >= total.value)
+let landlordRequestId = 0
 
 async function load(reset = false) {
-  if (loading.value)
+  if (!reset && loading.value)
     return
+  const requestId = ++landlordRequestId
+  const requestPage = reset ? 1 : page.value + 1
+  const requestKeyword = keyword.value.trim() || undefined
   if (reset) {
-    page.value = 1
+    page.value = 0
     items.value = []
     total.value = 0
   }
   loading.value = true
   try {
-    const result = await getLandlordPage({ page: page.value, pageSize, keyword: keyword.value.trim() || undefined })
+    const result = await getLandlordPage({ page: requestPage, pageSize, keyword: requestKeyword })
+    if (requestId !== landlordRequestId)
+      return
+    page.value = requestPage
     total.value = result.total
     items.value = reset ? result.items : [...items.value, ...result.items]
     hasLoaded.value = true
   }
   finally {
-    loading.value = false
-    uni.stopPullDownRefresh()
+    if (requestId === landlordRequestId) {
+      loading.value = false
+      uni.stopPullDownRefresh()
+    }
   }
 }
 
@@ -119,38 +128,51 @@ function cancelLandlord(item: SlLandlordOutput) {
 // ── 设为盘源对接人弹窗（用户选择）────────────────────────────────────────────────
 const setLandlordVisible = ref(false)
 const userKeyword = ref('')
-const userPage = ref(1)
+const userPage = ref(0)
 const userPageSize = 20
 const userTotal = ref(0)
 const userItems = ref<SlUserOutput[]>([])
 const userLoading = ref(false)
+const userSubmitting = ref(false)
+const selectedUserIds = ref<ShenLeId[]>([])
 const userFinished = computed(() => userTotal.value > 0 && userItems.value.length >= userTotal.value)
+let userRequestId = 0
 
 function openSetLandlord() {
+  if (userSubmitting.value)
+    return
   userKeyword.value = ''
-  userPage.value = 1
+  userPage.value = 0
   userTotal.value = 0
   userItems.value = []
+  selectedUserIds.value = []
   setLandlordVisible.value = true
   loadUsers(true)
 }
 
 async function loadUsers(reset = false) {
-  if (userLoading.value)
+  if (!reset && userLoading.value)
     return
+  const requestId = ++userRequestId
+  const requestPage = reset ? 1 : userPage.value + 1
+  const requestKeyword = userKeyword.value.trim() || undefined
   if (reset) {
-    userPage.value = 1
+    userPage.value = 0
     userItems.value = []
     userTotal.value = 0
   }
   userLoading.value = true
   try {
-    const result = await getUserPage({ page: userPage.value, pageSize: userPageSize, keyword: userKeyword.value.trim() || undefined })
+    const result = await getUserPage({ page: requestPage, pageSize: userPageSize, keyword: requestKeyword })
+    if (requestId !== userRequestId)
+      return
+    userPage.value = requestPage
     userTotal.value = result.total
     userItems.value = reset ? result.items : [...userItems.value, ...result.items]
   }
   finally {
-    userLoading.value = false
+    if (requestId === userRequestId)
+      userLoading.value = false
   }
 }
 
@@ -158,60 +180,112 @@ function onUserSearch() {
   loadUsers(true)
 }
 
-async function confirmSetLandlord(user: SlUserOutput) {
-  try {
-    await setLandlord(user.userId, true)
-    uni.showToast({ title: `已将「${user.nickName || '该用户'}」设为盘源对接人`, icon: 'success' })
+function isUserSelected(userId: ShenLeId) {
+  return selectedUserIds.value.some(id => String(id) === String(userId))
+}
+
+function toggleUser(user: SlUserOutput) {
+  if (userSubmitting.value)
+    return
+  selectedUserIds.value = toggleUserSelection(selectedUserIds.value, user.userId, Boolean(user.isLandlord))
+}
+
+function closeSetLandlord() {
+  if (!userSubmitting.value)
     setLandlordVisible.value = false
-    load(true)
-  }
-  catch {}
+}
+
+function confirmBatchSetLandlords() {
+  if (!selectedUserIds.value.length || userSubmitting.value)
+    return
+  const submittedUserIds = [...selectedUserIds.value]
+  const submittedSelection = selectedUserIds.value
+  uni.showModal({
+    title: '批量设置盘源对接人',
+    content: `确定将已选择的 ${submittedUserIds.length} 位用户设为盘源对接人？`,
+    success: async (res) => {
+      if (!res.confirm)
+        return
+      userSubmitting.value = true
+      try {
+        const count = await batchSetLandlords(submittedUserIds)
+        uni.showToast({ title: `已设置 ${count} 人`, icon: 'success' })
+        if (selectedUserIds.value === submittedSelection)
+          setLandlordVisible.value = false
+        await load(true)
+      }
+      finally {
+        userSubmitting.value = false
+      }
+    },
+  })
 }
 
 function onUserListReachBottom() {
-  if (!userFinished.value) {
-    userPage.value += 1
+  if (!userFinished.value)
     loadUsers()
-  }
 }
 
 // ── 分配楼盘弹窗（楼盘选择）────────────────────────────────────────────────
 const assignVisible = ref(false)
 const assignTarget = ref<SlLandlordOutput | null>(null)
 const communityKeyword = ref('')
-const communityPage = ref(1)
+const communityPage = ref(0)
 const communityPageSize = 20
 const communityTotal = ref(0)
-const communityItems = ref<SlCommunityOutput[]>([])
+const communityItems = ref<CommunityAssignmentOutput[]>([])
 const communityLoading = ref(false)
+const communitySubmitting = ref(false)
+const assignmentStatus = ref(0)
+const assignmentChanges = ref<Record<string, { id: ShenLeId, initial: boolean, desired: boolean }>>({})
 const communityFinished = computed(() => communityTotal.value > 0 && communityItems.value.length >= communityTotal.value)
+const assignmentDelta = computed(() => buildAssignmentDelta(assignmentChanges.value))
+const assignmentChangeCount = computed(() => assignmentDelta.value.assignCommunityIds.length + assignmentDelta.value.unassignCommunityIds.length)
+let communityRequestId = 0
 
 function openAssign(item: SlLandlordOutput) {
   assignTarget.value = item
   communityKeyword.value = ''
-  communityPage.value = 1
+  communityPage.value = 0
   communityTotal.value = 0
   communityItems.value = []
+  assignmentStatus.value = 0
+  assignmentChanges.value = {}
   assignVisible.value = true
   loadCommunities(true)
 }
 
 async function loadCommunities(reset = false) {
-  if (communityLoading.value)
+  const targetUserId = assignTarget.value?.userId
+  if (!targetUserId || (!reset && communityLoading.value))
     return
+  const requestId = ++communityRequestId
+  const requestPage = reset ? 1 : communityPage.value + 1
+  const requestKeyword = communityKeyword.value.trim() || undefined
+  const requestStatus = assignmentStatus.value
   if (reset) {
-    communityPage.value = 1
+    communityPage.value = 0
     communityItems.value = []
     communityTotal.value = 0
   }
   communityLoading.value = true
   try {
-    const result = await getCommunityPage({ page: communityPage.value, pageSize: communityPageSize, name: communityKeyword.value.trim() || undefined })
+    const result = await getCommunityAssignmentPage({
+      ownerUserId: targetUserId,
+      page: requestPage,
+      pageSize: communityPageSize,
+      keyword: requestKeyword,
+      assignmentStatus: requestStatus,
+    })
+    if (requestId !== communityRequestId || String(assignTarget.value?.userId) !== String(targetUserId))
+      return
+    communityPage.value = requestPage
     communityTotal.value = result.total
     communityItems.value = reset ? result.items : [...communityItems.value, ...result.items]
   }
   finally {
-    communityLoading.value = false
+    if (requestId === communityRequestId)
+      communityLoading.value = false
   }
 }
 
@@ -219,42 +293,64 @@ function onCommunitySearch() {
   loadCommunities(true)
 }
 
-async function confirmAssign(community: SlCommunityOutput) {
-  if (!assignTarget.value)
+function changeAssignmentStatus(status: number) {
+  if (assignmentStatus.value === status)
     return
-  try {
-    await assignOwner(community.id, assignTarget.value.userId)
-    uni.showToast({ title: `已将「${community.name}」分配给${assignTarget.value.nickName || '该盘源对接人'}`, icon: 'success' })
-    assignVisible.value = false
-    load(true)
-  }
-  catch {}
+  assignmentStatus.value = status
+  loadCommunities(true)
 }
 
-async function confirmUnassign(community: SlCommunityOutput) {
+function isCommunityAssigned(community: CommunityAssignmentOutput) {
+  return assignmentState(assignmentChanges.value, community.id, community.isAssigned)
+}
+
+function toggleCommunity(community: CommunityAssignmentOutput) {
+  if (communitySubmitting.value)
+    return
+  assignmentChanges.value = toggleCommunityAssignment(assignmentChanges.value, community.id, community.isAssigned)
+}
+
+function closeAssign() {
+  if (!communitySubmitting.value)
+    assignVisible.value = false
+}
+
+function saveCommunityAssignments() {
+  if (!assignTarget.value || !assignmentChangeCount.value || communitySubmitting.value)
+    return
+  const submittedTargetUserId = assignTarget.value.userId
+  const submittedChanges = assignmentChanges.value
+  const delta = buildAssignmentDelta(submittedChanges)
   uni.showModal({
-    title: '取消分配',
-    content: `确定将「${community.name}」从当前盘源对接人移除？`,
-    confirmColor: '#c94832',
+    title: '保存楼盘分配',
+    content: `新增分配 ${delta.assignCommunityIds.length} 个，移除 ${delta.unassignCommunityIds.length} 个，确认保存？`,
     success: async (res) => {
       if (!res.confirm)
         return
+      communitySubmitting.value = true
       try {
-        await unassignOwner(community.id)
-        uni.showToast({ title: '已取消分配', icon: 'success' })
-        assignVisible.value = false
-        load(true)
+        await batchAssignOwner({
+          ownerUserId: submittedTargetUserId,
+          assignCommunityIds: delta.assignCommunityIds,
+          unassignCommunityIds: delta.unassignCommunityIds,
+        })
+        uni.showToast({ title: '楼盘分配已更新', icon: 'success' })
+        if (String(assignTarget.value?.userId) === String(submittedTargetUserId) && assignmentChanges.value === submittedChanges) {
+          assignmentChanges.value = {}
+          await loadCommunities(true)
+        }
+        await load(true)
       }
-      catch {}
+      finally {
+        communitySubmitting.value = false
+      }
     },
   })
 }
 
 function onCommunityListReachBottom() {
-  if (!communityFinished.value) {
-    communityPage.value += 1
+  if (!communityFinished.value)
     loadCommunities()
-  }
 }
 
 // ── 角色标签颜色 ─────────────────────────────────────────────────────────────
@@ -303,10 +399,8 @@ onPullDownRefresh(() => {
   loadPending()
 })
 onReachBottom(() => {
-  if (!finished.value) {
-    page.value += 1
+  if (!finished.value)
     load()
-  }
 })
 </script>
 
@@ -346,7 +440,7 @@ onReachBottom(() => {
       </view>
     </view>
 
-    <!-- 搜索 + 设为盘源对接人 -->
+    <!-- 搜索 + 批量设置盘源对接人 -->
     <view class="toolbar sl-card">
       <view class="toolbar__search">
         <wd-icon name="search" size="20px" color="#7a8780" />
@@ -358,7 +452,7 @@ onReachBottom(() => {
       <view class="toolbar__divider" />
       <view class="set-btn" @tap="openSetLandlord">
         <wd-icon name="add" size="20px" color="#126b4f" />
-        <text>直接设为盘源对接人</text>
+        <text>批量设置盘源对接人</text>
       </view>
     </view>
 
@@ -399,12 +493,12 @@ onReachBottom(() => {
       已经到底了
     </view>
 
-    <!-- ── 设为盘源对接人 弹窗 ── -->
-    <wd-popup v-model="setLandlordVisible" position="bottom" :z-index="2000" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
+    <!-- ── 批量设置盘源对接人 弹窗 ── -->
+    <wd-popup v-model="setLandlordVisible" position="bottom" :z-index="2000" :close-on-click-modal="!userSubmitting" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
       <view class="picker-popup">
         <view class="picker-popup__head">
-          <text class="picker-popup__title">选择用户设为盘源对接人</text>
-          <view class="picker-popup__close" @tap="setLandlordVisible = false">
+          <text class="picker-popup__title">批量设置盘源对接人</text>
+          <view class="picker-popup__close" @tap="closeSetLandlord">
             <wd-icon name="close" size="22px" color="#6b7770" />
           </view>
         </view>
@@ -416,14 +510,25 @@ onReachBottom(() => {
           </wd-button>
         </view>
         <scroll-view class="picker-scroll" scroll-y @scrolltolower="onUserListReachBottom">
-          <view v-for="user in userItems" :key="String(user.userId)" class="picker-row" @tap="confirmSetLandlord(user)">
+          <view
+            v-for="user in userItems"
+            :key="String(user.userId)"
+            class="picker-row"
+            :class="{ 'picker-row--disabled': user.isLandlord }"
+            @tap="toggleUser(user)"
+          >
             <view class="picker-row__info">
-              <text class="picker-row__name">{{ user.nickName || '未设置昵称' }}</text>
-              <view class="role-tag role-tag--sm" :class="`role-tag--${roleTone(user.accountType)}`">
-                {{ user.accountTypeName }}
+              <view class="picker-row__title-line">
+                <text class="picker-row__name">{{ user.nickName || '未设置昵称' }}</text>
+                <view v-if="user.isLandlord" class="assignment-tag assignment-tag--assigned">
+                  已设置
+                </view>
               </view>
+              <text class="picker-row__sub">{{ user.accountTypeName }}</text>
             </view>
-            <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+            <view class="selection-box" :class="{ 'selection-box--checked': user.isLandlord || isUserSelected(user.userId), 'selection-box--disabled': user.isLandlord }">
+              <wd-icon v-if="user.isLandlord || isUserSelected(user.userId)" name="check" size="16px" color="#fff" />
+            </view>
           </view>
           <view v-if="userLoading" class="picker-tip">
             加载中...
@@ -435,15 +540,27 @@ onReachBottom(() => {
             已经到底了
           </view>
         </scroll-view>
+        <view class="picker-footer sl-safe-bottom">
+          <text class="picker-footer__summary">已选择 {{ selectedUserIds.length }} 人</text>
+          <wd-button
+            type="primary"
+            size="small"
+            :disabled="selectedUserIds.length === 0"
+            :loading="userSubmitting"
+            @click="confirmBatchSetLandlords"
+          >
+            确认设置
+          </wd-button>
+        </view>
       </view>
     </wd-popup>
 
     <!-- ── 分配楼盘 弹窗 ── -->
-    <wd-popup v-model="assignVisible" position="bottom" :z-index="2000" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
+    <wd-popup v-model="assignVisible" position="bottom" :z-index="2000" :close-on-click-modal="!communitySubmitting" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
       <view class="picker-popup">
         <view class="picker-popup__head">
           <text class="picker-popup__title">分配楼盘给「{{ assignTarget?.nickName || '盘源对接人' }}」</text>
-          <view class="picker-popup__close" @tap="assignVisible = false">
+          <view class="picker-popup__close" @tap="closeAssign">
             <wd-icon name="close" size="22px" color="#6b7770" />
           </view>
         </view>
@@ -454,19 +571,30 @@ onReachBottom(() => {
             搜索
           </wd-button>
         </view>
+        <view class="assignment-tabs">
+          <view :class="{ 'assignment-tab--active': assignmentStatus === 0 }" class="assignment-tab" @tap="changeAssignmentStatus(0)">
+            全部
+          </view>
+          <view :class="{ 'assignment-tab--active': assignmentStatus === 1 }" class="assignment-tab" @tap="changeAssignmentStatus(1)">
+            未分配
+          </view>
+          <view :class="{ 'assignment-tab--active': assignmentStatus === 2 }" class="assignment-tab" @tap="changeAssignmentStatus(2)">
+            已分配给他
+          </view>
+        </view>
         <scroll-view class="picker-scroll" scroll-y @scrolltolower="onCommunityListReachBottom">
-          <view v-for="community in communityItems" :key="String(community.id)" class="picker-row">
+          <view v-for="community in communityItems" :key="String(community.id)" class="picker-row" @tap="toggleCommunity(community)">
             <view class="picker-row__info">
-              <text class="picker-row__name">{{ community.name }}</text>
+              <view class="picker-row__title-line">
+                <text class="picker-row__name">{{ community.name }}</text>
+                <view class="assignment-tag" :class="isCommunityAssigned(community) ? 'assignment-tag--assigned' : 'assignment-tag--free'">
+                  {{ isCommunityAssigned(community) ? '已分配给此人' : '未分配' }}
+                </view>
+              </view>
               <text class="picker-row__sub">{{ community.buildingCount }} 栋 · {{ community.propertyCount }} 套</text>
             </view>
-            <view class="picker-row__btns">
-              <view class="action-btn action-btn--assign action-btn--sm" @tap="confirmAssign(community)">
-                分配
-              </view>
-              <view class="action-btn action-btn--cancel action-btn--sm" @tap="confirmUnassign(community)">
-                移除
-              </view>
+            <view class="selection-box" :class="{ 'selection-box--checked': isCommunityAssigned(community) }">
+              <wd-icon v-if="isCommunityAssigned(community)" name="check" size="16px" color="#fff" />
             </view>
           </view>
           <view v-if="communityLoading" class="picker-tip">
@@ -479,6 +607,21 @@ onReachBottom(() => {
             已经到底了
           </view>
         </scroll-view>
+        <view class="picker-footer sl-safe-bottom">
+          <view class="picker-footer__summary picker-footer__summary--stacked">
+            <text>新增分配 {{ assignmentDelta.assignCommunityIds.length }} 个</text>
+            <text>移除 {{ assignmentDelta.unassignCommunityIds.length }} 个</text>
+          </view>
+          <wd-button
+            type="primary"
+            size="small"
+            :disabled="assignmentChangeCount === 0"
+            :loading="communitySubmitting"
+            @click="saveCommunityAssignments"
+          >
+            保存
+          </wd-button>
+        </view>
       </view>
     </wd-popup>
   </view>
@@ -812,12 +955,24 @@ onReachBottom(() => {
   border-bottom: 1rpx solid var(--sl-line);
 }
 
+.picker-row--disabled {
+  background: #f7f8f7;
+  color: #8b948f;
+}
+
 .picker-row__info {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
   gap: 6rpx;
+}
+
+.picker-row__title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12rpx;
 }
 
 .picker-row__name {
@@ -833,10 +988,94 @@ onReachBottom(() => {
   font-size: 22rpx;
 }
 
-.picker-row__btns {
+.selection-box {
   display: flex;
+  width: 42rpx;
+  height: 42rpx;
+  flex: 0 0 42rpx;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #b9c5bf;
+  border-radius: 10rpx;
+  background: #fff;
+}
+
+.selection-box--checked {
+  border-color: #126b4f;
+  background: #126b4f;
+}
+
+.selection-box--disabled {
+  border-color: #8ca79a;
+  background: #8ca79a;
+}
+
+.assignment-tag {
   flex: 0 0 auto;
-  gap: 12rpx;
+  padding: 5rpx 12rpx;
+  border-radius: 999rpx;
+  font-size: 19rpx;
+  font-weight: 760;
+}
+
+.assignment-tag--assigned {
+  background: #e7f0ff;
+  color: #2f66ee;
+}
+
+.assignment-tag--free {
+  background: #f0f2f0;
+  color: #6b7770;
+}
+
+.assignment-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8rpx;
+  padding: 0 30rpx 18rpx;
+}
+
+.assignment-tab {
+  display: flex;
+  min-height: 58rpx;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid var(--sl-line);
+  border-radius: 10rpx;
+  color: #64716b;
+  font-size: 23rpx;
+  font-weight: 720;
+}
+
+.assignment-tab--active {
+  border-color: rgb(18 107 79 / 30%);
+  background: #ecf5ee;
+  color: #126b4f;
+}
+
+.picker-footer {
+  display: flex;
+  min-height: 92rpx;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  padding: 16rpx 30rpx;
+  border-top: 1rpx solid var(--sl-line);
+  background: #fff;
+}
+
+.picker-footer__summary {
+  min-width: 0;
+  flex: 1;
+  color: #385347;
+  font-size: 24rpx;
+  font-weight: 760;
+}
+
+.picker-footer__summary--stacked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6rpx 18rpx;
 }
 
 .picker-tip {

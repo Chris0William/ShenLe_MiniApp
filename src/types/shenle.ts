@@ -604,6 +604,7 @@ export interface SlUserOutput {
   avatar?: string | null
   accountType: number
   accountTypeName: string
+  isLandlord?: boolean
   createTime?: string | null
 }
 
@@ -645,4 +646,30 @@ export interface SlLandlordOutput {
 
 export interface PageSlLandlordInput extends BasePageInput {
   keyword?: string
+}
+
+export interface CommunityAssignmentOutput {
+  id: ShenLeId
+  name: string
+  regionName?: string | null
+  buildingCount: number
+  propertyCount: number
+  isAssigned: boolean
+}
+
+export interface PageCommunityAssignmentInput extends BasePageInput {
+  ownerUserId: ShenLeId
+  keyword?: string
+  assignmentStatus?: number
+}
+
+export interface BatchAssignOwnerInput {
+  ownerUserId: ShenLeId
+  assignCommunityIds: ShenLeId[]
+  unassignCommunityIds: ShenLeId[]
+}
+
+export interface BatchAssignOwnerOutput {
+  assignedCount: number
+  unassignedCount: number
 }
