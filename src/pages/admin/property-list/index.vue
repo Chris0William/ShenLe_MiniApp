@@ -344,9 +344,11 @@ onReachBottom(() => {
             <text class="preview-card__desc">{{ previewRegionDesc(item) }}</text>
             <text class="preview-card__meta">{{ previewRegionMeta(item) }}</text>
           </view>
-          <wd-button size="small" type="primary" @click.stop="previewCardAction">
-            申请后查看
-          </wd-button>
+          <view class="preview-card__action" @tap.stop>
+            <wd-button size="small" type="primary" @click="previewCardAction">
+              申请后查看
+            </wd-button>
+          </view>
         </view>
       </view>
       <template v-else>

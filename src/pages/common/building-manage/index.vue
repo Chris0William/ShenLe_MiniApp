@@ -459,7 +459,7 @@ onPullDownRefresh(reloadAll)
               </view>
             </view>
             <text class="remark">{{ item.remark || '暂无备注' }}</text>
-            <view class="actions">
+            <view class="actions" @tap.stop>
               <wd-button size="small" plain @click.stop="goProperties(item)">
                 房源
               </wd-button>

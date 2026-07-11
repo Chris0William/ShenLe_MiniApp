@@ -424,9 +424,11 @@ onPullDownRefresh(refreshCurrent)
                 </wd-tag>
               </view>
               <view class="community-card__actions">
-                <wd-button size="small" plain @click.stop="goCommunityProperties(community)">
-                  房源
-                </wd-button>
+                <view class="community-card__property-action" @tap.stop>
+                  <wd-button size="small" plain @click="goCommunityProperties(community)">
+                    房源
+                  </wd-button>
+                </view>
                 <wd-icon name="arrow-right" size="18px" color="#72817b" />
               </view>
             </view>
