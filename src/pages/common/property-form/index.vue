@@ -682,11 +682,9 @@ onLoad(async (query) => {
             <text class="ownership-value">{{ contextTotalFloorsLabel }}</text>
           </view>
         </view>
-        <sl-supply-contacts
-          v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)"
-          class="ownership-contacts"
-          :community="communityDetail"
-        />
+        <view v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)" class="ownership-contacts">
+          <sl-supply-contacts :community="communityDetail" />
+        </view>
         <view class="form-item">
           <text class="form-label">楼层 *</text>
           <input v-model="form.floor" class="form-input" type="number" placeholder="如 6">

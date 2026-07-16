@@ -1065,22 +1065,22 @@ defineExpose({ openAdd, openEdit, requestDelete })
           <view class="batch-section">
             <text class="section-title">生成规则</text>
             <view class="input-grid input-grid--two">
-              <label class="field"><text>起始楼层</text><input v-model="addForm.startFloor" type="number" placeholder="1"></label>
-              <label class="field"><text>结束楼层</text><input v-model="addForm.endFloor" type="number" placeholder="10"></label>
+              <label class="field"><text>起始楼层</text><input v-model="addForm.startFloor" class="field-input" type="number" placeholder="1"></label>
+              <label class="field"><text>结束楼层</text><input v-model="addForm.endFloor" class="field-input" type="number" placeholder="10"></label>
             </view>
             <view class="input-grid input-grid--three">
-              <label class="field"><text>室</text><input v-model="addForm.bedrooms" type="number" placeholder="1"></label>
-              <label class="field"><text>厅</text><input v-model="addForm.livingRooms" type="number" placeholder="0"></label>
-              <label class="field"><text>卫</text><input v-model="addForm.bathrooms" type="number" placeholder="0"></label>
+              <label class="field"><text>室</text><input v-model="addForm.bedrooms" class="field-input" type="number" placeholder="1"></label>
+              <label class="field"><text>厅</text><input v-model="addForm.livingRooms" class="field-input" type="number" placeholder="0"></label>
+              <label class="field"><text>卫</text><input v-model="addForm.bathrooms" class="field-input" type="number" placeholder="0"></label>
             </view>
             <view class="input-grid input-grid--two">
-              <label class="field"><text>面积</text><view class="field-with-unit"><input v-model="addForm.area" type="digit" placeholder="可选"><text>㎡</text></view></label>
-              <label class="field"><text>固定房号</text><input v-model="addForm.roomSuffix" type="text" placeholder="例如 02"></label>
+              <label class="field"><text>面积</text><view class="field-with-unit"><input v-model="addForm.area" class="field-input field-with-unit__input" type="digit" placeholder="可选"><text class="field-with-unit__suffix">㎡</text></view></label>
+              <label class="field"><text>固定房号</text><input v-model="addForm.roomSuffix" class="field-input" type="text" placeholder="例如 02"></label>
             </view>
             <view class="input-grid input-grid--three">
-              <label class="field"><text>基础价格</text><input v-model="addForm.baseRentPrice" type="digit" placeholder="0"></label>
-              <label class="field"><text>每几层递增</text><input v-model="addForm.incrementEveryFloors" type="number" placeholder="不递增"></label>
-              <label class="field"><text>递增价格</text><input v-model="addForm.incrementAmount" type="digit" placeholder="0"></label>
+              <label class="field"><text>基础价格</text><input v-model="addForm.baseRentPrice" class="field-input" type="digit" placeholder="0"></label>
+              <label class="field"><text>每几层递增</text><input v-model="addForm.incrementEveryFloors" class="field-input" type="number" placeholder="不递增"></label>
+              <label class="field"><text>递增价格</text><input v-model="addForm.incrementAmount" class="field-input" type="digit" placeholder="0"></label>
             </view>
             <text v-if="addValidationMessage" class="form-error">{{ addValidationMessage }}</text>
           </view>
@@ -1106,28 +1106,28 @@ defineExpose({ openAdd, openEdit, requestDelete })
             <scroll-view scroll-x class="draft-table-scroll">
               <view class="draft-table">
                 <view class="draft-table__row draft-table__head">
-                  <text>房号</text><text>户型（室/厅/卫）</text><text>面积</text><text>价格</text><text>状态</text><text>媒体</text><text>操作</text>
+                  <text class="draft-cell">房号</text><text class="draft-cell">户型（室/厅/卫）</text><text class="draft-cell">面积</text><text class="draft-cell">价格</text><text class="draft-cell">状态</text><text class="draft-cell">媒体</text><text class="draft-cell draft-cell--last">操作</text>
                 </view>
                 <view v-for="(row, index) in addRows" :key="`${row.floor}-${row.roomNo}-${index}`" class="draft-table__row">
-                  <input v-model="row.roomNo" class="draft-input draft-input--room" type="text">
-                  <view class="draft-layout">
-                    <input v-model="row.bedrooms" type="number"><text>/</text><input v-model="row.livingRooms" type="number"><text>/</text><input v-model="row.bathrooms" type="number">
+                  <input v-model="row.roomNo" class="draft-cell draft-input draft-input--room" type="text">
+                  <view class="draft-cell draft-layout">
+                    <input v-model="row.bedrooms" class="draft-layout__input" type="number"><text>/</text><input v-model="row.livingRooms" class="draft-layout__input" type="number"><text>/</text><input v-model="row.bathrooms" class="draft-layout__input" type="number">
                   </view>
-                  <view class="draft-value">
-                    <input v-model="row.area" type="digit" placeholder="--"><text>㎡</text>
+                  <view class="draft-cell draft-value">
+                    <input v-model="row.area" class="draft-value__input" type="digit" placeholder="--"><text>㎡</text>
                   </view>
-                  <view class="draft-value">
-                    <input v-model="row.rentPrice" type="digit"><text>元</text>
+                  <view class="draft-cell draft-value">
+                    <input v-model="row.rentPrice" class="draft-value__input" type="digit"><text>元</text>
                   </view>
-                  <picker :value="draftStatusIndex(row.status)" :range="propertyStatusNames" @change="changeDraftStatus(index, $event)">
+                  <picker class="draft-cell" :value="draftStatusIndex(row.status)" :range="propertyStatusNames" @change="changeDraftStatus(index, $event)">
                     <view class="draft-status">
                       {{ PROPERTY_STATUS_OPTIONS[draftStatusIndex(row.status)]?.label || '空置' }}
                     </view>
                   </picker>
-                  <view class="draft-media" @tap="openAddRowMedia(index)">
+                  <view class="draft-cell draft-media" @tap="openAddRowMedia(index)">
                     <wd-icon name="image" size="16px" /><text>{{ row.images.length ? `${row.images.length} 个` : '分配' }}</text>
                   </view>
-                  <view class="draft-remove" @tap="removeAddRow(index)">
+                  <view class="draft-cell draft-cell--last draft-remove" @tap="removeAddRow(index)">
                     <wd-icon name="delete" size="18px" color="#c94832" />
                   </view>
                 </view>
@@ -1278,11 +1278,11 @@ defineExpose({ openAdd, openEdit, requestDelete })
               </view>
               <view v-if="selectedMedia.length && (mediaMode === 'append' || mediaMode === 'replace')" class="selected-media">
                 <view v-for="media in selectedMedia" :key="String(media.fileId)" class="selected-media__item">
-                  <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
+                  <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
                   <view v-else class="selected-media__video">
                     <wd-icon name="play-circle" size="24px" color="#fff" />
                   </view>
-                  <text>{{ media.name }}</text>
+                  <text class="media-name">{{ media.name }}</text>
                   <view class="selected-media__remove" @tap="removeSelectedMedia(media.fileId)">
                     <wd-icon name="close" size="12px" color="#fff" />
                   </view>
@@ -1300,11 +1300,11 @@ defineExpose({ openAdd, openEdit, requestDelete })
                 <text v-else class="section-hint">所选房源媒体一致，共 {{ commonPropertyMedia.length }} 个，可统一选择封面。</text>
                 <view v-if="batchCoverChoices.length" class="cover-choice-grid">
                   <view v-for="choice in batchCoverChoices" :key="choice.key" class="cover-choice" :class="{ selected: batchCoverChoice?.key === choice.key }" @tap="batchCoverChoice = choice">
-                    <image v-if="choice.kind === 'image'" :src="choice.url" mode="aspectFill" />
+                    <image v-if="choice.kind === 'image'" class="cover-choice__media" :src="choice.url" mode="aspectFill" />
                     <view v-else class="cover-choice__video">
                       <wd-icon name="play-circle" size="24px" color="#fff" />
                     </view>
-                    <text>{{ choice.name }}</text>
+                    <text class="cover-choice__name">{{ choice.name }}</text>
                     <text v-if="batchCoverChoice?.key === choice.key" class="cover-choice__badge">封面</text>
                   </view>
                 </view>
@@ -1338,11 +1338,11 @@ defineExpose({ openAdd, openEdit, requestDelete })
         </view>
         <view v-else class="media-grid">
           <view v-for="media in activeAddMediaRow.images" :key="String(media.fileId)" class="pool-media add-row-media" @tap="setAddRowCover(media.fileId)">
-            <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
+            <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
               <wd-icon name="play-circle" size="28px" color="#fff" />
             </view>
-            <text>{{ media.name }}</text>
+            <text class="media-name">{{ media.name }}</text>
             <text v-if="sameId(activeAddMediaRow.coverImageId, media.fileId)" class="cover-choice__badge">封面</text>
             <view class="selected-media__remove" @tap.stop="removeAddRowMedia(media.fileId)">
               <wd-icon name="close" size="12px" color="#fff" />
@@ -1371,11 +1371,11 @@ defineExpose({ openAdd, openEdit, requestDelete })
         </view>
         <view v-else class="media-grid">
           <view v-for="media in communityMediaPool" :key="String(media.fileId)" class="pool-media" :class="{ selected: communityMediaSelection.some(item => sameId(item.fileId, media.fileId)) }" @tap="toggleCommunityMedia(media)">
-            <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
+            <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
               <wd-icon name="play-circle" size="28px" color="#fff" />
             </view>
-            <text>{{ media.name }}</text>
+            <text class="media-name">{{ media.name }}</text>
             <view class="pool-media__check">
               <wd-icon v-if="communityMediaSelection.some(item => sameId(item.fileId, media.fileId))" name="check" size="13px" color="#fff" />
             </view>
@@ -1485,7 +1485,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
   font-size: 22rpx;
 }
 
-.field input,
+.field-input,
 .edit-input,
 .edit-textarea {
   box-sizing: border-box;
@@ -1509,19 +1509,19 @@ defineExpose({ openAdd, openEdit, requestDelete })
   background: #f7faf6;
 }
 
-.field-with-unit input {
+.field-with-unit__input {
   min-width: 0;
   flex: 1;
   border: 0;
   background: transparent;
 }
 
-.field-with-unit > text {
+.field-with-unit__suffix {
   padding-right: 16rpx;
   color: var(--sl-muted, #72817b);
 }
 
-.field input,
+.field-input,
 .edit-input {
   height: 70rpx;
   padding: 0 18rpx;
@@ -1580,20 +1580,14 @@ defineExpose({ openAdd, openEdit, requestDelete })
   border-bottom: 0;
 }
 
-.draft-table__row > text,
-.draft-table__row > input,
-.draft-table__row > view,
-.draft-table__row > picker {
+.draft-cell {
   min-width: 0;
   box-sizing: border-box;
   padding: 0 12rpx;
   border-right: 1rpx solid #edf1ec;
 }
 
-.draft-table__row > text:last-child,
-.draft-table__row > input:last-child,
-.draft-table__row > view:last-child,
-.draft-table__row > picker:last-child {
+.draft-cell--last {
   border-right: 0;
 }
 
@@ -1607,8 +1601,8 @@ defineExpose({ openAdd, openEdit, requestDelete })
 }
 
 .draft-input,
-.draft-layout input,
-.draft-value input {
+.draft-layout__input,
+.draft-value__input {
   height: 56rpx;
   border: 1rpx solid #dfe8e1;
   border-radius: 6rpx;
@@ -1629,7 +1623,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
   gap: 5rpx;
 }
 
-.draft-layout input {
+.draft-layout__input {
   width: 54rpx;
 }
 
@@ -1639,7 +1633,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
   font-size: 20rpx;
 }
 
-.draft-value input {
+.draft-value__input {
   min-width: 0;
   flex: 1;
 }
@@ -1769,7 +1763,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
   border-color: #2f7ef7;
 }
 
-.cover-choice image,
+.cover-choice__media,
 .cover-choice__video {
   display: flex;
   width: 100%;
@@ -1779,7 +1773,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
   background: linear-gradient(135deg, #0f6a4c, #173f34);
 }
 
-.cover-choice > text:not(.cover-choice__badge) {
+.cover-choice__name {
   display: block;
   overflow: hidden;
   padding: 10rpx;
@@ -1839,9 +1833,8 @@ defineExpose({ openAdd, openEdit, requestDelete })
   background: #edf2eb;
 }
 
-.selected-media__item image,
+.media-thumb,
 .selected-media__video,
-.pool-media image,
 .pool-media__video {
   display: flex;
   width: 100%;
@@ -1851,8 +1844,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
   background: linear-gradient(135deg, #0f6a4c, #173f34);
 }
 
-.selected-media__item > text,
-.pool-media > text {
+.media-name {
   display: block;
   overflow: hidden;
   padding: 10rpx;
