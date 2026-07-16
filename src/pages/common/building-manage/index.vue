@@ -6,6 +6,7 @@ import { addBuilding, deleteBuilding, getBuildingDetail, getBuildingList, update
 import { getCommunityList } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -224,13 +225,8 @@ async function openEdit(item: SlBuildingOutput) {
 async function chooseImages() {
   if (uploading.value)
     return
-  const remain = 9 - form.imageIds.length
-  if (remain <= 0) {
-    uni.showToast({ title: '最多上传 9 张', icon: 'none' })
-    return
-  }
   uni.chooseImage({
-    count: remain,
+    count: MEDIA_SELECTION_BATCH_LIMIT,
     sizeType: ['compressed'],
     success: async (res) => {
       uploading.value = true
@@ -526,7 +522,7 @@ onPullDownRefresh(reloadAll)
           <view class="form-row form-row--images">
             <view class="image-head">
               <text>楼栋图片</text>
-              <text>{{ form.imageIds.length }}/9</text>
+              <text>{{ form.imageIds.length }} 张</text>
             </view>
             <view class="image-grid">
               <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
