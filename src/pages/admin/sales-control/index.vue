@@ -541,8 +541,8 @@ onPullDownRefresh(refreshCurrent)
       </view>
     </scroll-view>
 
-    <wd-popup v-model="actionVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
-      <view class="action-sheet">
+    <wd-popup v-model="actionVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+      <view class="action-sheet" @touchmove.stop.prevent>
         <view class="action-sheet__head">
           <view>
             <text class="action-sheet__title">{{ activeProperty?.title || '房源' }}</text>

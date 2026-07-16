@@ -6,6 +6,7 @@ import { downloadFile } from '@/api/file'
 import { getPropertyDetail } from '@/api/property'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
+import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
 definePage({
   style: {
@@ -120,6 +121,18 @@ function previewGalleryMedia(media: PropertyDetailMedia) {
   uni.previewImage({ current: media.url, urls })
 }
 
+function savePreviewVideo() {
+  if (!previewVideo.value)
+    return
+  void saveVideoToAlbum({ fileId: previewVideo.value.id, url: previewVideo.value.url })
+}
+
+function openSavePreviewMenu() {
+  if (!previewVideo.value)
+    return
+  void showVideoSaveActionSheet({ fileId: previewVideo.value.id, url: previewVideo.value.url })
+}
+
 async function loadDetail() {
   if (!id.value)
     return
@@ -223,13 +236,18 @@ onLoad((query) => {
         <text class="description">{{ detail.description || detail.remark || '暂无描述' }}</text>
       </view>
 
-      <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
-        <view class="video-preview" @tap.stop>
+      <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
+        <view class="video-preview" @tap.stop @touchmove.stop.prevent>
           <view class="video-preview__head">
             <text>{{ previewVideo?.fileName || '视频预览' }}</text>
-            <wd-icon name="close" size="20px" color="#72817b" @click.stop="previewVideo = null" />
+            <view class="video-preview__actions">
+              <wd-button size="small" plain icon="download" @click.stop="savePreviewVideo">
+                保存
+              </wd-button>
+              <wd-icon name="close" size="20px" color="#72817b" @click.stop="previewVideo = null" />
+            </view>
           </view>
-          <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay />
+          <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay @longpress.stop="openSavePreviewMenu" />
         </view>
       </wd-popup>
     </template>
@@ -397,6 +415,12 @@ onLoad((query) => {
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 900;
+}
+
+.video-preview__actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
 }
 
 .video-preview__player {

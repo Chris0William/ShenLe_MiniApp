@@ -494,8 +494,8 @@ onReachBottom(() => {
     </view>
 
     <!-- ── 批量设置盘源对接人 弹窗 ── -->
-    <wd-popup v-model="setLandlordVisible" position="bottom" :z-index="2000" :close-on-click-modal="!userSubmitting" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
-      <view class="picker-popup">
+    <wd-popup v-model="setLandlordVisible" position="bottom" :z-index="2000" :close-on-click-modal="!userSubmitting" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;" @touchmove.stop.prevent>
+      <view class="picker-popup" @touchmove.stop.prevent>
         <view class="picker-popup__head">
           <text class="picker-popup__title">批量设置盘源对接人</text>
           <view class="picker-popup__close" @tap="closeSetLandlord">
@@ -556,8 +556,8 @@ onReachBottom(() => {
     </wd-popup>
 
     <!-- ── 分配楼盘 弹窗 ── -->
-    <wd-popup v-model="assignVisible" position="bottom" :z-index="2000" :close-on-click-modal="!communitySubmitting" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;">
-      <view class="picker-popup">
+    <wd-popup v-model="assignVisible" position="bottom" :z-index="2000" :close-on-click-modal="!communitySubmitting" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 80vh;" @touchmove.stop.prevent>
+      <view class="picker-popup" @touchmove.stop.prevent>
         <view class="picker-popup__head">
           <text class="picker-popup__title">分配楼盘给「{{ assignTarget?.nickName || '盘源对接人' }}」</text>
           <view class="picker-popup__close" @tap="closeAssign">

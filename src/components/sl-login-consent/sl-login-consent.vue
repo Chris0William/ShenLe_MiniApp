@@ -163,8 +163,8 @@ defineExpose({ open })
 </script>
 
 <template>
-  <wd-popup v-model="agreementVisible" :z-index="3000" custom-style="border-radius: 28rpx; overflow: hidden; width: 650rpx;">
-    <view class="login-consent">
+  <wd-popup v-model="agreementVisible" :z-index="3000" custom-style="border-radius: 28rpx; overflow: hidden; width: 650rpx;" @touchmove.stop.prevent>
+    <view class="login-consent" @touchmove.stop.prevent>
       <view class="login-consent__mark">
         <wd-icon name="user" size="34px" color="#126b4f" />
       </view>
@@ -188,8 +188,8 @@ defineExpose({ open })
     </view>
   </wd-popup>
 
-  <wd-popup v-model="profileVisible" :z-index="3001" custom-style="border-radius: 28rpx; overflow: hidden; width: 650rpx;">
-    <view class="login-consent profile-consent">
+  <wd-popup v-model="profileVisible" :z-index="3001" custom-style="border-radius: 28rpx; overflow: hidden; width: 650rpx;" @touchmove.stop.prevent>
+    <view class="login-consent profile-consent" @touchmove.stop.prevent>
       <text class="login-consent__title">完善账号资料</text>
       <text class="login-consent__desc">首次登录需要选择头像并填写昵称，用于账号展示和申请审核。</text>
       <button class="avatar-chooser" open-type="chooseAvatar" @chooseavatar="onChooseAvatar">

@@ -7,6 +7,7 @@ import { getCommunityDetail } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
 import { addProperty, getPropertyDetail, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
+import SlMediaSourceSheet from '@/components/sl-media-source-sheet/sl-media-source-sheet.vue'
 import {
   DECORATION_OPTIONS,
   DEPOSIT_RULE_OPTIONS,
@@ -15,8 +16,9 @@ import {
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
 import { useEntityChangeStore } from '@/store/entity-change'
-import { PROPERTY_MEDIA_SOURCE_ACTIONS, resolvePropertyMediaSource, toOptionalNumber } from '@/utils/property-management'
+import { resolvePropertyMediaSource, toOptionalNumber } from '@/utils/property-management'
 import { resolveAssetUrl } from '@/utils/shenle'
+import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
 definePage({
   style: {
@@ -111,8 +113,6 @@ const contextCommunityName = ref('')
 const contextBuildingName = ref('')
 const changeStore = useEntityChangeStore()
 
-const mediaSourceActions = PROPERTY_MEDIA_SOURCE_ACTIONS
-
 const form = reactive<FormState>({
   communityId: '',
   buildingId: '',
@@ -149,6 +149,18 @@ const videoPreviewVisible = computed({
       previewVideo.value = null
   },
 })
+
+function savePreviewVideo() {
+  if (!previewVideo.value)
+    return
+  void saveVideoToAlbum({ fileId: previewVideo.value.id, url: previewVideo.value.url })
+}
+
+function openSavePreviewMenu() {
+  if (!previewVideo.value)
+    return
+  void showVideoSaveActionSheet({ fileId: previewVideo.value.id, url: previewVideo.value.url })
+}
 
 const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
 const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
@@ -315,8 +327,8 @@ function openMediaSourceSheet() {
     mediaSourceVisible.value = true
 }
 
-function selectMediaSource(event: { item: { value?: unknown } }) {
-  const source = resolvePropertyMediaSource(event.item.value)
+function selectMediaSource(value: unknown) {
+  const source = resolvePropertyMediaSource(value)
   if (!source)
     return
   mediaSourceVisible.value = false
@@ -812,8 +824,8 @@ onLoad(async (query) => {
       </view>
     </view>
 
-    <wd-popup v-model="communityMediaVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
-      <view class="media-picker">
+    <wd-popup v-model="communityMediaVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+      <view class="media-picker" @touchmove.stop.prevent>
         <view class="media-picker__head">
           <view>
             <text class="media-picker__title">楼盘媒体池</text>
@@ -857,22 +869,20 @@ onLoad(async (query) => {
       </view>
     </wd-popup>
 
-    <wd-action-sheet
-      v-model="mediaSourceVisible"
-      title="添加媒体"
-      cancel-text="取消"
-      :actions="mediaSourceActions"
-      root-portal
-      @select="selectMediaSource"
-    />
+    <sl-media-source-sheet v-model="mediaSourceVisible" @select="selectMediaSource" />
 
-    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
-      <view class="video-preview" @tap.stop>
+    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
+      <view class="video-preview" @tap.stop @touchmove.stop.prevent>
         <view class="video-preview__head">
           <text>{{ previewVideo?.fileName || '视频预览' }}</text>
-          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideo = null" />
+          <view class="video-preview__actions">
+            <wd-button size="small" plain icon="download" @click="savePreviewVideo">
+              保存
+            </wd-button>
+            <wd-icon name="close" size="20px" color="#72817b" @click="previewVideo = null" />
+          </view>
         </view>
-        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay />
+        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay @longpress="openSavePreviewMenu" />
       </view>
     </wd-popup>
 
@@ -1276,6 +1286,12 @@ onLoad(async (query) => {
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 900;
+}
+
+.video-preview__actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
 }
 
 .video-preview__player {

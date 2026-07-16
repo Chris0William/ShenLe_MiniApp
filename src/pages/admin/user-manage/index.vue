@@ -290,8 +290,8 @@ onReachBottom(() => {
       </view>
     </view>
 
-    <wd-popup v-model="nicknameVisible" :z-index="2000" custom-style="border-radius: 26rpx; overflow: hidden; width: 640rpx;">
-      <view class="nickname-popup">
+    <wd-popup v-model="nicknameVisible" :z-index="2000" custom-style="border-radius: 26rpx; overflow: hidden; width: 640rpx;" @touchmove.stop.prevent>
+      <view class="nickname-popup" @touchmove.stop.prevent>
         <text class="nickname-popup__title">修改用户昵称</text>
         <wd-input v-model="nicknameDraft" placeholder="请输入昵称" clearable :maxlength="32" />
         <view class="nickname-popup__actions">

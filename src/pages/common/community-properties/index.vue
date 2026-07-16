@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { PageSlPropertyInput, ShenLeId, SlPropertyListOutput } from '@/types/shenle'
 import type { MediaKind } from '@/utils/media'
-import { onLoad, onPageScroll, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
-import { computed, nextTick, ref } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
+import { computed, reactive, ref } from 'vue'
 import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
-import { deleteProperty, getPropertyDetail, getPropertyPage, updatePropertyStatus } from '@/api/property'
+import { deleteProperty, getPropertyBatchList, getPropertyDetail, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import SlPropertyBatch from '@/components/sl-property-batch/sl-property-batch.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
@@ -13,13 +13,15 @@ import { useEntityChangeStore } from '@/store/entity-change'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { mediaKindOf } from '@/utils/media'
+import { filterPropertyRows } from '@/utils/property-batch'
 import { canManagePropertyWrites } from '@/utils/property-management'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
+import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
 definePage({
   style: {
     navigationBarTitleText: '楼盘房源',
-    enablePullDownRefresh: true,
+    disableScroll: true,
   },
 })
 
@@ -30,17 +32,36 @@ const buildingName = ref('')
 const buildingTotalFloors = ref<number | null>(null)
 const keyword = ref('')
 const status = ref<number | undefined>()
+const minFloor = ref<number | undefined>()
+const maxFloor = ref<number | undefined>()
+const roomNoSuffix = ref('')
+const bedrooms = ref<number | undefined>()
+const livingRooms = ref<number | undefined>()
+const bathrooms = ref<number | undefined>()
+const activeFilter = ref<'floor' | 'room' | 'layout' | null>(null)
+const floorDraft = reactive({ min: '', max: '' })
+const roomDraft = ref('')
+const layoutDraft = reactive<{ bedrooms?: number, livingRooms?: number, bathrooms?: number }>({})
+const layoutNumbers = [undefined, 0, 1, 2, 3, 4, 5] as const
+const layoutFields = [
+  { key: 'bedrooms', label: '室' },
+  { key: 'livingRooms', label: '厅' },
+  { key: 'bathrooms', label: '卫' },
+] as const
 const page = ref(1)
 const pageSize = 10
 const total = ref(0)
 const items = ref<SlPropertyListOutput[]>([])
 const loading = ref(false)
 const hasLoaded = ref(false)
-const currentScrollTop = ref(0)
+const refresherTriggered = ref(false)
+const batchOverlayVisible = ref(false)
 const auth = useShenleAuthStore()
 const changeStore = useEntityChangeStore()
 const selectionMode = ref(false)
 const selectedIds = ref<ShenLeId[]>([])
+const selectingAll = ref(false)
+const allFilteredSelected = ref(false)
 const batchRef = ref<{
   openAdd: () => void
   openEdit: () => void
@@ -55,6 +76,25 @@ const canManage = computed(() => canManagePropertyWrites({
 const canManageBuildingScope = computed(() => canManage.value && !!buildingId.value)
 const canBatchManage = computed(() => auth.isAdmin && modeStore.mode === 'admin' && !!buildingId.value)
 const CHANGE_CONSUMER = 'community-properties'
+const floorFilterLabel = computed(() => {
+  if (minFloor.value == null && maxFloor.value == null)
+    return '楼层'
+  return `${minFloor.value ?? '不限'}-${maxFloor.value ?? '不限'}层`
+})
+const roomFilterLabel = computed(() => roomNoSuffix.value ? `房号 · ${roomNoSuffix.value}` : '房号')
+const layoutFilterLabel = computed(() => {
+  if (bedrooms.value == null && livingRooms.value == null && bathrooms.value == null)
+    return '户型'
+  return `${bedrooms.value ?? '-'},${livingRooms.value ?? '-'},${bathrooms.value ?? '-'}`
+})
+const hasActiveListFilter = computed(() => !!keyword.value.trim()
+  || status.value != null
+  || minFloor.value != null
+  || maxFloor.value != null
+  || !!roomNoSuffix.value
+  || bedrooms.value != null
+  || livingRooms.value != null
+  || bathrooms.value != null)
 
 function buildQuery(): PageSlPropertyInput {
   return {
@@ -64,7 +104,100 @@ function buildQuery(): PageSlPropertyInput {
     buildingId: buildingId.value || undefined,
     title: keyword.value.trim() || undefined,
     status: status.value,
+    minFloor: minFloor.value,
+    maxFloor: maxFloor.value,
+    roomNoSuffix: roomNoSuffix.value.trim() || undefined,
+    bedrooms: bedrooms.value,
+    livingRooms: livingRooms.value,
+    bathrooms: bathrooms.value,
   }
+}
+
+function currentRowFilter() {
+  return {
+    keyword: keyword.value,
+    status: status.value,
+    minFloor: minFloor.value,
+    maxFloor: maxFloor.value,
+    roomNoSuffix: roomNoSuffix.value,
+    bedrooms: bedrooms.value,
+    livingRooms: livingRooms.value,
+    bathrooms: bathrooms.value,
+  }
+}
+
+function resetSelectionForFilterChange() {
+  selectedIds.value = []
+  allFilteredSelected.value = false
+}
+
+function toggleFilter(name: 'floor' | 'room' | 'layout') {
+  activeFilter.value = activeFilter.value === name ? null : name
+  if (name === 'floor') {
+    floorDraft.min = minFloor.value == null ? '' : String(minFloor.value)
+    floorDraft.max = maxFloor.value == null ? '' : String(maxFloor.value)
+  }
+  else if (name === 'room') {
+    roomDraft.value = roomNoSuffix.value
+  }
+  else {
+    layoutDraft.bedrooms = bedrooms.value
+    layoutDraft.livingRooms = livingRooms.value
+    layoutDraft.bathrooms = bathrooms.value
+  }
+}
+
+function optionalFloor(value: string) {
+  if (!value.trim())
+    return undefined
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed <= 0)
+    throw new Error('楼层必须是大于 0 的整数')
+  return parsed
+}
+
+function applyFloorFilter() {
+  try {
+    const min = optionalFloor(floorDraft.min)
+    const max = optionalFloor(floorDraft.max)
+    if (min != null && max != null && min > max)
+      throw new Error('起始楼层不能大于结束楼层')
+    minFloor.value = min
+    maxFloor.value = max
+    activeFilter.value = null
+    resetSelectionForFilterChange()
+    void load(true)
+  }
+  catch (error) {
+    uni.showToast({ title: error instanceof Error ? error.message : '楼层范围无效', icon: 'none' })
+  }
+}
+
+function applyRoomFilter() {
+  roomNoSuffix.value = roomDraft.value.trim()
+  activeFilter.value = null
+  resetSelectionForFilterChange()
+  void load(true)
+}
+
+function applyLayoutFilter() {
+  bedrooms.value = layoutDraft.bedrooms
+  livingRooms.value = layoutDraft.livingRooms
+  bathrooms.value = layoutDraft.bathrooms
+  activeFilter.value = null
+  resetSelectionForFilterChange()
+  void load(true)
+}
+
+function clearFloorFilter() {
+  floorDraft.min = ''
+  floorDraft.max = ''
+}
+
+function clearLayoutFilter() {
+  layoutDraft.bedrooms = undefined
+  layoutDraft.livingRooms = undefined
+  layoutDraft.bathrooms = undefined
 }
 
 async function load(reset = false) {
@@ -88,7 +221,6 @@ async function load(reset = false) {
   }
   finally {
     loading.value = false
-    uni.stopPullDownRefresh()
   }
 }
 
@@ -120,7 +252,6 @@ async function loadAvailableForUser() {
   }
   finally {
     loading.value = false
-    uni.stopPullDownRefresh()
   }
 }
 
@@ -128,7 +259,6 @@ async function reloadLoadedRangePreservingScroll() {
   if (!communityId.value || loading.value)
     return
   const loadedPages = Math.max(1, page.value)
-  const restoreTop = currentScrollTop.value
   loading.value = true
   try {
     const responses = []
@@ -142,12 +272,9 @@ async function reloadLoadedRangePreservingScroll() {
     total.value = responses[0]?.total || 0
     page.value = loadedPages
     hasLoaded.value = true
-    await nextTick()
-    uni.pageScrollTo({ scrollTop: restoreTop, duration: 0 })
   }
   finally {
     loading.value = false
-    uni.stopPullDownRefresh()
   }
 }
 
@@ -159,6 +286,7 @@ async function patchBatchUpdatedItems(ids: readonly ShenLeId[]) {
 
 function selectStatus(value?: number) {
   status.value = value
+  resetSelectionForFilterChange()
   load(true)
 }
 
@@ -166,6 +294,7 @@ function onSearch() {
   // 搜索需登录（管理端不拦）
   if (!canManage.value && !ensureCanUse('登录后即可搜索房源'))
     return
+  resetSelectionForFilterChange()
   load(true)
 }
 
@@ -186,6 +315,36 @@ const videoPreviewVisible = computed({
       previewVideoMedia.value = null
   },
 })
+const refreshEnabled = computed(() => !batchOverlayVisible.value && !videoPreviewVisible.value)
+
+async function handleRefresh() {
+  if (!refreshEnabled.value || refresherTriggered.value)
+    return
+  refresherTriggered.value = true
+  try {
+    await load(true)
+  }
+  catch {
+    uni.showToast({ title: '刷新失败，请重试', icon: 'none' })
+  }
+  finally {
+    refresherTriggered.value = false
+  }
+}
+
+function handleScrollToLower() {
+  // 用户模式一次性全量加载，不分页。
+  if (!canManage.value || loading.value || finished.value)
+    return
+  page.value += 1
+  void load()
+}
+
+function handleBatchVisibilityChange(visible: boolean) {
+  batchOverlayVisible.value = visible
+  if (visible)
+    refresherTriggered.value = false
+}
 
 async function loadMedia() {
   if (!communityId.value)
@@ -231,6 +390,18 @@ function openMedia(media: CommunityMediaItem) {
   })
 }
 
+function savePreviewVideo() {
+  if (!previewVideoMedia.value)
+    return
+  void saveVideoToAlbum({ fileId: previewVideoMedia.value.id, url: previewVideoMedia.value.url })
+}
+
+function openSavePreviewMenu() {
+  if (!previewVideoMedia.value)
+    return
+  void showVideoSaveActionSheet({ fileId: previewVideoMedia.value.id, url: previewVideoMedia.value.url })
+}
+
 function openDetail(item: SlPropertyListOutput) {
   // 详情需登录（管理端不拦）
   if (!canManage.value && !ensureCanUse('登录后即可查看房源详情'))
@@ -243,11 +414,38 @@ function isSelected(id: ShenLeId) {
 }
 
 function toggleSelected(item: SlPropertyListOutput) {
+  allFilteredSelected.value = false
   const index = selectedIds.value.findIndex(id => String(id) === String(item.id))
   if (index >= 0)
     selectedIds.value.splice(index, 1)
   else
     selectedIds.value.push(item.id)
+}
+
+async function toggleSelectAllFiltered() {
+  if (selectingAll.value)
+    return
+  if (allFilteredSelected.value) {
+    selectedIds.value = []
+    allFilteredSelected.value = false
+    return
+  }
+
+  selectingAll.value = true
+  try {
+    const snapshots = await getPropertyBatchList(buildingId.value)
+    const matched = filterPropertyRows(snapshots, currentRowFilter())
+    selectedIds.value = matched.map(item => item.id)
+    allFilteredSelected.value = matched.length > 0
+    if (!matched.length)
+      uni.showToast({ title: '当前筛选没有可选房源', icon: 'none' })
+  }
+  catch (error) {
+    uni.showToast({ title: error instanceof Error ? error.message : '全选失败，请重试', icon: 'none' })
+  }
+  finally {
+    selectingAll.value = false
+  }
 }
 
 function handlePropertySelect(item: SlPropertyListOutput) {
@@ -284,11 +482,13 @@ function openBatchManager() {
   }
   selectionMode.value = true
   selectedIds.value = []
+  allFilteredSelected.value = false
 }
 
 function exitBatchManager() {
   selectionMode.value = false
   selectedIds.value = []
+  allFilteredSelected.value = false
 }
 
 function openBatchAdd() {
@@ -333,10 +533,12 @@ async function handleBatchCompleted(event: BatchCompletedEvent) {
     items.value = items.value.filter(item => !deleted.has(String(item.id)))
     total.value = Math.max(0, total.value - event.affectedCount)
   }
-  else if (event.action === 'updated')
-    await patchBatchUpdatedItems(event.ids)
-  else
+  else if (event.action === 'updated') {
     await reloadLoadedRangePreservingScroll()
+  }
+  else {
+    await reloadLoadedRangePreservingScroll()
+  }
   exitBatchManager()
 }
 
@@ -412,7 +614,7 @@ onShow(async () => {
   if (!sameCommunity || !sameBuilding)
     return
   try {
-    if (!change.requiresReload && (change.payload.action === 'updated' || change.payload.action === 'status-changed'))
+    if (!hasActiveListFilter.value && !change.requiresReload && (change.payload.action === 'updated' || change.payload.action === 'status-changed'))
       await patchBatchUpdatedItems(change.payload.ids)
     else
       await reloadLoadedRangePreservingScroll()
@@ -421,130 +623,213 @@ onShow(async () => {
     uni.showToast({ title: '房源刷新失败，请下拉重试', icon: 'none' })
   }
 })
-onPullDownRefresh(() => load(true))
-onPageScroll(event => { currentScrollTop.value = event.scrollTop })
-onReachBottom(() => {
-  // 用户模式一次性全量加载，不分页
-  if (!canManage.value)
-    return
-  if (!finished.value) {
-    page.value += 1
-    load()
-  }
-})
 </script>
 
 <template>
-  <view class="sl-page community-page">
-    <scroll-view v-if="mediaList.length" scroll-x class="media-strip">
-      <view class="media-strip__inner">
-        <view v-for="media in mediaList" :key="String(media.id)" class="media-item" @tap="openMedia(media)">
-          <image v-if="media.kind === 'image'" class="media-item__thumb" :src="media.url" mode="aspectFill" />
-          <view v-else class="media-item__thumb media-item__thumb--video">
-            <view class="media-item__play">
-              <wd-icon name="play-circle" size="26px" color="#fff" />
+  <view class="community-page-shell">
+    <scroll-view
+      scroll-y
+      class="community-scroll"
+      :refresher-enabled="refreshEnabled"
+      :refresher-triggered="refresherTriggered"
+      refresher-background="#f4f7f2"
+      :lower-threshold="120"
+      @refresherrefresh="handleRefresh"
+      @scrolltolower="handleScrollToLower"
+    >
+      <view class="sl-page community-page">
+        <scroll-view v-if="mediaList.length" scroll-x class="media-strip">
+          <view class="media-strip__inner">
+            <view v-for="media in mediaList" :key="String(media.id)" class="media-item" @tap="openMedia(media)">
+              <image v-if="media.kind === 'image'" class="media-item__thumb" :src="media.url" mode="aspectFill" />
+              <view v-else class="media-item__thumb media-item__thumb--video">
+                <view class="media-item__play">
+                  <wd-icon name="play-circle" size="26px" color="#fff" />
+                </view>
+              </view>
+              <text class="media-item__name">{{ media.name }}</text>
             </view>
           </view>
-          <text class="media-item__name">{{ media.name }}</text>
+        </scroll-view>
+
+        <view class="search sl-card">
+          <wd-icon name="search" size="20px" color="#7a8780" />
+          <input v-model="keyword" class="search__input" placeholder="搜索房源 / 房号" confirm-type="search" @confirm="onSearch">
+          <wd-button size="small" type="primary" @click="onSearch">
+            搜索
+          </wd-button>
+        </view>
+
+        <view v-if="canManageBuildingScope" class="property-filters sl-card">
+          <view class="property-filters__tabs">
+            <view class="filter-trigger" :class="{ active: activeFilter === 'floor' || minFloor != null || maxFloor != null }" @tap="toggleFilter('floor')">
+              <text>{{ floorFilterLabel }}</text>
+              <wd-icon name="arrow-down" size="14px" />
+            </view>
+            <view class="filter-trigger" :class="{ active: activeFilter === 'room' || !!roomNoSuffix }" @tap="toggleFilter('room')">
+              <text>{{ roomFilterLabel }}</text>
+              <wd-icon name="arrow-down" size="14px" />
+            </view>
+            <view class="filter-trigger" :class="{ active: activeFilter === 'layout' || bedrooms != null || livingRooms != null || bathrooms != null }" @tap="toggleFilter('layout')">
+              <text>{{ layoutFilterLabel }}</text>
+              <wd-icon name="arrow-down" size="14px" />
+            </view>
+          </view>
+
+          <view v-if="activeFilter === 'floor'" class="filter-panel">
+            <text class="filter-panel__title">楼层范围</text>
+            <view class="range-inputs">
+              <label><input v-model="floorDraft.min" type="number" placeholder="起始"><text>层</text></label>
+              <text>至</text>
+              <label><input v-model="floorDraft.max" type="number" placeholder="结束"><text>层</text></label>
+            </view>
+            <view class="filter-panel__actions">
+              <wd-button size="small" plain @click="clearFloorFilter">
+                重置
+              </wd-button>
+              <wd-button size="small" type="primary" @click="applyFloorFilter">
+                确定
+              </wd-button>
+            </view>
+          </view>
+
+          <view v-else-if="activeFilter === 'room'" class="filter-panel">
+            <text class="filter-panel__title">按房号结尾匹配</text>
+            <view class="suffix-input">
+              <input v-model="roomDraft" type="text" placeholder="例如 02 或 5003" confirm-type="search" @confirm="applyRoomFilter">
+            </view>
+            <text class="filter-panel__hint">输入 02 可匹配 502、602；输入 5003 可匹配 175003。</text>
+            <view class="filter-panel__actions">
+              <wd-button size="small" plain @click="roomDraft = ''">
+                重置
+              </wd-button>
+              <wd-button size="small" type="primary" @click="applyRoomFilter">
+                确定
+              </wd-button>
+            </view>
+          </view>
+
+          <view v-else-if="activeFilter === 'layout'" class="filter-panel">
+            <text class="filter-panel__title">户型（室、厅、卫）</text>
+            <view v-for="field in layoutFields" :key="field.key" class="layout-filter-row">
+              <text>{{ field.label }}</text>
+              <view class="layout-options">
+                <view
+                  v-for="number in layoutNumbers"
+                  :key="`${field.key}-${String(number)}`"
+                  class="layout-option"
+                  :class="{ active: layoutDraft[field.key] === number }"
+                  @tap="layoutDraft[field.key] = number"
+                >
+                  {{ number == null ? '不限' : number }}
+                </view>
+              </view>
+            </view>
+            <view class="filter-panel__actions">
+              <wd-button size="small" plain @click="clearLayoutFilter">
+                重置
+              </wd-button>
+              <wd-button size="small" type="primary" @click="applyLayoutFilter">
+                确定
+              </wd-button>
+            </view>
+          </view>
+        </view>
+
+        <scroll-view v-if="canManageBuildingScope" scroll-x class="chips">
+          <view class="chips__inner">
+            <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
+              全部
+            </view>
+            <view
+              v-for="item in PROPERTY_STATUS_OPTIONS"
+              :key="item.value"
+              class="status-chip"
+              :class="{ 'status-chip--active': status === item.value }"
+              @tap="selectStatus(item.value)"
+            >
+              {{ item.label }}
+            </view>
+          </view>
+        </scroll-view>
+
+        <view class="result-head">
+          <text class="result-head__title">{{ total }} 套{{ canManage ? '房源' : '可租房源' }}</text>
+          <text class="result-head__desc">{{ canBatchManage ? `${buildingName} · 支持编辑与批量管理` : (canManageBuildingScope ? `${buildingName} · 支持编辑和状态管理` : '点击房源查看详情。') }}</text>
+        </view>
+
+        <view v-if="canManageBuildingScope" class="scope-actions">
+          <wd-button v-if="canBatchManage" plain type="default" icon="add" @click="openBatchAdd">
+            批量新增
+          </wd-button>
+          <wd-button v-if="canBatchManage" plain type="default" @click="openBatchManager">
+            批量管理
+          </wd-button>
+          <wd-button type="primary" icon="add" @click="openForm()">
+            新增房源
+          </wd-button>
+        </view>
+
+        <view class="list">
+          <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card" :class="{ 'property-wrap--selected': isSelected(item.id) }">
+            <view class="property-select-row">
+              <view v-if="selectionMode" class="selection-checkbox" :class="{ selected: isSelected(item.id) }" @tap.stop="toggleSelected(item)">
+                <wd-icon v-if="isSelected(item.id)" name="check" size="14px" color="#fff" />
+              </view>
+              <view class="property-card-main">
+                <sl-property-card :item="item" compact @select="handlePropertySelect" />
+              </view>
+            </view>
+            <view v-if="canManageBuildingScope && !selectionMode" class="row-actions">
+              <wd-button size="small" type="default" plain @click="openForm(item)">
+                编辑
+              </wd-button>
+              <wd-button
+                v-for="option in PROPERTY_STATUS_OPTIONS"
+                :key="option.value"
+                size="small"
+                :type="item.status === option.value ? 'primary' : 'default'"
+                plain
+                @click="changeStatus(item, option.value)"
+              >
+                {{ option.label }}
+              </wd-button>
+              <wd-button size="small" type="danger" plain @click="removeItem(item)">
+                删除
+              </wd-button>
+            </view>
+          </view>
+        </view>
+
+        <view v-if="loading" class="loading">
+          加载中...
+        </view>
+        <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
+          <wd-icon name="home" size="42px" color="#8ea099" />
+          <text class="empty__title">暂无房源数据</text>
+          <text class="empty__desc">{{ canBatchManage ? '这个楼栋还没有房源，可以新增或批量创建。' : (canManageBuildingScope ? '这个楼栋还没有房源，可以新增一套。' : '这个楼盘暂时没有可展示房源。') }}</text>
+          <wd-button v-if="!canManage" size="small" plain @click="backToMap">
+            返回地图
+          </wd-button>
+        </view>
+        <view v-else-if="finished" class="loading">
+          已经到底了
         </view>
       </view>
     </scroll-view>
 
-    <view class="search sl-card">
-      <wd-icon name="search" size="20px" color="#7a8780" />
-      <input v-model="keyword" class="search__input" placeholder="搜索房源 / 房号" confirm-type="search" @confirm="onSearch">
-      <wd-button size="small" type="primary" @click="onSearch">
-        搜索
-      </wd-button>
-    </view>
-
-    <scroll-view v-if="canManageBuildingScope" scroll-x class="chips">
-      <view class="chips__inner">
-        <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
-          全部
-        </view>
-        <view
-          v-for="item in PROPERTY_STATUS_OPTIONS"
-          :key="item.value"
-          class="status-chip"
-          :class="{ 'status-chip--active': status === item.value }"
-          @tap="selectStatus(item.value)"
-        >
-          {{ item.label }}
-        </view>
-      </view>
-    </scroll-view>
-
-    <view class="result-head">
-      <text class="result-head__title">{{ total }} 套{{ canManage ? '房源' : '可租房源' }}</text>
-      <text class="result-head__desc">{{ canBatchManage ? `${buildingName} · 支持编辑与批量管理` : (canManageBuildingScope ? `${buildingName} · 支持编辑和状态管理` : '点击房源查看详情。') }}</text>
-    </view>
-
-    <view v-if="canManageBuildingScope" class="scope-actions">
-      <wd-button v-if="canBatchManage" plain type="default" icon="add" @click="openBatchAdd">
-        批量新增
-      </wd-button>
-      <wd-button v-if="canBatchManage" plain type="default" @click="openBatchManager">
-        批量管理
-      </wd-button>
-      <wd-button type="primary" icon="add" @click="openForm()">
-        新增房源
-      </wd-button>
-    </view>
-
-    <view class="list">
-      <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card" :class="{ 'property-wrap--selected': isSelected(item.id) }">
-        <view class="property-select-row">
-          <view v-if="selectionMode" class="selection-checkbox" :class="{ selected: isSelected(item.id) }" @tap.stop="toggleSelected(item)">
-            <wd-icon v-if="isSelected(item.id)" name="check" size="14px" color="#fff" />
-          </view>
-          <view class="property-card-main">
-            <sl-property-card :item="item" compact @select="handlePropertySelect" />
-          </view>
-        </view>
-        <view v-if="canManageBuildingScope && !selectionMode" class="row-actions">
-          <wd-button size="small" type="default" plain @click="openForm(item)">
-            编辑
-          </wd-button>
-          <wd-button
-            v-for="option in PROPERTY_STATUS_OPTIONS"
-            :key="option.value"
-            size="small"
-            :type="item.status === option.value ? 'primary' : 'default'"
-            plain
-            @click="changeStatus(item, option.value)"
-          >
-            {{ option.label }}
-          </wd-button>
-          <wd-button size="small" type="danger" plain @click="removeItem(item)">
-            删除
-          </wd-button>
-        </view>
-      </view>
-    </view>
-
-    <view v-if="loading" class="loading">
-      加载中...
-    </view>
-    <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
-      <wd-icon name="home" size="42px" color="#8ea099" />
-      <text class="empty__title">暂无房源数据</text>
-      <text class="empty__desc">{{ canBatchManage ? '这个楼栋还没有房源，可以新增或批量创建。' : (canManageBuildingScope ? '这个楼栋还没有房源，可以新增一套。' : '这个楼盘暂时没有可展示房源。') }}</text>
-      <wd-button v-if="!canManage" size="small" plain @click="backToMap">
-        返回地图
-      </wd-button>
-    </view>
-    <view v-else-if="finished" class="loading">
-      已经到底了
-    </view>
-
-    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
-      <view class="video-preview">
+    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
+      <view class="video-preview" @touchmove.stop.prevent>
         <view class="video-preview__head">
           <text>{{ previewVideoMedia?.name || '视频预览' }}</text>
-          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideoMedia = null" />
+          <view class="video-preview__actions">
+            <wd-button size="small" plain icon="download" @click="savePreviewVideo">
+              保存
+            </wd-button>
+            <wd-icon name="close" size="20px" color="#72817b" @click="previewVideoMedia = null" />
+          </view>
         </view>
-        <video v-if="previewVideoMedia" class="video-preview__player" :src="previewVideoMedia.url" controls autoplay />
+        <video v-if="previewVideoMedia" class="video-preview__player" :src="previewVideoMedia.url" controls autoplay @longpress="openSavePreviewMenu" />
       </view>
     </wd-popup>
 
@@ -558,11 +843,15 @@ onReachBottom(() => {
       :building-total-floors="buildingTotalFloors"
       :selected-ids="selectedIds"
       @completed="handleBatchCompleted"
+      @visibility-change="handleBatchVisibilityChange"
     />
 
     <view v-if="canBatchManage && selectionMode" class="batch-toolbar sl-safe-bottom">
       <view class="batch-toolbar__count">
         <text>已选 {{ selectedIds.length }} 套</text>
+        <text class="batch-toolbar__select-all" @tap="toggleSelectAllFiltered">
+          {{ selectingAll ? '处理中...' : (allFilteredSelected ? '取消全选' : '全选筛选结果') }}
+        </text>
       </view>
       <wd-button size="small" type="primary" :disabled="!selectedIds.length" @click="openBatchEdit">
         修改
@@ -578,7 +867,19 @@ onReachBottom(() => {
 </template>
 
 <style scoped lang="scss">
+.community-page-shell {
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.community-scroll {
+  width: 100%;
+  height: 100%;
+}
+
 .community-page {
+  min-height: 100%;
   padding-bottom: calc(180rpx + env(safe-area-inset-bottom));
 }
 
@@ -650,6 +951,146 @@ onReachBottom(() => {
   font-size: 27rpx;
 }
 
+.property-filters {
+  margin-top: 16rpx;
+  overflow: hidden;
+  padding: 0;
+}
+
+.property-filters__tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.filter-trigger {
+  display: flex;
+  min-width: 0;
+  height: 76rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  border-right: 1rpx solid #edf1ec;
+  color: #53615a;
+  font-size: 24rpx;
+  font-weight: 750;
+}
+
+.filter-trigger:last-child {
+  border-right: 0;
+}
+
+.filter-trigger text {
+  max-width: 168rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-trigger.active {
+  background: #edf7f1;
+  color: #126b4f;
+}
+
+.filter-panel {
+  padding: 22rpx;
+  border-top: 1rpx solid #e8eee9;
+  background: #fbfdfb;
+}
+
+.filter-panel__title,
+.filter-panel__hint {
+  display: block;
+}
+
+.filter-panel__title {
+  color: var(--sl-ink);
+  font-size: 25rpx;
+  font-weight: 800;
+}
+
+.filter-panel__hint {
+  margin-top: 12rpx;
+  color: var(--sl-muted);
+  font-size: 21rpx;
+  line-height: 1.5;
+}
+
+.range-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14rpx;
+  margin-top: 16rpx;
+  color: var(--sl-muted);
+  font-size: 23rpx;
+}
+
+.range-inputs label,
+.suffix-input {
+  display: flex;
+  min-width: 0;
+  height: 68rpx;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 0 16rpx;
+  border: 1rpx solid rgb(18 107 79 / 16%);
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.range-inputs input,
+.suffix-input input {
+  min-width: 0;
+  flex: 1;
+  font-size: 25rpx;
+}
+
+.suffix-input {
+  margin-top: 16rpx;
+}
+
+.layout-filter-row {
+  display: grid;
+  grid-template-columns: 42rpx minmax(0, 1fr);
+  align-items: center;
+  gap: 10rpx;
+  margin-top: 16rpx;
+  color: #53615a;
+  font-size: 24rpx;
+  font-weight: 750;
+}
+
+.layout-options {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 7rpx;
+}
+
+.layout-option {
+  display: flex;
+  height: 48rpx;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid #dfe8e1;
+  border-radius: 6rpx;
+  background: #fff;
+  color: #66736d;
+  font-size: 20rpx;
+}
+
+.layout-option.active {
+  border-color: #126b4f;
+  background: #126b4f;
+  color: #fff;
+}
+
+.filter-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12rpx;
+  margin-top: 20rpx;
+}
+
 .chips {
   margin-top: 20rpx;
   white-space: nowrap;
@@ -715,7 +1156,9 @@ onReachBottom(() => {
 .property-wrap {
   overflow: hidden;
   border: 2rpx solid transparent;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .property-wrap--selected {
@@ -809,6 +1252,12 @@ onReachBottom(() => {
   font-weight: 900;
 }
 
+.video-preview__actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
 .video-preview__player {
   display: block;
   width: 680rpx;
@@ -837,5 +1286,16 @@ onReachBottom(() => {
   color: #33443d;
   font-size: 25rpx;
   font-weight: 750;
+}
+
+.batch-toolbar__count > text {
+  display: block;
+}
+
+.batch-toolbar__select-all {
+  margin-top: 4rpx;
+  color: #126b4f;
+  font-size: 21rpx;
+  font-weight: 700;
 }
 </style>

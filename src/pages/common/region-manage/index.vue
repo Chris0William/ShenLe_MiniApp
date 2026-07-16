@@ -368,8 +368,8 @@ onPullDownRefresh(loadData)
 
     <view v-if="loading" class="load-tip">加载中...</view>
 
-    <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
-      <view class="form-sheet">
+    <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+      <view class="form-sheet" @touchmove.stop.prevent>
         <view class="sheet-head">
           <view>
             <text class="sheet-title">{{ isEdit ? '编辑区域' : '新增区域' }}</text>

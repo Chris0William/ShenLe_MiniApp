@@ -7,7 +7,7 @@ import type {
   UpdateSlPropertyInput,
 } from '@/types/shenle'
 import type { MediaKind } from '@/utils/media'
-import type { MediaMergeMode } from '@/utils/property-batch'
+import type { GeneratedPropertyDraft, MediaMergeMode } from '@/utils/property-batch'
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { getBuildingDetail, updateBuilding } from '@/api/building'
 import { getCommunityDetail } from '@/api/community'
@@ -24,6 +24,7 @@ import {
   getPropertyBatchList,
 } from '@/api/property'
 import { getTagList } from '@/api/tag'
+import SlMediaSourceSheet from '@/components/sl-media-source-sheet/sl-media-source-sheet.vue'
 import {
   DECORATION_OPTIONS,
   DEPOSIT_RULE_OPTIONS,
@@ -31,19 +32,20 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
-import { extensionOf, mediaKindOf } from '@/utils/media'
+import { mediaKindOf } from '@/utils/media'
 import {
   buildBatchAddInputs,
   buildBatchUpdateInputs,
   buildBuildingFloorUpdate,
-  findDuplicateRoomNumbers,
-  generateRoomNumbers,
+  deduplicatePropertyDrafts,
+  generatePropertyDrafts,
+  identicalMedia,
+  mediaIdentityKey,
 } from '@/utils/property-batch'
 import { resolveAssetUrl } from '@/utils/shenle'
 
 type BatchAction = 'added' | 'updated' | 'deleted'
-type BatchEditableField = Exclude<keyof UpdateSlPropertyInput,
-  'id' | 'title' | 'communityId' | 'buildingId' | 'unit' | 'roomNo' | 'floor' | 'totalFloors' | 'coverImageId'>
+type BatchEditableField = Exclude<keyof UpdateSlPropertyInput, 'id' | 'title' | 'communityId' | 'buildingId' | 'unit' | 'roomNo' | 'floor' | 'totalFloors' | 'coverImageId'>
 
 interface BatchCompletedEvent {
   action: BatchAction
@@ -56,6 +58,25 @@ interface BatchMediaChoice extends AddSlPropertyImageInput {
   name: string
   kind: MediaKind
   url: string
+  mediaKey?: string
+}
+
+interface AddDraftRow extends Omit<GeneratedPropertyDraft, 'images'> {
+  images: BatchMediaChoice[]
+}
+
+type MediaTarget
+  = | { type: 'edit' }
+    | { type: 'add-row', index: number }
+    | { type: 'add-all' }
+
+interface BatchCoverChoice {
+  key: string
+  name: string
+  kind: MediaKind
+  url: string
+  mediaKey?: string
+  sourceFileId?: ShenLeId
 }
 
 interface WechatChooseMediaResult {
@@ -83,38 +104,43 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   completed: [event: BatchCompletedEvent]
+  visibilityChange: [visible: boolean]
 }>()
 
 const activeSheet = ref<'add' | 'edit' | null>(null)
+const addStep = ref<'rules' | 'preview'>('rules')
 const submitting = ref(false)
 const loadingSnapshots = ref(false)
 const allSnapshots = ref<SlPropertyBatchRowOutput[]>([])
 
 const addForm = reactive({
   startFloor: '1',
-  floorCount: '1',
-  roomsPerFloor: '1',
-  unit: '',
+  endFloor: '1',
+  bedrooms: '1',
+  livingRooms: '0',
+  bathrooms: '0',
+  area: '',
+  roomSuffix: '01',
+  baseRentPrice: '0',
+  incrementEveryFloors: '',
+  incrementAmount: '',
 })
-
-const generatedRooms = computed(() => {
-  try {
-    return generateRoomNumbers({
-      startFloor: Number(addForm.startFloor),
-      floorCount: Number(addForm.floorCount),
-      roomsPerFloor: Number(addForm.roomsPerFloor),
-    })
-  }
-  catch {
-    return []
-  }
-})
+const addRows = ref<AddDraftRow[]>([])
+const excludedRoomNumbers = ref<string[]>([])
+const generatedRuleSignature = ref('')
 const addValidationMessage = computed(() => {
   try {
-    generateRoomNumbers({
+    generatePropertyDrafts({
       startFloor: Number(addForm.startFloor),
-      floorCount: Number(addForm.floorCount),
-      roomsPerFloor: Number(addForm.roomsPerFloor),
+      endFloor: Number(addForm.endFloor),
+      roomSuffix: addForm.roomSuffix,
+      bedrooms: Number(addForm.bedrooms),
+      livingRooms: Number(addForm.livingRooms),
+      bathrooms: Number(addForm.bathrooms),
+      area: addForm.area.trim() ? Number(addForm.area) : null,
+      baseRentPrice: Number(addForm.baseRentPrice),
+      incrementEveryFloors: addForm.incrementEveryFloors.trim() ? Number(addForm.incrementEveryFloors) : 0,
+      incrementAmount: addForm.incrementAmount.trim() ? Number(addForm.incrementAmount) : 0,
     })
     return ''
   }
@@ -122,13 +148,8 @@ const addValidationMessage = computed(() => {
     return error instanceof Error ? error.message : '请输入有效的生成规则'
   }
 })
-const duplicateRooms = computed(() => findDuplicateRoomNumbers(
-  generatedRooms.value.map(item => item.roomNo),
-  allSnapshots.value.map(item => item.roomNo || '').filter(Boolean),
-))
-const addPreview = computed(() => generatedRooms.value.slice(0, 12))
-const highestGeneratedFloor = computed(() => generatedRooms.value.at(-1)?.floor || 0)
-
+const currentRuleSignature = computed(() => JSON.stringify(generatedDraftInput()))
+const addRulesChanged = computed(() => !!generatedRuleSignature.value && generatedRuleSignature.value !== currentRuleSignature.value)
 const EDIT_FIELDS: Array<{ key: BatchEditableField, label: string }> = [
   { key: 'rentPrice', label: '租金' },
   { key: 'area', label: '面积' },
@@ -177,41 +198,127 @@ const houseTags = ref<SlTagOutput[]>([])
 const facilityTags = ref<SlTagOutput[]>([])
 const mediaMode = ref<MediaMergeMode>('append')
 const selectedMedia = ref<BatchMediaChoice[]>([])
+const commonPropertyMedia = ref<BatchMediaChoice[] | null>([])
+const coverEnabled = ref(false)
+const batchCoverChoice = ref<BatchCoverChoice | null>(null)
 const communityMediaPool = ref<BatchMediaChoice[]>([])
 const communityMediaSelection = ref<BatchMediaChoice[]>([])
 const communityMediaVisible = ref(false)
 const mediaSourceVisible = ref(false)
+const mediaTarget = ref<MediaTarget>({ type: 'edit' })
+const addMediaEditorIndex = ref<number | null>(null)
+const addMediaVisible = ref(false)
 const uploading = ref(false)
 const mediaDraftId = ref<ShenLeId | null>(null)
 const uploadedDraftIds = ref<ShenLeId[]>([])
 let activeUploadPromise: Promise<void> | null = null
-const MEDIA_SOURCE_ACTIONS = [
-  { name: '从楼盘选择', value: 'community' },
-  { name: '上传媒体', value: 'upload' },
-]
 const MEDIA_MODES: Array<{ value: MediaMergeMode, label: string }> = [
   { value: 'unchanged', label: '不修改' },
   { value: 'append', label: '追加' },
   { value: 'replace', label: '替换' },
   { value: 'clear', label: '清空' },
 ]
+const propertyStatusNames = PROPERTY_STATUS_OPTIONS.map(option => option.label)
+const batchCoverChoices = computed<BatchCoverChoice[]>(() => {
+  if (mediaMode.value === 'clear')
+    return []
+  const choices: BatchCoverChoice[] = []
+  if (commonPropertyMedia.value && !(enabled.images && mediaMode.value === 'replace')) {
+    commonPropertyMedia.value.forEach(media => choices.push({
+      key: `existing:${media.mediaKey}`,
+      name: media.name,
+      kind: media.kind,
+      url: media.url,
+      mediaKey: media.mediaKey,
+    }))
+  }
+  if (enabled.images && (mediaMode.value === 'append' || mediaMode.value === 'replace')) {
+    selectedMedia.value.forEach(media => choices.push({
+      key: `source:${String(media.fileId)}`,
+      name: media.name,
+      kind: media.kind,
+      url: media.url,
+      sourceFileId: media.fileId,
+    }))
+  }
+  return choices.filter((choice, index) => choices.findIndex(item => item.key === choice.key) === index)
+})
+const activeAddMediaRow = computed(() => addMediaEditorIndex.value == null ? null : addRows.value[addMediaEditorIndex.value] || null)
 
+const sheetOpen = ref(false)
 const sheetVisible = computed({
-  get: () => activeSheet.value !== null,
+  get: () => sheetOpen.value,
   set: (visible: boolean) => {
     if (!visible)
       void closeBatchSheet()
   },
 })
+const batchSecondaryLabel = computed(() => activeSheet.value === 'add' && addStep.value === 'preview' ? '返回修改' : '取消')
+const batchSecondaryDisabled = computed(() => !(activeSheet.value === 'add' && addStep.value === 'rules') && uploading.value)
+const batchPrimaryLabel = computed(() => {
+  if (activeSheet.value === 'add')
+    return addStep.value === 'rules' ? '生成预览' : `创建 ${addRows.value.length} 套`
+  return '保存批量修改'
+})
+const batchPrimaryLoading = computed(() => !(activeSheet.value === 'add' && addStep.value === 'rules') && submitting.value)
+const batchPrimaryDisabled = computed(() => {
+  if (activeSheet.value === 'add' && addStep.value === 'rules')
+    return !!addValidationMessage.value
+  if (activeSheet.value === 'add')
+    return uploading.value || addRulesChanged.value || !addRows.value.length
+  return uploading.value
+})
+
+function handleBatchSecondaryAction() {
+  if (activeSheet.value === 'add' && addStep.value === 'preview') {
+    backToAddRules()
+    return
+  }
+  void closeBatchSheet()
+}
+
+function handleBatchPrimaryAction() {
+  if (activeSheet.value === 'add' && addStep.value === 'rules') {
+    generateAddPreview()
+    return
+  }
+  if (activeSheet.value === 'add') {
+    void submitBatchAdd()
+    return
+  }
+  void submitBatchEdit()
+}
 
 function sameId(left: ShenLeId | null | undefined, right: ShenLeId | null | undefined) {
   return String(left ?? '') === String(right ?? '')
 }
 
 function resetEnabledFields() {
-  EDIT_FIELDS.forEach((field) => { enabled[field.key] = false })
+  EDIT_FIELDS.forEach((field) => {
+    enabled[field.key] = false
+  })
   mediaMode.value = 'append'
   selectedMedia.value = []
+  commonPropertyMedia.value = []
+  coverEnabled.value = false
+  batchCoverChoice.value = null
+}
+
+function resetAddDraft() {
+  addStep.value = 'rules'
+  addForm.startFloor = '1'
+  addForm.endFloor = '1'
+  addForm.bedrooms = '1'
+  addForm.livingRooms = '0'
+  addForm.bathrooms = '0'
+  addForm.area = ''
+  addForm.roomSuffix = '01'
+  addForm.baseRentPrice = '0'
+  addForm.incrementEveryFloors = ''
+  addForm.incrementAmount = ''
+  addRows.value = []
+  excludedRoomNumbers.value = []
+  generatedRuleSignature.value = ''
 }
 
 async function ensureMediaDraftSession() {
@@ -242,11 +349,28 @@ async function closeBatchSheet() {
     uni.showToast({ title: '请等待媒体上传完成', icon: 'none' })
     return
   }
-  activeSheet.value = null
+  hideBatchSheet()
+  await cleanupDraftUploads()
+}
+
+function showBatchSheet(sheet: 'add' | 'edit') {
+  activeSheet.value = sheet
+  sheetOpen.value = true
+  emit('visibilityChange', true)
+}
+
+function hideBatchSheet() {
+  sheetOpen.value = false
   communityMediaVisible.value = false
   mediaSourceVisible.value = false
-  await cleanupDraftUploads()
+  addMediaVisible.value = false
+}
+
+function handleBatchSheetAfterLeave() {
+  activeSheet.value = null
+  addMediaEditorIndex.value = null
   resetEnabledFields()
+  emit('visibilityChange', false)
 }
 
 function setEditDefaults(snapshot: SlPropertyBatchRowOutput) {
@@ -273,17 +397,85 @@ async function fetchAllSnapshots() {
   return allSnapshots.value
 }
 
+function generatedDraftInput() {
+  return {
+    startFloor: Number(addForm.startFloor),
+    endFloor: Number(addForm.endFloor),
+    roomSuffix: addForm.roomSuffix,
+    bedrooms: Number(addForm.bedrooms),
+    livingRooms: Number(addForm.livingRooms),
+    bathrooms: Number(addForm.bathrooms),
+    area: addForm.area.trim() ? Number(addForm.area) : null,
+    baseRentPrice: Number(addForm.baseRentPrice),
+    incrementEveryFloors: addForm.incrementEveryFloors.trim() ? Number(addForm.incrementEveryFloors) : 0,
+    incrementAmount: addForm.incrementAmount.trim() ? Number(addForm.incrementAmount) : 0,
+  }
+}
+
+function generateAddPreview() {
+  try {
+    const generated = generatePropertyDrafts(generatedDraftInput())
+    const result = deduplicatePropertyDrafts(
+      generated,
+      allSnapshots.value.map(item => item.roomNo || '').filter(Boolean),
+    )
+    addRows.value = result.items.map(item => ({ ...item, images: [] }))
+    excludedRoomNumbers.value = result.duplicateRoomNumbers
+    generatedRuleSignature.value = currentRuleSignature.value
+    if (!addRows.value.length) {
+      uni.showToast({ title: '生成房号均已存在，请调整规则', icon: 'none' })
+      return
+    }
+    addStep.value = 'preview'
+  }
+  catch (error) {
+    addRows.value = []
+    excludedRoomNumbers.value = []
+    generatedRuleSignature.value = ''
+    uni.showToast({ title: error instanceof Error ? error.message : '生成规则无效', icon: 'none' })
+  }
+}
+
+function backToAddRules() {
+  addStep.value = 'rules'
+  addMediaVisible.value = false
+  addMediaEditorIndex.value = null
+}
+
+function toBatchMediaChoice(media: SlPropertyBatchRowOutput['images'][number]): BatchMediaChoice {
+  return {
+    fileId: media.id,
+    fileType: media.fileType || mediaKindOf(media.fileType, media.suffix || media.url),
+    name: media.fileName || `文件${media.id}`,
+    kind: mediaKindOf(media.fileType, media.suffix || media.url),
+    url: resolveAssetUrl(media.url),
+    mediaKey: mediaIdentityKey(media),
+  }
+}
+
+async function loadCommonPropertyMedia(snapshots: SlPropertyBatchRowOutput[]) {
+  const common = identicalMedia(snapshots)
+  commonPropertyMedia.value = common == null ? null : common.map(toBatchMediaChoice)
+  if (!commonPropertyMedia.value)
+    return
+  commonPropertyMedia.value.forEach((media) => {
+    if (media.kind === 'image')
+      downloadFile(media.fileId).then((path) => { media.url = path }).catch(() => {})
+  })
+}
+
 async function openAdd() {
   if (!props.buildingId)
     return
-  activeSheet.value = 'add'
+  resetAddDraft()
+  showBatchSheet('add')
   loadingSnapshots.value = true
   try {
     await fetchAllSnapshots()
   }
   catch (error) {
     await cleanupDraftUploads()
-    activeSheet.value = null
+    hideBatchSheet()
     uni.showToast({ title: error instanceof Error ? error.message : '房源数据加载失败', icon: 'none' })
   }
   finally {
@@ -294,7 +486,7 @@ async function openAdd() {
 async function openEdit() {
   if (!props.selectedIds.length)
     return
-  activeSheet.value = 'edit'
+  showBatchSheet('edit')
   loadingSnapshots.value = true
   resetEnabledFields()
   try {
@@ -309,9 +501,10 @@ async function openEdit() {
     houseTags.value = house
     facilityTags.value = facility
     setEditDefaults(selectedSnapshots.value[0])
+    await loadCommonPropertyMedia(selectedSnapshots.value)
   }
   catch (error) {
-    activeSheet.value = null
+    hideBatchSheet()
     uni.showToast({ title: error instanceof Error ? error.message : '房源快照加载失败', icon: 'none' })
   }
   finally {
@@ -323,6 +516,58 @@ function batchErrorMessage(result: { errors?: Array<{ message: string }> }, fall
   return result.errors?.[0]?.message || fallback
 }
 
+function normalizeAddRows(existingRoomNumbers: string[]) {
+  const normalized = addRows.value.map((row, index) => {
+    const floor = Number(row.floor)
+    const bedrooms = Number(row.bedrooms)
+    const livingRooms = Number(row.livingRooms)
+    const bathrooms = Number(row.bathrooms)
+    const area = row.area == null || String(row.area).trim() === '' ? null : Number(row.area)
+    const rentPrice = Number(row.rentPrice)
+    const status = Number(row.status)
+    const roomNo = String(row.roomNo || '').trim()
+    if (!roomNo)
+      throw new Error(`第 ${index + 1} 行房号不能为空`)
+    if (!Number.isInteger(floor) || floor <= 0)
+      throw new Error(`房号 ${roomNo} 的楼层无效`)
+    if (![bedrooms, livingRooms, bathrooms].every(value => Number.isInteger(value) && value >= 0))
+      throw new Error(`房号 ${roomNo} 的户型无效`)
+    if (area != null && (!Number.isFinite(area) || area <= 0))
+      throw new Error(`房号 ${roomNo} 的面积无效`)
+    if (!Number.isFinite(rentPrice) || rentPrice < 0)
+      throw new Error(`房号 ${roomNo} 的价格无效`)
+    if (!PROPERTY_STATUS_OPTIONS.some(option => option.value === status))
+      throw new Error(`房号 ${roomNo} 的状态无效`)
+
+    const images = row.images.map(media => ({ ...media }))
+    const coverExists = images.some(media => sameId(media.fileId, row.coverImageId))
+    return {
+      ...row,
+      floor,
+      roomNo,
+      bedrooms,
+      livingRooms,
+      bathrooms,
+      area,
+      rentPrice,
+      status,
+      images,
+      coverImageId: coverExists ? row.coverImageId : (images[0]?.fileId ?? null),
+    }
+  })
+  return deduplicatePropertyDrafts(normalized, existingRoomNumbers)
+}
+
+function draftStatusIndex(status: number) {
+  return Math.max(0, PROPERTY_STATUS_OPTIONS.findIndex(option => option.value === Number(status)))
+}
+
+function changeDraftStatus(index: number, event: { detail: { value: string | number } }) {
+  const selected = PROPERTY_STATUS_OPTIONS[Number(event.detail.value)]
+  if (addRows.value[index] && selected)
+    addRows.value[index].status = selected.value
+}
+
 async function submitBatchAdd() {
   if (submitting.value)
     return
@@ -330,26 +575,33 @@ async function submitBatchAdd() {
     uni.showToast({ title: addValidationMessage.value, icon: 'none' })
     return
   }
+  if (addRulesChanged.value) {
+    uni.showToast({ title: '请先重新生成预览', icon: 'none' })
+    return
+  }
 
   submitting.value = true
   try {
     await fetchAllSnapshots()
-    if (duplicateRooms.value.length) {
-      uni.showToast({ title: `房号重复：${duplicateRooms.value.slice(0, 3).join('、')}`, icon: 'none' })
+    const deduplicated = normalizeAddRows(allSnapshots.value.map(item => item.roomNo || '').filter(Boolean))
+    addRows.value = deduplicated.items
+    excludedRoomNumbers.value = [...new Set([...excludedRoomNumbers.value, ...deduplicated.duplicateRoomNumbers])]
+    if (!addRows.value.length) {
+      uni.showToast({ title: '没有可创建的房源', icon: 'none' })
       return
     }
 
     const detail = await getBuildingDetail(props.buildingId)
+    const highestFloor = Math.max(...addRows.value.map(row => Number(row.floor)))
     let totalFloors = detail.totalFloors ?? null
-    if (!detail.totalFloors || highestGeneratedFloor.value > detail.totalFloors) {
-      await updateBuilding(buildBuildingFloorUpdate(detail, highestGeneratedFloor.value))
-      totalFloors = highestGeneratedFloor.value
+    if (!detail.totalFloors || highestFloor > detail.totalFloors) {
+      await updateBuilding(buildBuildingFloorUpdate(detail, highestFloor))
+      totalFloors = highestFloor
     }
 
-    const result = await batchAddProperties(buildBatchAddInputs(generatedRooms.value, {
+    const result = await batchAddProperties(buildBatchAddInputs(addRows.value, {
       communityId: props.communityId,
       buildingId: props.buildingId,
-      unit: addForm.unit,
       totalFloors,
     }))
     if (!result.success) {
@@ -357,8 +609,10 @@ async function submitBatchAdd() {
       return
     }
 
-    activeSheet.value = null
-    uni.showToast({ title: `已新增 ${result.affectedCount} 套`, icon: 'success' })
+    await cleanupDraftUploads()
+    hideBatchSheet()
+    const skipped = excludedRoomNumbers.value.length
+    uni.showToast({ title: skipped ? `新增 ${result.affectedCount} 套，剔除 ${skipped} 套重复` : `已新增 ${result.affectedCount} 套`, icon: 'success' })
     emit('completed', {
       action: 'added',
       ids: result.createdIds,
@@ -441,12 +695,16 @@ async function submitBatchEdit() {
     return
   }
   const fields = enabledFields()
-  if (!fields.length) {
+  if (!fields.length && !coverEnabled.value) {
     uni.showToast({ title: '请至少启用一个修改项', icon: 'none' })
     return
   }
   if (enabled.images && ['append', 'replace'].includes(mediaMode.value) && !selectedMedia.value.length) {
     uni.showToast({ title: '请先选择或上传媒体', icon: 'none' })
+    return
+  }
+  if (coverEnabled.value && (!batchCoverChoice.value || !batchCoverChoices.value.some(choice => choice.key === batchCoverChoice.value?.key))) {
+    uni.showToast({ title: '请选择要设为封面的媒体', icon: 'none' })
     return
   }
 
@@ -456,11 +714,21 @@ async function submitBatchEdit() {
     const current = snapshots.filter(row => props.selectedIds.some(id => sameId(id, row.id)))
     if (current.length !== props.selectedIds.length)
       throw new Error('部分房源已变化，请刷新后重试')
+    if (coverEnabled.value && batchCoverChoice.value?.mediaKey
+      && current.some(row => !row.images.some(media => mediaIdentityKey(media) === batchCoverChoice.value?.mediaKey))) {
+      throw new Error('所选房源媒体已变化，请重新选择封面')
+    }
     const input = buildBatchUpdateInputs(current, {
       enabledFields: fields,
       values: buildEditValues(),
       mediaMode: enabled.images ? mediaMode.value : 'unchanged',
       media: selectedMedia.value.map(media => ({ fileId: media.fileId, fileType: media.fileType })),
+      coverSelection: coverEnabled.value && batchCoverChoice.value
+        ? {
+            mediaKey: batchCoverChoice.value.mediaKey,
+            sourceFileId: batchCoverChoice.value.sourceFileId,
+          }
+        : null,
     })
     const result = await batchUpdateProperties(input)
     if (!result.success) {
@@ -469,7 +737,7 @@ async function submitBatchEdit() {
     }
 
     await cleanupDraftUploads()
-    activeSheet.value = null
+    hideBatchSheet()
     uni.showToast({ title: `已修改 ${result.affectedCount} 套`, icon: 'success' })
     emit('completed', { action: 'updated', ids: [...props.selectedIds], affectedCount: result.affectedCount })
   }
@@ -545,6 +813,7 @@ async function openCommunityMedia() {
       name: media.fileName || `文件${media.id}`,
       kind: mediaKindOf(media.fileType, media.suffix || media.url),
       url: resolveAssetUrl(media.url),
+      mediaKey: mediaIdentityKey(media),
     }))
     communityMediaSelection.value = []
     communityMediaVisible.value = true
@@ -566,14 +835,87 @@ function toggleCommunityMedia(media: BatchMediaChoice) {
     communityMediaSelection.value.push(media)
 }
 
+function mergeMediaChoices(current: BatchMediaChoice[], incoming: readonly BatchMediaChoice[]) {
+  const known = new Set(current.map(media => String(media.fileId)))
+  return [
+    ...current,
+    ...incoming.filter((media) => {
+      const key = String(media.fileId)
+      if (known.has(key))
+        return false
+      known.add(key)
+      return true
+    }).map(media => ({ ...media })),
+  ]
+}
+
+function applyMediaChoices(media: readonly BatchMediaChoice[]) {
+  if (!media.length)
+    return
+  const target = mediaTarget.value
+  if (target.type === 'edit') {
+    selectedMedia.value = mergeMediaChoices(selectedMedia.value, media)
+    return
+  }
+  if (target.type === 'add-row') {
+    const row = addRows.value[target.index]
+    if (!row)
+      return
+    row.images = mergeMediaChoices(row.images, media)
+    if (!row.coverImageId)
+      row.coverImageId = row.images[0]?.fileId ?? null
+    return
+  }
+  addRows.value.forEach((row) => {
+    row.images = mergeMediaChoices(row.images, media)
+    if (!row.coverImageId)
+      row.coverImageId = row.images[0]?.fileId ?? null
+  })
+}
+
 function confirmCommunityMedia() {
-  const known = new Set(selectedMedia.value.map(media => String(media.fileId)))
-  selectedMedia.value.push(...communityMediaSelection.value.filter(media => !known.has(String(media.fileId))))
+  applyMediaChoices(communityMediaSelection.value)
   communityMediaVisible.value = false
 }
 
 function removeSelectedMedia(fileId: ShenLeId) {
   selectedMedia.value = selectedMedia.value.filter(media => !sameId(media.fileId, fileId))
+  if (batchCoverChoice.value?.sourceFileId != null && sameId(batchCoverChoice.value.sourceFileId, fileId))
+    batchCoverChoice.value = null
+}
+
+function removeAddRow(index: number) {
+  addRows.value.splice(index, 1)
+  if (addMediaEditorIndex.value === index) {
+    addMediaVisible.value = false
+    addMediaEditorIndex.value = null
+  }
+}
+
+function openAddRowMedia(index: number) {
+  addMediaEditorIndex.value = index
+  addMediaVisible.value = true
+}
+
+function removeAddRowMedia(fileId: ShenLeId) {
+  const row = activeAddMediaRow.value
+  if (!row)
+    return
+  row.images = row.images.filter(media => !sameId(media.fileId, fileId))
+  if (!row.images.some(media => sameId(media.fileId, row.coverImageId)))
+    row.coverImageId = row.images[0]?.fileId ?? null
+}
+
+function setAddRowCover(fileId: ShenLeId) {
+  if (activeAddMediaRow.value?.images.some(media => sameId(media.fileId, fileId)))
+    activeAddMediaRow.value.coverImageId = fileId
+}
+
+function clearAllAddMedia() {
+  addRows.value.forEach((row) => {
+    row.images = []
+    row.coverImageId = null
+  })
 }
 
 function wxChooseMedia() {
@@ -588,6 +930,7 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
   uploading.value = true
   let successCount = 0
   let failureCount = 0
+  const uploadedMedia: BatchMediaChoice[] = []
   try {
     const draftId = await ensureMediaDraftSession()
     for (const local of files) {
@@ -596,9 +939,7 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
         uploadedDraftIds.value.push(uploaded.id)
         successCount += 1
         const kind = mediaKindOf(uploaded.fileType || local.fileType, uploaded.suffix || local.tempFilePath)
-        if (selectedMedia.value.some(media => sameId(media.fileId, uploaded.id)))
-          continue
-        selectedMedia.value.push({
+        uploadedMedia.push({
           fileId: uploaded.id,
           fileType: uploaded.fileType || kind,
           name: uploaded.fileName || (kind === 'video' ? '视频' : '图片'),
@@ -611,6 +952,7 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
       }
     }
 
+    applyMediaChoices(uploadedMedia)
     if (failureCount)
       uni.showToast({ title: `上传成功 ${successCount} 个，失败 ${failureCount} 个`, icon: 'none' })
   }
@@ -634,6 +976,7 @@ function startMediaUpload(files: Array<{ tempFilePath: string, fileType?: 'image
 }
 
 onBeforeUnmount(() => {
+  emit('visibilityChange', false)
   const pendingCleanup = activeUploadPromise?.finally(() => cleanupDraftUploads())
   if (!pendingCleanup)
     void cleanupDraftUploads()
@@ -664,18 +1007,33 @@ function chooseUploadMedia() {
   })
 }
 
-function openMediaSource() {
-  if (mediaMode.value === 'clear' || mediaMode.value === 'unchanged')
+function openMediaSource(target: MediaTarget = { type: 'edit' }) {
+  mediaTarget.value = target
+  if (target.type === 'edit' && (mediaMode.value === 'clear' || mediaMode.value === 'unchanged'))
     mediaMode.value = 'append'
   mediaSourceVisible.value = true
 }
 
-function selectMediaSource(event: { item: { value?: string } }) {
+function openAddAllMedia() {
+  if (!addRows.value.length) {
+    uni.showToast({ title: '请先生成房源预览', icon: 'none' })
+    return
+  }
+  openMediaSource({ type: 'add-all' })
+}
+
+function openActiveRowMediaSource() {
+  if (addMediaEditorIndex.value == null)
+    return
+  openMediaSource({ type: 'add-row', index: addMediaEditorIndex.value })
+}
+
+function selectMediaSource(source: 'community' | 'upload') {
   mediaSourceVisible.value = false
   setTimeout(() => {
-    if (event.item.value === 'community')
+    if (source === 'community')
       void openCommunityMedia()
-    else if (event.item.value === 'upload')
+    else if (source === 'upload')
       chooseUploadMedia()
   }, 220)
 }
@@ -684,44 +1042,98 @@ defineExpose({ openAdd, openEdit, requestDelete })
 </script>
 
 <template>
-  <wd-popup v-model="sheetVisible" position="bottom" :z-index="2100" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
-    <view class="batch-sheet">
+  <wd-popup v-model="sheetVisible" position="bottom" :z-index="2100" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden;" safe-area-inset-bottom @after-leave="handleBatchSheetAfterLeave" @touchmove.stop.prevent>
+    <view class="batch-sheet" @touchmove.stop.prevent>
       <view class="batch-head">
         <view>
-          <text class="batch-head__title">{{ activeSheet === 'add' ? '批量新增房源' : '批量修改房源' }}</text>
+          <text class="batch-head__title">{{ activeSheet === 'edit' ? '批量修改房源' : (addStep === 'preview' ? '房源生成预览' : '批量新增房源') }}</text>
           <text class="batch-head__sub">{{ communityName }} · {{ buildingName }}</text>
         </view>
         <wd-icon name="close" size="22px" color="#72817b" @click="closeBatchSheet" />
       </view>
 
-      <scroll-view scroll-y class="batch-scroll">
+      <scroll-view
+        scroll-y
+        class="batch-scroll"
+        :class="{ 'batch-scroll--rules': activeSheet === 'add' && addStep === 'rules' && !loadingSnapshots }"
+      >
         <view v-if="loadingSnapshots" class="batch-loading">
           房源数据加载中...
         </view>
 
-        <template v-else-if="activeSheet === 'add'">
+        <template v-else-if="activeSheet === 'add' && addStep === 'rules'">
           <view class="batch-section">
             <text class="section-title">生成规则</text>
-            <view class="input-grid input-grid--three">
+            <view class="input-grid input-grid--two">
               <label class="field"><text>起始楼层</text><input v-model="addForm.startFloor" type="number" placeholder="1"></label>
-              <label class="field"><text>楼层数</text><input v-model="addForm.floorCount" type="number" placeholder="1"></label>
-              <label class="field"><text>每层房数</text><input v-model="addForm.roomsPerFloor" type="number" placeholder="1"></label>
+              <label class="field"><text>结束楼层</text><input v-model="addForm.endFloor" type="number" placeholder="10"></label>
             </view>
-            <label class="field"><text>单元号（可选）</text><input v-model="addForm.unit" :maxlength="20" placeholder="例如 A 单元"></label>
-          </view>
-
-          <view class="batch-section preview-section">
-            <view class="section-row">
-              <text class="section-title">生成预览</text>
-              <wd-tag type="success">{{ generatedRooms.length }} 套</wd-tag>
+            <view class="input-grid input-grid--three">
+              <label class="field"><text>室</text><input v-model="addForm.bedrooms" type="number" placeholder="1"></label>
+              <label class="field"><text>厅</text><input v-model="addForm.livingRooms" type="number" placeholder="0"></label>
+              <label class="field"><text>卫</text><input v-model="addForm.bathrooms" type="number" placeholder="0"></label>
+            </view>
+            <view class="input-grid input-grid--two">
+              <label class="field"><text>面积</text><view class="field-with-unit"><input v-model="addForm.area" type="digit" placeholder="可选"><text>㎡</text></view></label>
+              <label class="field"><text>固定房号</text><input v-model="addForm.roomSuffix" type="text" placeholder="例如 02"></label>
+            </view>
+            <view class="input-grid input-grid--three">
+              <label class="field"><text>基础价格</text><input v-model="addForm.baseRentPrice" type="digit" placeholder="0"></label>
+              <label class="field"><text>每几层递增</text><input v-model="addForm.incrementEveryFloors" type="number" placeholder="不递增"></label>
+              <label class="field"><text>递增价格</text><input v-model="addForm.incrementAmount" type="digit" placeholder="0"></label>
             </view>
             <text v-if="addValidationMessage" class="form-error">{{ addValidationMessage }}</text>
-            <text v-else-if="duplicateRooms.length" class="form-error">重复房号：{{ duplicateRooms.slice(0, 6).join('、') }}</text>
-            <view v-else class="room-preview">
-              <text v-for="room in addPreview" :key="room.roomNo" class="room-chip">{{ room.roomNo }}</text>
-              <text v-if="generatedRooms.length > addPreview.length" class="room-more">另有 {{ generatedRooms.length - addPreview.length }} 套</text>
+          </view>
+        </template>
+
+        <template v-else-if="activeSheet === 'add' && addStep === 'preview'">
+          <view class="batch-section preview-section">
+            <view class="section-row">
+              <text class="section-title">房源预览</text>
+              <wd-tag type="success">
+                {{ addRows.length }} 套
+              </wd-tag>
             </view>
-            <text class="section-hint">新房源默认租金 0 元、状态为下架，创建后再确认发布。</text>
+            <text v-if="excludedRoomNumbers.length" class="duplicate-hint">已剔除 {{ excludedRoomNumbers.length }} 个重复房号：{{ excludedRoomNumbers.slice(0, 5).join('、') }}</text>
+            <view class="preview-tools">
+              <wd-button size="small" plain icon="image" @click="openAddAllMedia">
+                统一分配媒体
+              </wd-button>
+              <wd-button v-if="addRows.some(row => row.images.length)" size="small" plain type="danger" @click="clearAllAddMedia">
+                清空全部媒体
+              </wd-button>
+            </view>
+            <scroll-view scroll-x class="draft-table-scroll">
+              <view class="draft-table">
+                <view class="draft-table__row draft-table__head">
+                  <text>房号</text><text>户型（室/厅/卫）</text><text>面积</text><text>价格</text><text>状态</text><text>媒体</text><text>操作</text>
+                </view>
+                <view v-for="(row, index) in addRows" :key="`${row.floor}-${row.roomNo}-${index}`" class="draft-table__row">
+                  <input v-model="row.roomNo" class="draft-input draft-input--room" type="text">
+                  <view class="draft-layout">
+                    <input v-model="row.bedrooms" type="number"><text>/</text><input v-model="row.livingRooms" type="number"><text>/</text><input v-model="row.bathrooms" type="number">
+                  </view>
+                  <view class="draft-value">
+                    <input v-model="row.area" type="digit" placeholder="--"><text>㎡</text>
+                  </view>
+                  <view class="draft-value">
+                    <input v-model="row.rentPrice" type="digit"><text>元</text>
+                  </view>
+                  <picker :value="draftStatusIndex(row.status)" :range="propertyStatusNames" @change="changeDraftStatus(index, $event)">
+                    <view class="draft-status">
+                      {{ PROPERTY_STATUS_OPTIONS[draftStatusIndex(row.status)]?.label || '空置' }}
+                    </view>
+                  </picker>
+                  <view class="draft-media" @tap="openAddRowMedia(index)">
+                    <wd-icon name="image" size="16px" /><text>{{ row.images.length ? `${row.images.length} 个` : '分配' }}</text>
+                  </view>
+                  <view class="draft-remove" @tap="removeAddRow(index)">
+                    <wd-icon name="delete" size="18px" color="#c94832" />
+                  </view>
+                </view>
+              </view>
+            </scroll-view>
+            <text class="section-hint">房源默认状态为空置；预览中的房号、户型、面积、价格、状态和媒体都可以继续调整。</text>
           </view>
         </template>
 
@@ -732,27 +1144,39 @@ defineExpose({ openAdd, openEdit, requestDelete })
 
           <view class="batch-section">
             <view class="edit-row">
-              <view class="edit-row__head"><text>租金</text><wd-switch v-model="enabled.rentPrice" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>租金</text><wd-switch v-model="enabled.rentPrice" size="22px" />
+              </view>
               <input v-if="enabled.rentPrice" v-model="editValues.rentPrice" class="edit-input" type="digit" placeholder="0">
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>面积</text><wd-switch v-model="enabled.area" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>面积</text><wd-switch v-model="enabled.area" size="22px" />
+              </view>
               <input v-if="enabled.area" v-model="editValues.area" class="edit-input" type="digit" placeholder="留空则清空">
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>卧室</text><wd-switch v-model="enabled.bedrooms" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>卧室</text><wd-switch v-model="enabled.bedrooms" size="22px" />
+              </view>
               <input v-if="enabled.bedrooms" v-model="editValues.bedrooms" class="edit-input" type="number">
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>客厅</text><wd-switch v-model="enabled.livingRooms" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>客厅</text><wd-switch v-model="enabled.livingRooms" size="22px" />
+              </view>
               <input v-if="enabled.livingRooms" v-model="editValues.livingRooms" class="edit-input" type="number">
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>卫生间</text><wd-switch v-model="enabled.bathrooms" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>卫生间</text><wd-switch v-model="enabled.bathrooms" size="22px" />
+              </view>
               <input v-if="enabled.bathrooms" v-model="editValues.bathrooms" class="edit-input" type="number">
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>状态</text><wd-switch v-model="enabled.status" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>状态</text><wd-switch v-model="enabled.status" size="22px" />
+              </view>
               <view v-if="enabled.status" class="option-chips">
                 <text v-for="option in PROPERTY_STATUS_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.status === option.value }" @tap="editValues.status = option.value">{{ option.label }}</text>
               </view>
@@ -761,96 +1185,214 @@ defineExpose({ openAdd, openEdit, requestDelete })
 
           <view class="batch-section">
             <view class="edit-row">
-              <view class="edit-row__head"><text>朝向</text><wd-switch v-model="enabled.orientation" size="22px" /></view>
-              <view v-if="enabled.orientation" class="option-chips"><text v-for="option in ORIENTATION_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.orientation === option.value }" @tap="chooseOption('orientation', option.value)">{{ option.label }}</text></view>
+              <view class="edit-row__head">
+                <text>朝向</text><wd-switch v-model="enabled.orientation" size="22px" />
+              </view>
+              <view v-if="enabled.orientation" class="option-chips">
+                <text v-for="option in ORIENTATION_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.orientation === option.value }" @tap="chooseOption('orientation', option.value)">{{ option.label }}</text>
+              </view>
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>装修</text><wd-switch v-model="enabled.decoration" size="22px" /></view>
-              <view v-if="enabled.decoration" class="option-chips"><text v-for="option in DECORATION_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.decoration === option.value }" @tap="chooseOption('decoration', option.value)">{{ option.label }}</text></view>
+              <view class="edit-row__head">
+                <text>装修</text><wd-switch v-model="enabled.decoration" size="22px" />
+              </view>
+              <view v-if="enabled.decoration" class="option-chips">
+                <text v-for="option in DECORATION_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.decoration === option.value }" @tap="chooseOption('decoration', option.value)">{{ option.label }}</text>
+              </view>
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>出租方式</text><wd-switch v-model="enabled.rentalType" size="22px" /></view>
-              <view v-if="enabled.rentalType" class="option-chips"><text v-for="option in RENTAL_TYPE_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.rentalType === option.value }" @tap="chooseOption('rentalType', option.value)">{{ option.label }}</text></view>
+              <view class="edit-row__head">
+                <text>出租方式</text><wd-switch v-model="enabled.rentalType" size="22px" />
+              </view>
+              <view v-if="enabled.rentalType" class="option-chips">
+                <text v-for="option in RENTAL_TYPE_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.rentalType === option.value }" @tap="chooseOption('rentalType', option.value)">{{ option.label }}</text>
+              </view>
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>押金</text><wd-switch v-model="enabled.deposit" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>押金</text><wd-switch v-model="enabled.deposit" size="22px" />
+              </view>
               <input v-if="enabled.deposit" v-model="editValues.deposit" class="edit-input" type="digit" placeholder="留空则清空">
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>押付方式</text><wd-switch v-model="enabled.depositRule" size="22px" /></view>
-              <view v-if="enabled.depositRule" class="option-chips"><text v-for="option in DEPOSIT_RULE_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.depositRule === option.value }" @tap="chooseOption('depositRule', option.value)">{{ option.label }}</text></view>
+              <view class="edit-row__head">
+                <text>押付方式</text><wd-switch v-model="enabled.depositRule" size="22px" />
+              </view>
+              <view v-if="enabled.depositRule" class="option-chips">
+                <text v-for="option in DEPOSIT_RULE_OPTIONS" :key="option.value" class="option-chip" :class="{ active: editValues.depositRule === option.value }" @tap="chooseOption('depositRule', option.value)">{{ option.label }}</text>
+              </view>
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>最短租期（月）</text><wd-switch v-model="enabled.minLease" size="22px" /></view>
+              <view class="edit-row__head">
+                <text>最短租期（月）</text><wd-switch v-model="enabled.minLease" size="22px" />
+              </view>
               <input v-if="enabled.minLease" v-model="editValues.minLease" class="edit-input" type="number" placeholder="留空则清空">
             </view>
           </view>
 
           <view class="batch-section">
-            <view class="edit-row"><view class="edit-row__head"><text>房源描述</text><wd-switch v-model="enabled.description" size="22px" /></view><textarea v-if="enabled.description" v-model="editValues.description" class="edit-textarea" placeholder="可清空" /></view>
-            <view class="edit-row"><view class="edit-row__head"><text>内部备注</text><wd-switch v-model="enabled.remark" size="22px" /></view><textarea v-if="enabled.remark" v-model="editValues.remark" class="edit-textarea" placeholder="可清空" /></view>
-          </view>
-
-          <view class="batch-section">
             <view class="edit-row">
-              <view class="edit-row__head"><text>房源标签</text><wd-switch v-model="enabled.tagIds" size="22px" /></view>
-              <view v-if="enabled.tagIds" class="option-chips"><text v-for="tag in houseTags" :key="String(tag.id)" class="option-chip" :class="{ active: hasId(editValues.tagIds, tag.id) }" @tap="toggleId(editValues.tagIds, tag.id)">{{ tag.name }}</text></view>
+              <view class="edit-row__head">
+                <text>房源描述</text><wd-switch v-model="enabled.description" size="22px" />
+              </view><textarea v-if="enabled.description" v-model="editValues.description" class="edit-textarea" placeholder="可清空" />
             </view>
             <view class="edit-row">
-              <view class="edit-row__head"><text>配套设施</text><wd-switch v-model="enabled.facilityIds" size="22px" /></view>
-              <view v-if="enabled.facilityIds" class="option-chips"><text v-for="tag in facilityTags" :key="String(tag.id)" class="option-chip" :class="{ active: hasId(editValues.facilityIds, tag.id) }" @tap="toggleId(editValues.facilityIds, tag.id)">{{ tag.name }}</text></view>
+              <view class="edit-row__head">
+                <text>内部备注</text><wd-switch v-model="enabled.remark" size="22px" />
+              </view><textarea v-if="enabled.remark" v-model="editValues.remark" class="edit-textarea" placeholder="可清空" />
             </view>
           </view>
 
           <view class="batch-section">
-            <view class="edit-row__head"><text>媒体</text><wd-switch v-model="enabled.images" size="22px" /></view>
+            <view class="edit-row">
+              <view class="edit-row__head">
+                <text>房源标签</text><wd-switch v-model="enabled.tagIds" size="22px" />
+              </view>
+              <view v-if="enabled.tagIds" class="option-chips">
+                <text v-for="tag in houseTags" :key="String(tag.id)" class="option-chip" :class="{ active: hasId(editValues.tagIds, tag.id) }" @tap="toggleId(editValues.tagIds, tag.id)">{{ tag.name }}</text>
+              </view>
+            </view>
+            <view class="edit-row">
+              <view class="edit-row__head">
+                <text>配套设施</text><wd-switch v-model="enabled.facilityIds" size="22px" />
+              </view>
+              <view v-if="enabled.facilityIds" class="option-chips">
+                <text v-for="tag in facilityTags" :key="String(tag.id)" class="option-chip" :class="{ active: hasId(editValues.facilityIds, tag.id) }" @tap="toggleId(editValues.facilityIds, tag.id)">{{ tag.name }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="batch-section">
+            <view class="edit-row__head">
+              <text>媒体</text><wd-switch v-model="enabled.images" size="22px" />
+            </view>
             <template v-if="enabled.images">
-              <view class="option-chips media-modes"><text v-for="mode in MEDIA_MODES" :key="mode.value" class="option-chip" :class="{ active: mediaMode === mode.value }" @tap="mediaMode = mode.value">{{ mode.label }}</text></view>
+              <view class="option-chips media-modes">
+                <text v-for="mode in MEDIA_MODES" :key="mode.value" class="option-chip" :class="{ active: mediaMode === mode.value }" @tap="mediaMode = mode.value">{{ mode.label }}</text>
+              </view>
               <view v-if="mediaMode === 'append' || mediaMode === 'replace'" class="media-actions">
-                <wd-button size="small" plain icon="add" :loading="uploading" @click="openMediaSource">添加媒体</wd-button>
+                <wd-button size="small" plain icon="add" :loading="uploading" @click="openMediaSource()">
+                  添加媒体
+                </wd-button>
                 <text>{{ selectedMedia.length }} 个已选</text>
               </view>
               <view v-if="selectedMedia.length && (mediaMode === 'append' || mediaMode === 'replace')" class="selected-media">
                 <view v-for="media in selectedMedia" :key="String(media.fileId)" class="selected-media__item">
                   <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
-                  <view v-else class="selected-media__video"><wd-icon name="play-circle" size="24px" color="#fff" /></view>
+                  <view v-else class="selected-media__video">
+                    <wd-icon name="play-circle" size="24px" color="#fff" />
+                  </view>
                   <text>{{ media.name }}</text>
-                  <view class="selected-media__remove" @tap="removeSelectedMedia(media.fileId)"><wd-icon name="close" size="12px" color="#fff" /></view>
+                  <view class="selected-media__remove" @tap="removeSelectedMedia(media.fileId)">
+                    <wd-icon name="close" size="12px" color="#fff" />
+                  </view>
                 </view>
               </view>
               <text v-if="mediaMode === 'clear'" class="danger-hint">保存后会清空所选房源的全部媒体。</text>
             </template>
+            <view class="cover-editor">
+              <view class="edit-row__head">
+                <text>统一设置媒体封面</text><wd-switch v-model="coverEnabled" size="22px" />
+              </view>
+              <template v-if="coverEnabled">
+                <text v-if="commonPropertyMedia === null" class="section-hint">所选房源媒体不一致。可以先追加或替换同一媒体，再将新增媒体设为封面。</text>
+                <text v-else-if="!commonPropertyMedia.length" class="section-hint">所选房源当前均无媒体。</text>
+                <text v-else class="section-hint">所选房源媒体一致，共 {{ commonPropertyMedia.length }} 个，可统一选择封面。</text>
+                <view v-if="batchCoverChoices.length" class="cover-choice-grid">
+                  <view v-for="choice in batchCoverChoices" :key="choice.key" class="cover-choice" :class="{ selected: batchCoverChoice?.key === choice.key }" @tap="batchCoverChoice = choice">
+                    <image v-if="choice.kind === 'image'" :src="choice.url" mode="aspectFill" />
+                    <view v-else class="cover-choice__video">
+                      <wd-icon name="play-circle" size="24px" color="#fff" />
+                    </view>
+                    <text>{{ choice.name }}</text>
+                    <text v-if="batchCoverChoice?.key === choice.key" class="cover-choice__badge">封面</text>
+                  </view>
+                </view>
+                <text v-else class="danger-hint">暂无可设为封面的共同媒体。</text>
+              </template>
+            </view>
           </view>
         </template>
       </scroll-view>
 
       <view class="batch-actions">
-        <wd-button plain block :disabled="uploading" @click="closeBatchSheet">取消</wd-button>
-        <wd-button v-if="activeSheet === 'add'" block type="primary" :loading="submitting" :disabled="!!addValidationMessage || !!duplicateRooms.length" @click="submitBatchAdd">创建 {{ generatedRooms.length }} 套</wd-button>
-        <wd-button v-else block type="primary" :loading="submitting" :disabled="uploading" @click="submitBatchEdit">保存批量修改</wd-button>
+        <wd-button plain block :disabled="batchSecondaryDisabled" @click="handleBatchSecondaryAction">
+          {{ batchSecondaryLabel }}
+        </wd-button>
+        <wd-button block type="primary" :loading="batchPrimaryLoading" :disabled="batchPrimaryDisabled" @click="handleBatchPrimaryAction">
+          {{ batchPrimaryLabel }}
+        </wd-button>
       </view>
     </view>
   </wd-popup>
 
-  <wd-popup v-model="communityMediaVisible" position="bottom" :z-index="2400" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
-    <view class="media-picker">
-      <view class="batch-head"><view><text class="batch-head__title">楼盘媒体池</text><text class="batch-head__sub">可多选图片和视频</text></view><wd-icon name="close" size="22px" color="#72817b" @click="communityMediaVisible = false" /></view>
+  <wd-popup v-model="addMediaVisible" position="bottom" :z-index="2300" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+    <view class="media-picker" @touchmove.stop.prevent>
+      <view class="batch-head">
+        <view><text class="batch-head__title">房号 {{ activeAddMediaRow?.roomNo }} 的媒体</text><text class="batch-head__sub">点击非封面媒体可设为封面</text></view>
+        <wd-icon name="close" size="22px" color="#72817b" @click="addMediaVisible = false" />
+      </view>
       <scroll-view scroll-y class="media-picker__scroll">
-        <view v-if="!communityMediaPool.length" class="batch-loading">当前楼盘暂无媒体</view>
+        <view v-if="!activeAddMediaRow?.images.length" class="batch-loading">
+          暂未分配媒体
+        </view>
         <view v-else class="media-grid">
-          <view v-for="media in communityMediaPool" :key="String(media.fileId)" class="pool-media" :class="{ selected: communityMediaSelection.some(item => sameId(item.fileId, media.fileId)) }" @tap="toggleCommunityMedia(media)">
+          <view v-for="media in activeAddMediaRow.images" :key="String(media.fileId)" class="pool-media add-row-media" @tap="setAddRowCover(media.fileId)">
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
-            <view v-else class="pool-media__video"><wd-icon name="play-circle" size="28px" color="#fff" /></view>
+            <view v-else class="pool-media__video">
+              <wd-icon name="play-circle" size="28px" color="#fff" />
+            </view>
             <text>{{ media.name }}</text>
-            <view class="pool-media__check"><wd-icon v-if="communityMediaSelection.some(item => sameId(item.fileId, media.fileId))" name="check" size="13px" color="#fff" /></view>
+            <text v-if="sameId(activeAddMediaRow.coverImageId, media.fileId)" class="cover-choice__badge">封面</text>
+            <view class="selected-media__remove" @tap.stop="removeAddRowMedia(media.fileId)">
+              <wd-icon name="close" size="12px" color="#fff" />
+            </view>
           </view>
         </view>
       </scroll-view>
-      <view class="batch-actions"><wd-button plain block @click="communityMediaVisible = false">取消</wd-button><wd-button block type="primary" @click="confirmCommunityMedia">加入 {{ communityMediaSelection.length }} 个</wd-button></view>
+      <view class="batch-actions">
+        <wd-button plain block @click="addMediaVisible = false">
+          完成
+        </wd-button><wd-button block type="primary" icon="add" @click="openActiveRowMediaSource">
+          添加媒体
+        </wd-button>
+      </view>
     </view>
   </wd-popup>
 
-  <wd-action-sheet v-model="mediaSourceVisible" title="添加媒体" cancel-text="取消" :actions="MEDIA_SOURCE_ACTIONS" :z-index="2600" root-portal @select="selectMediaSource" />
+  <wd-popup v-model="communityMediaVisible" position="bottom" :z-index="2400" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+    <view class="media-picker" @touchmove.stop.prevent>
+      <view class="batch-head">
+        <view><text class="batch-head__title">楼盘媒体池</text><text class="batch-head__sub">可多选图片和视频</text></view><wd-icon name="close" size="22px" color="#72817b" @click="communityMediaVisible = false" />
+      </view>
+      <scroll-view scroll-y class="media-picker__scroll">
+        <view v-if="!communityMediaPool.length" class="batch-loading">
+          当前楼盘暂无媒体
+        </view>
+        <view v-else class="media-grid">
+          <view v-for="media in communityMediaPool" :key="String(media.fileId)" class="pool-media" :class="{ selected: communityMediaSelection.some(item => sameId(item.fileId, media.fileId)) }" @tap="toggleCommunityMedia(media)">
+            <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
+            <view v-else class="pool-media__video">
+              <wd-icon name="play-circle" size="28px" color="#fff" />
+            </view>
+            <text>{{ media.name }}</text>
+            <view class="pool-media__check">
+              <wd-icon v-if="communityMediaSelection.some(item => sameId(item.fileId, media.fileId))" name="check" size="13px" color="#fff" />
+            </view>
+          </view>
+        </view>
+      </scroll-view>
+      <view class="batch-actions">
+        <wd-button plain block @click="communityMediaVisible = false">
+          取消
+        </wd-button><wd-button block type="primary" @click="confirmCommunityMedia">
+          加入 {{ communityMediaSelection.length }} 个
+        </wd-button>
+      </view>
+    </view>
+  </wd-popup>
+
+  <sl-media-source-sheet v-model="mediaSourceVisible" :z-index="2600" @select="selectMediaSource" />
 </template>
 
 <style scoped lang="scss">
@@ -886,6 +1428,11 @@ defineExpose({ openAdd, openEdit, requestDelete })
 
 .batch-scroll {
   height: min(72vh, 1000rpx);
+}
+
+.batch-scroll--rules {
+  height: auto;
+  max-height: min(72vh, 1000rpx);
 }
 
 .batch-loading {
@@ -924,6 +1471,10 @@ defineExpose({ openAdd, openEdit, requestDelete })
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.input-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .field {
   display: flex;
   min-width: 0;
@@ -946,6 +1497,30 @@ defineExpose({ openAdd, openEdit, requestDelete })
   font-size: 26rpx;
 }
 
+.field-with-unit,
+.draft-value {
+  display: flex;
+  align-items: center;
+}
+
+.field-with-unit {
+  border: 1rpx solid rgb(18 107 79 / 15%);
+  border-radius: 8rpx;
+  background: #f7faf6;
+}
+
+.field-with-unit input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+}
+
+.field-with-unit > text {
+  padding-right: 16rpx;
+  color: var(--sl-muted, #72817b);
+}
+
 .field input,
 .edit-input {
   height: 70rpx;
@@ -954,6 +1529,142 @@ defineExpose({ openAdd, openEdit, requestDelete })
 
 .preview-section {
   min-height: 180rpx;
+}
+
+.duplicate-hint,
+.draft-empty {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 22rpx;
+}
+
+.duplicate-hint {
+  color: #a5681e;
+}
+
+.draft-empty {
+  padding: 46rpx 20rpx;
+  color: var(--sl-muted, #72817b);
+  text-align: center;
+}
+
+.preview-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 18rpx;
+}
+
+.draft-table-scroll {
+  width: 100%;
+  margin-top: 18rpx;
+  white-space: nowrap;
+}
+
+.draft-table {
+  width: 1220rpx;
+  border: 1rpx solid #e4ebe5;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.draft-table__row {
+  display: grid;
+  grid-template-columns: 180rpx 250rpx 160rpx 180rpx 100rpx 150rpx 80rpx;
+  min-height: 76rpx;
+  align-items: center;
+  border-bottom: 1rpx solid #edf1ec;
+}
+
+.draft-table__row:last-child {
+  border-bottom: 0;
+}
+
+.draft-table__row > text,
+.draft-table__row > input,
+.draft-table__row > view,
+.draft-table__row > picker {
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 12rpx;
+  border-right: 1rpx solid #edf1ec;
+}
+
+.draft-table__row > text:last-child,
+.draft-table__row > input:last-child,
+.draft-table__row > view:last-child,
+.draft-table__row > picker:last-child {
+  border-right: 0;
+}
+
+.draft-table__head {
+  min-height: 64rpx;
+  background: #eef5ef;
+  color: #4d5d55;
+  font-size: 21rpx;
+  font-weight: 800;
+  text-align: center;
+}
+
+.draft-input,
+.draft-layout input,
+.draft-value input {
+  height: 56rpx;
+  border: 1rpx solid #dfe8e1;
+  border-radius: 6rpx;
+  background: #fbfdfb;
+  color: var(--sl-ink, #1e2b26);
+  font-size: 23rpx;
+  text-align: center;
+}
+
+.draft-input {
+  margin: 0 10rpx;
+}
+
+.draft-layout {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: center;
+  gap: 5rpx;
+}
+
+.draft-layout input {
+  width: 54rpx;
+}
+
+.draft-value {
+  gap: 5rpx;
+  color: var(--sl-muted, #72817b);
+  font-size: 20rpx;
+}
+
+.draft-value input {
+  min-width: 0;
+  flex: 1;
+}
+
+.draft-status {
+  display: flex;
+  height: 76rpx;
+  align-items: center;
+  justify-content: center;
+  color: #126b4f;
+  font-size: 22rpx;
+  font-weight: 800;
+  text-align: center;
+}
+
+.draft-media,
+.draft-remove {
+  display: flex;
+  height: 76rpx;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  color: #126b4f;
+  font-size: 21rpx;
+  font-weight: 750;
 }
 
 .room-preview,
@@ -1030,6 +1741,65 @@ defineExpose({ openAdd, openEdit, requestDelete })
   color: var(--sl-ink, #1e2b26);
   font-size: 26rpx;
   font-weight: 750;
+}
+
+.cover-editor {
+  margin-top: 24rpx;
+  padding-top: 24rpx;
+  border-top: 1rpx solid #edf1ec;
+}
+
+.cover-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14rpx;
+  margin-top: 18rpx;
+}
+
+.cover-choice {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 2rpx solid transparent;
+  border-radius: 7rpx;
+  background: #edf2eb;
+}
+
+.cover-choice.selected {
+  border-color: #2f7ef7;
+}
+
+.cover-choice image,
+.cover-choice__video {
+  display: flex;
+  width: 100%;
+  height: 132rpx;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0f6a4c, #173f34);
+}
+
+.cover-choice > text:not(.cover-choice__badge) {
+  display: block;
+  overflow: hidden;
+  padding: 10rpx;
+  color: #53615a;
+  font-size: 20rpx;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cover-choice__badge {
+  position: absolute;
+  top: 8rpx;
+  left: 8rpx;
+  padding: 4rpx 10rpx;
+  border-radius: 999rpx;
+  background: #2f7ef7;
+  color: #fff;
+  font-size: 18rpx;
+  font-weight: 800;
 }
 
 .edit-input,

@@ -126,7 +126,7 @@
       "type": "page",
       "style": {
         "navigationBarTitleText": "楼盘房源",
-        "enablePullDownRefresh": true
+        "disableScroll": true
       }
     },
     {

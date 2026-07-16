@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import type { AddSlCommunityInput, ImageOutput, ShenLeId, SlCommunityOutput, SlRegionTreeOutput } from '@/types/shenle'
+import type { AddSlCommunityInput, ImageOutput, ShenLeId, SlCommunityOutput, SlLandlordOutput, SlRegionTreeOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, updateCommunity } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
+import { assignOwner, getLandlordPage, unassignOwner } from '@/api/landlord'
 import { getRegionTree } from '@/api/region'
 import { useEntityChangeStore } from '@/store/entity-change'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
+import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
 definePage({
   style: {
@@ -46,6 +48,8 @@ interface CommunityForm {
   remark: string
   media: CommunityMedia[]
   coverImageId: string
+  ownerId: string
+  ownerName: string
 }
 
 interface LocalUploadMedia {
@@ -98,6 +102,11 @@ function publishCommunityChange(action: 'created' | 'updated' | 'deleted' | 'str
 const uploading = ref(false)
 const picking = ref(false)
 const previewVideo = ref<CommunityMedia | null>(null)
+const ownerPickerVisible = ref(false)
+const ownerKeyword = ref('')
+const ownerItems = ref<SlLandlordOutput[]>([])
+const ownerLoading = ref(false)
+const originalOwnerId = ref('')
 
 const form = reactive<CommunityForm>({
   id: '',
@@ -112,6 +121,8 @@ const form = reactive<CommunityForm>({
   remark: '',
   media: [],
   coverImageId: '',
+  ownerId: '',
+  ownerName: '',
 })
 
 const typeOptions = [
@@ -167,6 +178,18 @@ const videoPreviewVisible = computed({
       previewVideo.value = null
   },
 })
+
+function savePreviewVideo() {
+  if (!previewVideo.value)
+    return
+  void saveVideoToAlbum({ fileId: previewVideo.value.id, url: previewVideo.value.url })
+}
+
+function openSavePreviewMenu() {
+  if (!previewVideo.value)
+    return
+  void showVideoSaveActionSheet({ fileId: previewVideo.value.id, url: previewVideo.value.url })
+}
 
 function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
   return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
@@ -361,6 +384,9 @@ function resetForm(item?: SlCommunityOutput) {
     })]
   }
   form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.media[0]?.id || '')
+  form.ownerId = item?.ownerId ? String(item.ownerId) : ''
+  form.ownerName = item?.ownerName || ''
+  originalOwnerId.value = form.ownerId
 }
 
 async function loadFormImages(item: SlCommunityOutput) {
@@ -394,6 +420,59 @@ async function openEdit(item: SlCommunityOutput) {
   catch {
     formVisible.value = false
     uni.showToast({ title: '楼盘详情加载失败', icon: 'none' })
+  }
+}
+
+async function loadOwnerOptions() {
+  if (ownerLoading.value)
+    return
+  ownerLoading.value = true
+  try {
+    const result = await getLandlordPage({
+      page: 1,
+      pageSize: 100,
+      keyword: ownerKeyword.value.trim() || undefined,
+    })
+    ownerItems.value = result.items
+  }
+  finally {
+    ownerLoading.value = false
+  }
+}
+
+function openOwnerPicker() {
+  ownerKeyword.value = ''
+  ownerPickerVisible.value = true
+  void loadOwnerOptions()
+}
+
+function selectOwner(owner: SlLandlordOutput) {
+  form.ownerId = String(owner.userId)
+  form.ownerName = owner.nickName || '未设置昵称'
+  ownerPickerVisible.value = false
+}
+
+async function saveOwnerAssignment(communityId: ShenLeId) {
+  if (sameId(originalOwnerId.value, form.ownerId))
+    return
+
+  if (!form.ownerId)
+    throw new Error('请选择盘源对接人')
+  if (!originalOwnerId.value) {
+    await assignOwner(communityId, form.ownerId)
+    originalOwnerId.value = form.ownerId
+    return
+  }
+
+  const previousOwnerId = originalOwnerId.value
+  await unassignOwner(communityId)
+  try {
+    await assignOwner(communityId, form.ownerId)
+    originalOwnerId.value = form.ownerId
+  }
+  catch (error) {
+    await assignOwner(communityId, previousOwnerId).catch(() => {})
+    throw error
   }
 }
 
@@ -607,6 +686,8 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
     remark: payload.remark ?? null,
     coverImageId: payload.coverImageId ?? null,
     coverImage: coverUrlValue || null,
+    ownerId: form.ownerId || null,
+    ownerName: form.ownerName || null,
     images: form.media.map(item => ({
       id: item.id,
       fileName: item.fileName,
@@ -626,6 +707,10 @@ async function submitForm() {
     uni.showToast({ title: '请选择所属区域', icon: 'none' })
     return
   }
+  if (!form.ownerId) {
+    uni.showToast({ title: '请选择盘源对接人', icon: 'none' })
+    return
+  }
 
   submitting.value = true
   try {
@@ -633,11 +718,13 @@ async function submitForm() {
     if (isEdit.value) {
       const updatePayload = { ...payload, id: form.id }
       await updateCommunity(updatePayload)
+      await saveOwnerAssignment(form.id)
       patchCommunityListItem(updatePayload)
       publishCommunityChange('updated', [form.id])
     }
     else {
       const createdId = await addCommunity(payload)
+      await saveOwnerAssignment(createdId)
       publishCommunityChange('created', [createdId])
       await loadData(true)
     }
@@ -793,8 +880,8 @@ onReachBottom(() => loadData())
       <wd-icon name="add" size="26px" color="#fff" />
     </view>
 
-    <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom>
-      <view class="form-sheet">
+    <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+      <view class="form-sheet" @touchmove.stop.prevent>
         <view class="sheet-head">
           <view>
             <text class="sheet-title">{{ isEdit ? '编辑楼盘' : '新增楼盘' }}</text>
@@ -825,6 +912,18 @@ onReachBottom(() => loadData())
               <text>{{ form.regionId ? regionName(form.regionId) : '请选择' }}</text>
             </view>
           </picker>
+          <view class="owner-assignment" @tap="openOwnerPicker">
+            <view class="owner-assignment__icon">
+              <wd-icon name="user" size="22px" color="#126b4f" />
+            </view>
+            <view class="owner-assignment__content">
+              <view class="owner-assignment__label">
+                <text>盘源对接人</text><text class="required-mark">*</text>
+              </view>
+              <text class="owner-assignment__value" :class="{ 'owner-assignment__value--empty': !form.ownerId }">{{ form.ownerName || '请选择' }}</text>
+            </view>
+            <wd-icon name="arrow-right" size="18px" color="#72817b" />
+          </view>
           <view class="form-row">
             <text>详细地址</text>
             <input v-model="form.address" placeholder="街道门牌、楼盘位置">
@@ -905,13 +1004,47 @@ onReachBottom(() => loadData())
       </view>
     </wd-popup>
 
-    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
-      <view class="video-preview">
+    <wd-popup v-model="ownerPickerVisible" position="bottom" :z-index="2400" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+      <view class="owner-picker" @touchmove.stop.prevent>
+        <view class="sheet-head">
+          <view><text class="sheet-title">分配盘源对接人</text><text class="sheet-sub">一个楼盘同时只归属一位对接人</text></view>
+          <wd-icon name="close" size="22px" color="#72817b" @click="ownerPickerVisible = false" />
+        </view>
+        <view class="owner-picker__search">
+          <input v-model="ownerKeyword" placeholder="搜索昵称" confirm-type="search" @confirm="loadOwnerOptions">
+          <wd-button size="small" type="primary" :loading="ownerLoading" @click="loadOwnerOptions">
+            搜索
+          </wd-button>
+        </view>
+        <scroll-view scroll-y class="owner-picker__list">
+          <view v-for="owner in ownerItems" :key="String(owner.userId)" class="owner-option" :class="{ selected: sameId(form.ownerId, owner.userId) }" @tap="selectOwner(owner)">
+            <view class="owner-option__avatar">
+              <wd-icon name="user" size="22px" color="#126b4f" />
+            </view>
+            <view class="owner-option__body">
+              <text>{{ owner.nickName || '未设置昵称' }}</text><text>名下 {{ owner.communityCount }} 个楼盘</text>
+            </view>
+            <wd-icon v-if="sameId(form.ownerId, owner.userId)" name="check" size="20px" color="#126b4f" />
+          </view>
+          <view v-if="!ownerItems.length && !ownerLoading" class="owner-picker__empty">
+            暂无匹配的盘源对接人
+          </view>
+        </scroll-view>
+      </view>
+    </wd-popup>
+
+    <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
+      <view class="video-preview" @touchmove.stop.prevent>
         <view class="video-preview__head">
           <text>{{ previewVideo?.fileName || '视频预览' }}</text>
-          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideo = null" />
+          <view class="video-preview__actions">
+            <wd-button size="small" plain icon="download" @click="savePreviewVideo">
+              保存
+            </wd-button>
+            <wd-icon name="close" size="20px" color="#72817b" @click="previewVideo = null" />
+          </view>
         </view>
-        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay />
+        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay @longpress="openSavePreviewMenu" />
       </view>
     </wd-popup>
   </view>
@@ -1172,6 +1305,124 @@ onReachBottom(() => loadData())
   min-height: 120rpx;
 }
 
+.owner-assignment {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14rpx;
+  margin-bottom: 18rpx;
+  padding: 18rpx 20rpx;
+  border: 1rpx solid rgb(18 107 79 / 14%);
+  border-radius: 8rpx;
+  background: #f4faf6;
+}
+
+.owner-assignment__icon,
+.owner-option__avatar {
+  display: flex;
+  width: 52rpx;
+  height: 52rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e4f1e9;
+}
+
+.owner-assignment__content {
+  min-width: 0;
+}
+
+.owner-assignment__label {
+  display: flex;
+  align-items: center;
+  gap: 6rpx;
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.required-mark {
+  color: var(--sl-danger, #c94832);
+  font-weight: 800;
+}
+
+.owner-assignment__value {
+  display: block;
+  margin-top: 5rpx;
+  overflow: hidden;
+  color: var(--sl-ink);
+  font-size: 27rpx;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-assignment__value--empty {
+  color: var(--sl-danger, #c94832);
+}
+
+.owner-picker {
+  padding: 26rpx 28rpx calc(26rpx + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+.owner-picker__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12rpx;
+  margin-top: 20rpx;
+}
+
+.owner-picker__search input {
+  height: 68rpx;
+  box-sizing: border-box;
+  padding: 0 18rpx;
+  border: 1rpx solid rgb(18 107 79 / 14%);
+  border-radius: 8rpx;
+  background: #f6f9f4;
+  font-size: 25rpx;
+}
+
+.owner-picker__list {
+  height: min(58vh, 760rpx);
+  margin-top: 18rpx;
+}
+
+.owner-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14rpx;
+  padding: 18rpx 14rpx;
+  border-bottom: 1rpx solid #edf1ec;
+}
+
+.owner-option.selected {
+  background: #f0f8f3;
+}
+
+.owner-option__body text {
+  display: block;
+}
+
+.owner-option__body text:first-child {
+  color: var(--sl-ink);
+  font-size: 26rpx;
+  font-weight: 800;
+}
+
+.owner-option__body text:last-child {
+  margin-top: 5rpx;
+  color: var(--sl-muted);
+  font-size: 21rpx;
+}
+
+.owner-picker__empty {
+  padding: 70rpx 20rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+  text-align: center;
+}
+
 .form-row--images {
   background: #fffaf0;
 }
@@ -1312,6 +1563,12 @@ onReachBottom(() => loadData())
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 900;
+}
+
+.video-preview__actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
 }
 
 .video-preview__player {

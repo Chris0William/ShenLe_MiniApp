@@ -12,6 +12,7 @@ import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
+import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
 definePage({
   style: {
@@ -226,6 +227,18 @@ function openVideoPreview(item: SlCommunityOutput) {
   previewVideoItem.value = item
 }
 
+function savePreviewVideo() {
+  if (!previewVideoItem.value)
+    return
+  void saveVideoToAlbum({ fileId: previewVideoItem.value.coverImageId, url: previewVideoUrl.value })
+}
+
+function openSavePreviewMenu() {
+  if (!previewVideoItem.value)
+    return
+  void showVideoSaveActionSheet({ fileId: previewVideoItem.value.coverImageId, url: previewVideoUrl.value })
+}
+
 function goProperties(item: SlCommunityOutput) {
   if (!canManage.value && !ensureCanUse('登录并通过审核后可查看具体楼盘与房源'))
     return
@@ -284,7 +297,9 @@ onShow(() => {
   if (changes.some(Boolean))
     void reloadLoadedRangePreservingScroll()
 })
-onPageScroll(event => { currentScrollTop.value = event.scrollTop })
+onPageScroll((event) => {
+  currentScrollTop.value = event.scrollTop
+})
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
   if (!finished.value) {
@@ -364,13 +379,18 @@ onReachBottom(() => {
       </template>
     </view>
 
-    <wd-popup v-model="videoPreviewVisible" :z-index="2000" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;">
-      <view class="video-preview">
+    <wd-popup v-model="videoPreviewVisible" :z-index="2000" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
+      <view class="video-preview" @touchmove.stop.prevent>
         <view class="video-preview__head">
           <text>{{ previewVideoItem?.name || '视频预览' }}</text>
-          <wd-icon name="close" size="20px" color="#72817b" @click="previewVideoItem = null" />
+          <view class="video-preview__actions">
+            <wd-button size="small" plain icon="download" @click="savePreviewVideo">
+              保存
+            </wd-button>
+            <wd-icon name="close" size="20px" color="#72817b" @click="previewVideoItem = null" />
+          </view>
         </view>
-        <video v-if="previewVideoItem" class="video-preview__player" :src="previewVideoUrl" controls autoplay />
+        <video v-if="previewVideoItem" class="video-preview__player" :src="previewVideoUrl" controls autoplay @longpress="openSavePreviewMenu" />
       </view>
     </wd-popup>
 
@@ -527,6 +547,12 @@ onReachBottom(() => {
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 900;
+}
+
+.video-preview__actions {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
 }
 
 .video-preview__player {

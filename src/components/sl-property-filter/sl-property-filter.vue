@@ -196,10 +196,11 @@ function onConfirm() {
     :custom-style="popupStyle"
     :z-index="1100"
     safe-area-inset-bottom
+    @touchmove.stop.prevent
     @close="emit('close')"
     @click-modal="emit('close')"
   >
-    <view class="filter-panel">
+    <view class="filter-panel" @touchmove.stop.prevent>
       <view class="panel-head">
         <view>
           <text class="panel-head__title">筛选房源</text>

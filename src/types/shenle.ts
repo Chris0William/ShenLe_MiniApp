@@ -53,6 +53,11 @@ export interface PageSlPropertyInput extends BasePageInput {
   minPrice?: number
   maxPrice?: number
   bedrooms?: number
+  livingRooms?: number
+  bathrooms?: number
+  minFloor?: number
+  maxFloor?: number
+  roomNoSuffix?: string
   orientation?: string
   decoration?: string
   minArea?: number
@@ -354,6 +359,8 @@ export interface SlCommunityOutput {
   distance?: number | null
   images?: ImageOutput[]
   isMine?: boolean
+  ownerId?: ShenLeId | null
+  ownerName?: string | null
 }
 
 export interface SlCommunitySelectOutput {

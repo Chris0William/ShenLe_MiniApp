@@ -44,6 +44,7 @@ describe('management property entry flow', () => {
 
 describe('property form ownership and media entry', () => {
   const form = source('src/pages/common/property-form/index.vue')
+  const mediaSourceSheet = source('src/components/sl-media-source-sheet/sl-media-source-sheet.vue')
 
   it('requires building context for add while edit continues to load ownership from detail', () => {
     expect(form).toContain('请从具体楼栋进入新增房源')
@@ -66,11 +67,12 @@ describe('property form ownership and media entry', () => {
     expect(ownership).not.toContain('v-model="form.totalFloors"')
   })
 
-  it('uses one add-media tile and a wot action sheet for both media sources', () => {
+  it('uses one add-media tile and a locked shared sheet for both media sources', () => {
     expect(form.match(/>添加媒体<\/text>/g)).toHaveLength(1)
-    expect(form).toContain('<wd-action-sheet')
-    expect(form).toContain('PROPERTY_MEDIA_SOURCE_ACTIONS')
-    expect(form).toContain('resolvePropertyMediaSource(event.item.value)')
+    expect(form).toContain('<sl-media-source-sheet')
+    expect(mediaSourceSheet).toContain('PROPERTY_MEDIA_SOURCE_ACTIONS')
+    expect(mediaSourceSheet).toContain('@touchmove.stop.prevent')
+    expect(form).toContain('resolvePropertyMediaSource(value)')
     expect(form).not.toContain('<view class="media-actions">')
   })
 })
