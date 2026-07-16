@@ -254,7 +254,7 @@ defineExpose({ open })
         <wd-button plain block :disabled="loading" @click="cancelProfile">
           取消
         </wd-button>
-        <button class="phone-auth-button" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="submitProfile">
+        <button class="phone-auth-button" :class="{ 'phone-auth-button--disabled': loading }" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="submitProfile">
           {{ loading ? '正在登录...' : '授权手机号并登录' }}
         </button>
       </view>
@@ -272,7 +272,7 @@ defineExpose({ open })
         <wd-button plain block :disabled="loading" @click="cancelPhone">
           取消
         </wd-button>
-        <button class="phone-auth-button" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="submitPhone">
+        <button class="phone-auth-button" :class="{ 'phone-auth-button--disabled': loading }" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="submitPhone">
           {{ loading ? '正在登录...' : '授权并登录' }}
         </button>
       </view>
@@ -355,7 +355,7 @@ defineExpose({ open })
   border: 0;
 }
 
-.phone-auth-button[disabled] {
+.phone-auth-button--disabled {
   background: #8eb5a7;
   color: rgba(255, 255, 255, 0.86);
 }

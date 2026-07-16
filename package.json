@@ -1,7 +1,7 @@
 {
     "name": "shenle-miniapp-next",
     "type": "module",
-    "version": "0.4.11",
+    "version": "0.4.12",
     "unibest-version": "4.4.0",
     "unibest-update-time": "2026-04-25",
     "packageManager": "pnpm@10.10.0",
@@ -82,7 +82,7 @@
         "build:h5:ssr": "uni build --ssr",
         "build:mp-alipay": "uni build -p mp-alipay",
         "build:mp": "uni build -p mp-weixin && node ./scripts/sync-mp-weixin-dist.mjs",
-        "build:mp:test": "uni build -p mp-weixin --mode test",
+        "build:mp:test": "uni build -p mp-weixin --mode test && node ./scripts/sync-mp-weixin-dist.mjs",
         "build:mp:prod": "uni build -p mp-weixin --mode production",
         "build:mp-baidu": "uni build -p mp-baidu",
         "build:mp-jd": "uni build -p mp-jd",

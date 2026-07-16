@@ -10,7 +10,7 @@ import { getApiBaseUrl } from '@/utils/shenle'
 import { get, post } from './request'
 
 export function getUserInfo(silent = false) {
-  return get<LoginUserOutput>('/api/sysAuth/getUserInfo', undefined, { silent })
+  return get<LoginUserOutput>('/api/sysAuth/userInfo', undefined, { silent })
 }
 
 export function logout() {
