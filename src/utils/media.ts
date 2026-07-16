@@ -1,6 +1,8 @@
 /** 媒体文件类型判断（楼盘媒体池同时存图片与视频，后端 fileType/suffix 不总是齐全） */
 export type MediaKind = 'image' | 'video'
 
+export const MEDIA_SELECTION_BATCH_LIMIT = 9
+
 const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
 const VIDEO_SUFFIXES = ['.mp4', '.mov', '.m4v', '.avi', '.webm']
 

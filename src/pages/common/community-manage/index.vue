@@ -7,6 +7,7 @@ import { downloadFile, uploadFile } from '@/api/file'
 import { assignOwner, getLandlordPage, unassignOwner } from '@/api/landlord'
 import { getRegionTree } from '@/api/region'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
@@ -509,9 +510,9 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
   }
 }
 
-function chooseImageFallback(remain: number) {
+function chooseImageFallback() {
   uni.chooseImage({
-    count: remain,
+    count: MEDIA_SELECTION_BATCH_LIMIT,
     sizeType: ['compressed'],
     success: (res) => {
       const paths = Array.isArray(res.tempFilePaths) ? res.tempFilePaths : [res.tempFilePaths].filter(Boolean)
@@ -523,20 +524,15 @@ function chooseImageFallback(remain: number) {
 function chooseMedia() {
   if (uploading.value)
     return
-  const remain = 9 - form.media.length
-  if (remain <= 0) {
-    uni.showToast({ title: '最多上传 9 个媒体', icon: 'none' })
-    return
-  }
 
   const chooseMediaApi = wxChooseMedia()
   if (!chooseMediaApi) {
-    chooseImageFallback(remain)
+    chooseImageFallback()
     return
   }
 
   chooseMediaApi({
-    count: remain,
+    count: MEDIA_SELECTION_BATCH_LIMIT,
     mediaType: ['mix'],
     sourceType: ['album', 'camera'],
     sizeType: ['compressed'],
@@ -553,7 +549,7 @@ function chooseMedia() {
     fail: (error) => {
       const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
       if (!message.includes('cancel'))
-        chooseImageFallback(remain)
+        chooseImageFallback()
     },
   })
 }
@@ -943,7 +939,7 @@ onReachBottom(() => loadData())
           <view class="form-row form-row--images">
             <view class="image-head">
               <text>楼盘媒体</text>
-              <text>{{ form.media.length }}/9</text>
+              <text>{{ form.media.length }} 个</text>
             </view>
             <view class="image-grid">
               <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">

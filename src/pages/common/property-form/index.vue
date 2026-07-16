@@ -16,6 +16,7 @@ import {
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
 import { resolvePropertyMediaSource, toOptionalNumber } from '@/utils/property-management'
 import { resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
@@ -275,9 +276,9 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
   }
 }
 
-function chooseImageFallback(remain: number) {
+function chooseImageFallback() {
   uni.chooseImage({
-    count: remain,
+    count: MEDIA_SELECTION_BATCH_LIMIT,
     sizeType: ['compressed'],
     success: (res) => {
       const paths = Array.isArray(res.tempFilePaths) ? res.tempFilePaths : []
@@ -287,20 +288,14 @@ function chooseImageFallback(remain: number) {
 }
 
 function chooseMedia() {
-  const remain = 9 - form.media.length
-  if (remain <= 0) {
-    uni.showToast({ title: 'Media limit is 9', icon: 'none' })
-    return
-  }
-
   const chooseMediaApi = wxChooseMedia()
   if (!chooseMediaApi) {
-    chooseImageFallback(remain)
+    chooseImageFallback()
     return
   }
 
   chooseMediaApi({
-    count: remain,
+    count: MEDIA_SELECTION_BATCH_LIMIT,
     mediaType: ['mix'],
     sourceType: ['album', 'camera'],
     sizeType: ['compressed'],
@@ -317,7 +312,7 @@ function chooseMedia() {
     fail: (error) => {
       const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
       if (!message.includes('cancel'))
-        chooseImageFallback(remain)
+        chooseImageFallback()
     },
   })
 }
@@ -432,15 +427,8 @@ function toggleCommunityMedia(media: PropertyMedia) {
 }
 
 function confirmCommunityMedia() {
-  const remain = 9 - form.media.length
-  if (remain <= 0) {
-    uni.showToast({ title: 'Media limit is 9', icon: 'none' })
-    return
-  }
-
   const selected = communityMediaPool.value
     .filter(item => selectedCommunityMediaIds.value.some(id => idEquals(id, item.id)))
-    .slice(0, remain)
 
   for (const media of selected) {
     form.media.push({ ...media, source: 'community', originId: media.id })
@@ -777,7 +765,7 @@ onLoad(async (query) => {
       <view class="form-card sl-card">
         <view class="media-head">
           <text class="form-card__title">媒体与标签</text>
-          <text class="media-count">{{ form.media.length }}/9</text>
+          <text class="media-count">{{ form.media.length }} 个</text>
         </view>
         <view class="image-grid">
           <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
