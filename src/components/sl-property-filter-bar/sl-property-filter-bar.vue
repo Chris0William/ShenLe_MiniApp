@@ -303,6 +303,17 @@ function toggleMineFilter(key: 'onlyManagedByMe' | 'onlyUpdatedByMe') {
   draft.value[key] = !draft.value[key] || undefined
 }
 
+function quickToggleMineFilter(key: 'onlyManagedByMe' | 'onlyUpdatedByMe') {
+  if (guardInteraction())
+    return
+  const next = clonePropertyFilters(props.filters)
+  next[key] = !next[key] || undefined
+  draft.value = clonePropertyFilters(next)
+  activeDropdown.value = null
+  sheetVisible.value = false
+  emit('confirm', next, props.keyword)
+}
+
 function setPriceRange(min: number, max: number) {
   const boundedMin = Math.max(0, Math.min(PRICE_MAX, min))
   const boundedMax = Math.max(0, Math.min(PRICE_MAX, max))
@@ -459,6 +470,25 @@ function onThumbTouchEnd() {
       </view>
       <view class="filter-search" :class="{ active: keywordActive || sheetVisible }" @tap="openSheet">
         <wd-icon name="search" size="18px" :color="keywordActive || sheetVisible ? '#2f66ee' : '#293241'" />
+      </view>
+    </view>
+
+    <view v-if="showMineFilters && !guarded" class="mine-quick-row">
+      <view
+        class="mine-quick"
+        :class="{ active: props.filters.onlyManagedByMe }"
+        @tap="quickToggleMineFilter('onlyManagedByMe')"
+      >
+        <wd-icon name="user" size="14px" :color="props.filters.onlyManagedByMe ? '#fff' : '#126b4f'" />
+        <text>仅看我管理</text>
+      </view>
+      <view
+        class="mine-quick"
+        :class="{ active: props.filters.onlyUpdatedByMe }"
+        @tap="quickToggleMineFilter('onlyUpdatedByMe')"
+      >
+        <wd-icon name="edit" size="14px" :color="props.filters.onlyUpdatedByMe ? '#fff' : '#126b4f'" />
+        <text>仅看我更新</text>
       </view>
     </view>
 
@@ -897,6 +927,35 @@ function onThumbTouchEnd() {
 
 .filter-search.active {
   background: rgb(47 102 238 / 10%);
+}
+
+.mine-quick-row {
+  position: relative;
+  z-index: 84;
+  display: flex;
+  gap: 12rpx;
+  margin-top: 12rpx;
+}
+
+.mine-quick {
+  display: flex;
+  height: 56rpx;
+  align-items: center;
+  gap: 8rpx;
+  box-sizing: border-box;
+  padding: 0 18rpx;
+  border: 1rpx solid rgb(18 107 79 / 18%);
+  border-radius: 8rpx;
+  background: #f5faf6;
+  color: #126b4f;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.mine-quick.active {
+  border-color: #126b4f;
+  background: #126b4f;
+  color: #fff;
 }
 
 .filter-mask {

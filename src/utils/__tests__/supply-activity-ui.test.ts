@@ -44,20 +44,44 @@ describe('supply contact and leaderboard UI contract', () => {
     expect(page).toContain('<sl-supply-contacts')
   })
 
-  it('provides direct phone calls without duplicating page handlers', () => {
+  it('keeps contacts compact and only exposes the source contact phone', () => {
     const contacts = source('src/components/sl-supply-contacts/sl-supply-contacts.vue')
     expect(contacts).toContain('uni.makePhoneCall')
-    expect(contacts).toContain('盘源更新人')
-    expect(contacts).toContain('盘源对接人')
+    expect(contacts).toContain('更新人')
+    expect(contacts).toContain('对接人')
+    expect(contacts).toContain('ownerPhone')
+    expect(contacts).not.toContain('lastUpdaterPhone')
   })
 
-  it('loads recent activity and all supported leaderboard sorts on the map', () => {
+  it('loads leaderboard details, fixes popup layering and supports all leaderboard sorts', () => {
     const map = source('src/pages/user/map/index.vue')
     expect(map).toContain('getRecentSupplyActivity')
     expect(map).toContain('getSupplyLeaderboard')
+    expect(map).toContain('getSupplyActivityDetails')
+    expect(map).toContain('openRecentActivityDetail')
+    expect(map).toContain(':z-index="3000"')
+    expect(map).toContain('更新明细')
     expect(map).toContain('chart-bar')
-    expect(map).toContain("'affectedCount'")
-    expect(map).toContain("'activityCount'")
-    expect(map).toContain("'communityCount'")
+    expect(map).toContain('\'affectedCount\'')
+    expect(map).toContain('\'activityCount\'')
+    expect(map).toContain('\'communityCount\'')
+  })
+
+  it('shows mine filters only in the management-side map', () => {
+    const filters = source('src/components/sl-property-filter-bar/sl-property-filter-bar.vue')
+    const map = source('src/pages/user/map/index.vue')
+    const propertyList = source('src/pages/admin/property-list/index.vue')
+    expect(filters).toContain('mine-quick-row')
+    expect(filters).toContain('quickToggleMineFilter(\'onlyManagedByMe\')')
+    expect(filters).toContain('quickToggleMineFilter(\'onlyUpdatedByMe\')')
+    expect(map).toContain('const showMineFilters = computed(() => modeStore.mode !== \'user\')')
+    expect(map).toContain(':show-mine-filters="showMineFilters"')
+    expect(propertyList).not.toContain('show-mine-filters')
+  })
+
+  it('uses explicit updater and source-contact labels on community cards', () => {
+    const card = source('src/components/sl-community-card/sl-community-card.vue')
+    expect(card).toContain('更新人：')
+    expect(card).toContain('对接人：')
   })
 })

@@ -657,6 +657,10 @@ onShow(async () => {
           </view>
         </scroll-view>
 
+        <view v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)" class="supply-contacts-card">
+          <sl-supply-contacts :community="communityDetail" />
+        </view>
+
         <view class="search sl-card">
           <wd-icon name="search" size="20px" color="#7a8780" />
           <input v-model="keyword" class="search__input" placeholder="搜索房源 / 房号" confirm-type="search" @confirm="onSearch">
@@ -741,10 +745,6 @@ onShow(async () => {
           </view>
         </view>
 
-        <view v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)" class="supply-contacts-card sl-card">
-          <sl-supply-contacts :community="communityDetail" />
-        </view>
-
         <scroll-view v-if="canManageBuildingScope" scroll-x class="chips">
           <view class="chips__inner">
             <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
@@ -777,6 +777,13 @@ onShow(async () => {
           <wd-button type="primary" icon="add" @click="openForm()">
             新增房源
           </wd-button>
+        </view>
+
+        <view v-if="selectionMode" class="select-all-control batch-select-all-row" @tap="toggleSelectAllFiltered">
+          <view class="selection-checkbox selection-checkbox--all" :class="{ selected: allFilteredSelected }">
+            <wd-icon v-if="allFilteredSelected" name="check" size="14px" color="#fff" />
+          </view>
+          <text>{{ selectingAll ? '处理中...' : (allFilteredSelected ? '已全选筛选结果' : '全选筛选结果') }}</text>
         </view>
 
         <view class="list">
@@ -858,9 +865,6 @@ onShow(async () => {
     <view v-if="canBatchManage && selectionMode" class="batch-toolbar sl-safe-bottom">
       <view class="batch-toolbar__count">
         <text>已选 {{ selectedIds.length }} 套</text>
-        <text class="batch-toolbar__select-all" @tap="toggleSelectAllFiltered">
-          {{ selectingAll ? '处理中...' : (allFilteredSelected ? '取消全选' : '全选筛选结果') }}
-        </text>
       </view>
       <wd-button size="small" type="primary" :disabled="!selectedIds.length" @click="openBatchEdit">
         修改
@@ -967,8 +971,7 @@ onShow(async () => {
 }
 
 .supply-contacts-card {
-  margin-top: 16rpx;
-  padding: 22rpx;
+  margin-top: 12rpx;
 }
 
 .property-filters__tabs {
@@ -1154,6 +1157,24 @@ onShow(async () => {
   font-size: 23rpx;
 }
 
+.select-all-control {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10rpx;
+  color: #126b4f;
+  font-size: 23rpx;
+  font-weight: 800;
+}
+
+.batch-select-all-row {
+  width: fit-content;
+  min-height: 52rpx;
+  box-sizing: border-box;
+  margin: -6rpx 0 10rpx;
+  padding-left: 18rpx;
+}
+
 .scope-actions {
   display: flex;
   justify-content: flex-end;
@@ -1207,6 +1228,10 @@ onShow(async () => {
 .selection-checkbox.selected {
   border-color: #126b4f;
   background: #126b4f;
+}
+
+.selection-checkbox--all {
+  margin-left: 0;
 }
 
 .property-wrap :deep(.property) {
@@ -1304,12 +1329,5 @@ onShow(async () => {
 
 .batch-toolbar__count > text {
   display: block;
-}
-
-.batch-toolbar__select-all {
-  margin-top: 4rpx;
-  color: #126b4f;
-  font-size: 21rpx;
-  font-weight: 700;
 }
 </style>

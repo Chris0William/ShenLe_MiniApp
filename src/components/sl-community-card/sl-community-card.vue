@@ -117,8 +117,8 @@ watch(
         <text v-if="item.address" class="community__address">{{ item.address }}</text>
       </view>
       <view v-if="item.lastUpdaterName || item.ownerName" class="community__people">
-        <text v-if="item.lastUpdaterName">更新：{{ item.lastUpdaterName }}{{ formatSupplyTime(item.supplyUpdateTime) ? ` · ${formatSupplyTime(item.supplyUpdateTime)}` : '' }}</text>
-        <text v-if="item.ownerName">对接：{{ item.ownerName }}</text>
+        <text v-if="item.lastUpdaterName">更新人：{{ item.lastUpdaterName }}{{ formatSupplyTime(item.supplyUpdateTime) ? ` · ${formatSupplyTime(item.supplyUpdateTime)}` : '' }}</text>
+        <text v-if="item.ownerName">对接人：{{ item.ownerName }}</text>
       </view>
     </view>
 

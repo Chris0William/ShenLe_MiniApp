@@ -318,6 +318,8 @@ describe('batch property management UI contract', () => {
     expect(page).toContain('getPropertyBatchList(buildingId.value)')
     expect(page).toContain('filterPropertyRows(snapshots, currentRowFilter())')
     expect(page).toContain('全选筛选结果')
+    expect(page).toContain('select-all-control')
+    expect(page).toContain('selection-checkbox--all')
   })
 
   it('provides an editable generated preview, duplicate removal and per-room media assignment', () => {

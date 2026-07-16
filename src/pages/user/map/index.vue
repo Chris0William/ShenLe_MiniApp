@@ -4,7 +4,7 @@ import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPublicRegionMap } from '@/api/public-preview'
-import { getRecentSupplyActivity, getSupplyLeaderboard } from '@/api/supply-activity'
+import { getRecentSupplyActivity, getSupplyActivityDetails, getSupplyLeaderboard } from '@/api/supply-activity'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
@@ -28,6 +28,7 @@ const mapId = 'property-map'
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
 const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const showMineFilters = computed(() => modeStore.mode !== 'user')
 const isPreviewMode = computed(() => !auth.canViewRealData)
 
 const keyword = ref('')
@@ -47,6 +48,9 @@ const leaderboardVisible = ref(false)
 const leaderboardLoading = ref(false)
 const leaderboardDays = ref(7)
 const leaderboardSort = ref<'affectedCount' | 'activityCount' | 'communityCount'>('affectedCount')
+const leaderboardDetail = ref<SlSupplyLeaderboardOutput | null>(null)
+const leaderboardDetails = ref<SlSupplyRecentOutput[]>([])
+const leaderboardDetailLoading = ref(false)
 let mapContext: UniApp.MapContext | null = null
 let referencePointVersion = 0
 
@@ -411,7 +415,7 @@ async function loadLeaderboard() {
     return
   leaderboardLoading.value = true
   try {
-    leaderboard.value = await getSupplyLeaderboard(leaderboardDays.value, 20, leaderboardSort.value)
+    leaderboard.value = await getSupplyLeaderboard(leaderboardDays.value, 50, leaderboardSort.value)
   }
   catch {
     leaderboard.value = []
@@ -423,8 +427,59 @@ async function loadLeaderboard() {
 }
 
 function openLeaderboard() {
+  leaderboardDetail.value = null
+  leaderboardDetails.value = []
   leaderboardVisible.value = true
   void loadLeaderboard()
+}
+
+function closeLeaderboard() {
+  leaderboardVisible.value = false
+}
+
+async function loadLeaderboardDetails(item: SlSupplyLeaderboardOutput) {
+  leaderboardDetailLoading.value = true
+  try {
+    leaderboardDetails.value = await getSupplyActivityDetails(item.userId, leaderboardDays.value, 50)
+  }
+  catch {
+    leaderboardDetails.value = []
+    uni.showToast({ title: '更新明细加载失败', icon: 'none' })
+  }
+  finally {
+    leaderboardDetailLoading.value = false
+  }
+}
+
+function openLeaderboardDetail(item: SlSupplyLeaderboardOutput) {
+  leaderboardDetail.value = item
+  leaderboardDetails.value = []
+  void loadLeaderboardDetails(item)
+}
+
+function backToLeaderboard() {
+  leaderboardDetail.value = null
+  leaderboardDetails.value = []
+}
+
+async function openRecentActivityDetail(activity: SlSupplyRecentOutput) {
+  leaderboardDays.value = 7
+  leaderboardSort.value = 'affectedCount'
+  leaderboardVisible.value = true
+  const fallback: SlSupplyLeaderboardOutput = {
+    userId: activity.operatorUserId,
+    nickName: activity.operatorNickName,
+    activityCount: 0,
+    affectedCount: 0,
+    communityCount: 0,
+    lastUpdateTime: activity.updateTime,
+  }
+  leaderboardDetail.value = fallback
+  leaderboardDetails.value = []
+  await Promise.all([loadLeaderboard(), loadLeaderboardDetails(fallback)])
+  const summary = leaderboard.value.find(item => String(item.userId) === String(activity.operatorUserId))
+  if (summary)
+    leaderboardDetail.value = summary
 }
 
 function selectLeaderboardDays(days: number) {
@@ -491,7 +546,7 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
       :filters="filters"
       :keyword="keyword"
       :guarded="isPreviewMode"
-      :show-mine-filters="auth.canUseMineFilters"
+      :show-mine-filters="showMineFilters"
       :show-operator-filters="auth.canFilterBySupplyOperator"
       guard-tip="登录并通过审核后可使用筛选"
       mount-key="admin-map-filter"
@@ -536,7 +591,7 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
         </view>
         <swiper class="supply-ticker__swiper" vertical autoplay circular :interval="4000" :duration="350">
           <swiper-item v-for="activity in recentActivities" :key="String(activity.id)">
-            <view class="supply-ticker__item">
+            <view class="supply-ticker__item" @tap.stop="openRecentActivityDetail(activity)">
               <text>{{ formatRecentSupplyActivity(activity) }}</text>
             </view>
           </swiper-item>
@@ -597,65 +652,107 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
     <wd-popup
       v-model="leaderboardVisible"
       position="bottom"
+      :z-index="3000"
       custom-style="border-radius: 24rpx 24rpx 0 0; overflow: hidden;"
       safe-area-inset-bottom
       @touchmove.stop
     >
       <view class="leaderboard-sheet" @tap.stop @touchmove.stop>
         <view class="leaderboard-sheet__head">
-          <view>
-            <text class="leaderboard-sheet__title">盘源更新榜</text>
-            <text class="leaderboard-sheet__sub">按实际业务更新记录统计</text>
+          <view v-if="leaderboardDetail" class="leaderboard-detail__heading">
+            <view class="leaderboard-detail__back" @tap="backToLeaderboard">
+              <wd-icon name="arrow-left" size="20px" color="#126b4f" />
+            </view>
+            <view class="leaderboard-detail__heading-text">
+              <text class="leaderboard-sheet__title">{{ leaderboardDetail.nickName }}的更新明细</text>
+              <text class="leaderboard-sheet__sub">近 {{ leaderboardDays }} 天的业务操作记录</text>
+            </view>
           </view>
-          <view class="leaderboard-sheet__close" @tap="leaderboardVisible = false">
+          <view v-else>
+            <text class="leaderboard-sheet__title">盘源更新榜</text>
+            <text class="leaderboard-sheet__sub">按实际业务更新记录统计，点击人员查看明细</text>
+          </view>
+          <view class="leaderboard-sheet__close" @tap="closeLeaderboard">
             <wd-icon name="close" size="21px" color="#72817b" />
           </view>
         </view>
 
-        <view class="leaderboard-filter">
-          <text class="leaderboard-filter__label">时间范围</text>
-          <view class="leaderboard-options leaderboard-options--days">
-            <view
-              v-for="days in leaderboardDayOptions"
-              :key="days"
-              class="leaderboard-option"
-              :class="{ active: leaderboardDays === days }"
-              @tap="selectLeaderboardDays(days)"
-            >
-              {{ days === 1 ? '今天' : `近 ${days} 天` }}
+        <template v-if="!leaderboardDetail">
+          <view class="leaderboard-filter">
+            <text class="leaderboard-filter__label">时间范围</text>
+            <view class="leaderboard-options leaderboard-options--days">
+              <view
+                v-for="days in leaderboardDayOptions"
+                :key="days"
+                class="leaderboard-option"
+                :class="{ active: leaderboardDays === days }"
+                @tap="selectLeaderboardDays(days)"
+              >
+                {{ days === 1 ? '今天' : `近 ${days} 天` }}
+              </view>
             </view>
           </view>
-        </view>
 
-        <view class="leaderboard-filter">
-          <text class="leaderboard-filter__label">排序方式</text>
-          <view class="leaderboard-options leaderboard-options--sort">
-            <view
-              v-for="option in leaderboardSortOptions"
-              :key="option.value"
-              class="leaderboard-option"
-              :class="{ active: leaderboardSort === option.value }"
-              @tap="selectLeaderboardSort(option.value)"
-            >
-              {{ option.label }}
+          <view class="leaderboard-filter">
+            <text class="leaderboard-filter__label">排序方式</text>
+            <view class="leaderboard-options leaderboard-options--sort">
+              <view
+                v-for="option in leaderboardSortOptions"
+                :key="option.value"
+                class="leaderboard-option"
+                :class="{ active: leaderboardSort === option.value }"
+                @tap="selectLeaderboardSort(option.value)"
+              >
+                {{ option.label }}
+              </view>
             </view>
           </view>
-        </view>
 
-        <scroll-view scroll-y class="leaderboard-list">
-          <view v-if="leaderboardLoading" class="leaderboard-empty">榜单加载中...</view>
-          <view v-else-if="!leaderboard.length" class="leaderboard-empty">所选时间范围内暂无更新记录</view>
-          <view v-for="(item, index) in leaderboard" v-else :key="String(item.userId)" class="leaderboard-row">
-            <text class="leaderboard-row__rank" :class="`rank-${index + 1}`">{{ index + 1 }}</text>
-            <view class="leaderboard-row__body">
-              <text class="leaderboard-row__name">{{ item.nickName }}</text>
-              <text class="leaderboard-row__meta">
-                {{ item.activityCount }} 次操作 · {{ item.communityCount }} 个楼盘 · {{ formatSupplyTime(item.lastUpdateTime) }}
-              </text>
+          <scroll-view scroll-y class="leaderboard-list">
+            <view v-if="leaderboardLoading" class="leaderboard-empty">
+              榜单加载中...
             </view>
-            <text class="leaderboard-row__value">{{ leaderboardValue(item) }}</text>
+            <view v-else-if="!leaderboard.length" class="leaderboard-empty">
+              所选时间范围内暂无更新记录
+            </view>
+            <view v-for="(item, index) in leaderboard" v-else :key="String(item.userId)" class="leaderboard-row" @tap="openLeaderboardDetail(item)">
+              <text class="leaderboard-row__rank" :class="`rank-${index + 1}`">{{ index + 1 }}</text>
+              <view class="leaderboard-row__body">
+                <text class="leaderboard-row__name">{{ item.nickName }}</text>
+                <text class="leaderboard-row__meta">
+                  {{ item.activityCount }} 次操作 · {{ item.communityCount }} 个楼盘 · {{ formatSupplyTime(item.lastUpdateTime) }}
+                </text>
+              </view>
+              <view class="leaderboard-row__tail">
+                <text class="leaderboard-row__value">{{ leaderboardValue(item) }}</text>
+                <wd-icon name="arrow-right" size="15px" color="#8a978f" />
+              </view>
+            </view>
+          </scroll-view>
+        </template>
+
+        <view v-else class="leaderboard-detail">
+          <view class="leaderboard-detail__summary">
+            <view><text>{{ leaderboardDetail.affectedCount }}</text><text>更新数量</text></view>
+            <view><text>{{ leaderboardDetail.activityCount }}</text><text>操作次数</text></view>
+            <view><text>{{ leaderboardDetail.communityCount }}</text><text>覆盖楼盘</text></view>
           </view>
-        </scroll-view>
+          <scroll-view scroll-y class="leaderboard-detail__list">
+            <view v-if="leaderboardDetailLoading" class="leaderboard-empty">
+              明细加载中...
+            </view>
+            <view v-else-if="!leaderboardDetails.length" class="leaderboard-empty">
+              所选时间范围内暂无更新明细
+            </view>
+            <view v-for="activity in leaderboardDetails" v-else :key="String(activity.id)" class="leaderboard-detail__row">
+              <view class="leaderboard-detail__body">
+                <text class="leaderboard-detail__action">{{ activity.actionName }} · {{ activity.communityName }}</text>
+                <text class="leaderboard-detail__time">{{ formatSupplyTime(activity.updateTime) }}</text>
+              </view>
+              <text class="leaderboard-detail__count">{{ activity.affectedCount }} 项</text>
+            </view>
+          </scroll-view>
+        </view>
       </view>
     </wd-popup>
   </view>
@@ -894,6 +991,29 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
   justify-content: center;
 }
 
+.leaderboard-detail__heading {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.leaderboard-detail__back {
+  display: flex;
+  width: 54rpx;
+  height: 54rpx;
+  flex: 0 0 54rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8rpx;
+  background: #eaf4ed;
+}
+
+.leaderboard-detail__heading-text {
+  min-width: 0;
+}
+
 .leaderboard-filter {
   margin-top: 22rpx;
 }
@@ -1010,6 +1130,97 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
   color: #126b4f;
   font-size: 25rpx;
   font-weight: 900;
+}
+
+.leaderboard-row__tail {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.leaderboard-detail {
+  margin-top: 22rpx;
+}
+
+.leaderboard-detail__summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  border: 1rpx solid #dfe9e2;
+  border-radius: 8rpx;
+  background: #edf6ef;
+}
+
+.leaderboard-detail__summary view {
+  display: flex;
+  min-width: 0;
+  height: 104rpx;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1rpx solid #dfe9e2;
+}
+
+.leaderboard-detail__summary view:last-child {
+  border-right: 0;
+}
+
+.leaderboard-detail__summary text:first-child {
+  color: #126b4f;
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.leaderboard-detail__summary text:last-child {
+  margin-top: 4rpx;
+  color: #68766f;
+  font-size: 20rpx;
+}
+
+.leaderboard-detail__list {
+  height: 610rpx;
+  margin-top: 18rpx;
+}
+
+.leaderboard-detail__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16rpx;
+  padding: 20rpx 4rpx;
+  border-bottom: 1rpx solid #e3eae5;
+}
+
+.leaderboard-detail__body {
+  min-width: 0;
+}
+
+.leaderboard-detail__action,
+.leaderboard-detail__time {
+  display: block;
+}
+
+.leaderboard-detail__action {
+  overflow: hidden;
+  color: var(--sl-ink);
+  font-size: 24rpx;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-detail__time {
+  margin-top: 7rpx;
+  color: var(--sl-muted);
+  font-size: 20rpx;
+}
+
+.leaderboard-detail__count {
+  padding: 8rpx 12rpx;
+  border-radius: 6rpx;
+  background: #eaf4ed;
+  color: #126b4f;
+  font-size: 21rpx;
+  font-weight: 850;
 }
 
 .leaderboard-empty {

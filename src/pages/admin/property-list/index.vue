@@ -318,7 +318,6 @@ onReachBottom(() => {
       :filters="filters"
       :keyword="keyword"
       :guarded="isPreviewMode"
-      :show-mine-filters="auth.canUseMineFilters"
       :show-operator-filters="auth.canFilterBySupplyOperator"
       guard-tip="登录并通过审核后可使用筛选"
       mount-key="admin-community-filter"

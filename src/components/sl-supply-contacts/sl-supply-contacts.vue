@@ -5,150 +5,99 @@ import { formatSupplyTime } from '@/utils/supply-activity'
 
 const props = withDefaults(defineProps<{
   community?: SlCommunityOutput | null
-  title?: string
 }>(), {
   community: null,
-  title: '盘源联系人',
 })
 
-const rows = computed(() => {
-  const community = props.community
-  if (!community)
-    return []
-  return [
-    {
-      key: 'updater',
-      label: '盘源更新人',
-      name: community.lastUpdaterName,
-      phone: community.lastUpdaterPhone,
-      meta: formatSupplyTime(community.supplyUpdateTime),
-      icon: 'edit',
-    },
-    {
-      key: 'owner',
-      label: '盘源对接人',
-      name: community.ownerName,
-      phone: community.ownerPhone,
-      meta: '',
-      icon: 'user',
-    },
-  ].filter(item => item.name || item.phone)
-})
+const updaterName = computed(() => String(props.community?.lastUpdaterName || '').trim())
+const ownerName = computed(() => String(props.community?.ownerName || '').trim())
+const ownerPhone = computed(() => String(props.community?.ownerPhone || '').trim())
+const updateTime = computed(() => formatSupplyTime(props.community?.supplyUpdateTime))
+const hasContent = computed(() => !!(updaterName.value || ownerName.value || ownerPhone.value))
 
-function callPhone(phone?: string | null) {
-  const phoneNumber = String(phone || '').trim()
-  if (!phoneNumber)
+function callOwnerPhone() {
+  if (!ownerPhone.value)
     return
-  uni.makePhoneCall({ phoneNumber })
+  uni.makePhoneCall({ phoneNumber: ownerPhone.value })
 }
 </script>
 
 <template>
-  <view v-if="rows.length" class="supply-contacts">
-    <text v-if="title" class="supply-contacts__title">{{ title }}</text>
-    <view class="supply-contacts__list">
-      <view v-for="row in rows" :key="row.key" class="supply-contact">
-        <view class="supply-contact__icon">
-          <wd-icon :name="row.icon" size="18px" color="#126b4f" />
-        </view>
-        <view class="supply-contact__body">
-          <text class="supply-contact__label">{{ row.label }}</text>
-          <text class="supply-contact__name">{{ row.name || '未填写姓名' }}</text>
-          <text v-if="row.meta" class="supply-contact__meta">最后更新 {{ row.meta }}</text>
-        </view>
-        <view v-if="row.phone" class="supply-contact__call" @tap.stop="callPhone(row.phone)">
-          <wd-icon name="call" size="17px" color="#126b4f" />
-          <text>{{ row.phone }}</text>
-        </view>
-      </view>
+  <view v-if="hasContent" class="supply-contacts">
+    <wd-icon name="info-circle" size="16px" color="#126b4f" />
+    <view class="supply-contacts__line">
+      <text v-if="updaterName" class="supply-contacts__item">
+        <text class="supply-contacts__label">更新人</text>
+        {{ updaterName }}<text v-if="updateTime" class="supply-contacts__time"> · {{ updateTime }}</text>
+      </text>
+      <text v-if="updaterName && (ownerName || ownerPhone)" class="supply-contacts__divider">|</text>
+      <text v-if="ownerName || ownerPhone" class="supply-contacts__item">
+        <text class="supply-contacts__label">对接人</text>
+        {{ ownerName || '未填写' }}
+      </text>
+    </view>
+    <view v-if="ownerPhone" class="supply-contacts__call" @tap.stop="callOwnerPhone">
+      <wd-icon name="call" size="14px" color="#126b4f" />
+      <text>{{ ownerPhone }}</text>
     </view>
   </view>
 </template>
 
 <style scoped lang="scss">
-.supply-contacts__title {
-  display: block;
-  margin-bottom: 16rpx;
-  color: var(--sl-ink);
-  font-size: 28rpx;
-  font-weight: 850;
-}
-
-.supply-contacts__list {
+.supply-contacts {
   display: flex;
-  flex-direction: column;
-}
-
-.supply-contact {
-  display: grid;
-  grid-template-columns: 56rpx minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14rpx;
-  padding: 16rpx 0;
-  border-bottom: 1rpx solid var(--sl-line);
-}
-
-.supply-contact:first-child {
-  padding-top: 0;
-}
-
-.supply-contact:last-child {
-  padding-bottom: 0;
-  border-bottom: 0;
-}
-
-.supply-contact__icon {
-  display: flex;
-  width: 56rpx;
-  height: 56rpx;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8rpx;
-  background: #edf7f1;
-}
-
-.supply-contact__body {
   min-width: 0;
+  min-height: 64rpx;
+  align-items: center;
+  gap: 10rpx;
+  box-sizing: border-box;
+  padding: 0 16rpx;
+  border: 1rpx solid rgb(18 107 79 / 12%);
+  border-radius: 8rpx;
+  background: #f0f7f2;
 }
 
-.supply-contact__label,
-.supply-contact__name,
-.supply-contact__meta {
-  display: block;
-}
-
-.supply-contact__label {
-  color: var(--sl-muted);
-  font-size: 21rpx;
-}
-
-.supply-contact__name {
-  margin-top: 4rpx;
+.supply-contacts__line {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8rpx;
   overflow: hidden;
-  color: var(--sl-ink);
-  font-size: 26rpx;
-  font-weight: 800;
-  text-overflow: ellipsis;
+  color: #52635b;
+  font-size: 21rpx;
   white-space: nowrap;
 }
 
-.supply-contact__meta {
-  margin-top: 4rpx;
-  color: #7a8780;
-  font-size: 20rpx;
+.supply-contacts__item {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.supply-contact__call {
-  display: flex;
-  min-height: 58rpx;
-  align-items: center;
-  gap: 8rpx;
-  padding: 0 14rpx;
-  border: 1rpx solid rgb(18 107 79 / 18%);
-  border-radius: 8rpx;
-  background: #f5faf6;
+.supply-contacts__label {
+  margin-right: 6rpx;
   color: #126b4f;
-  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.supply-contacts__time,
+.supply-contacts__divider {
+  color: #829087;
+}
+
+.supply-contacts__call {
+  display: flex;
+  height: 46rpx;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6rpx;
+  padding: 0 10rpx;
+  border: 1rpx solid rgb(18 107 79 / 18%);
+  border-radius: 6rpx;
+  background: #fff;
+  color: #126b4f;
+  font-size: 20rpx;
   font-weight: 800;
 }
 </style>
