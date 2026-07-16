@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
+import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput, SlSupplyLeaderboardOutput, SlSupplyRecentOutput } from '@/types/shenle'
+import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPublicRegionMap } from '@/api/public-preview'
+import { getRecentSupplyActivity, getSupplyLeaderboard } from '@/api/supply-activity'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
@@ -11,6 +12,7 @@ import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
+import { formatRecentSupplyActivity, formatSupplyTime } from '@/utils/supply-activity'
 
 definePage({
   type: 'home',
@@ -27,13 +29,9 @@ const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
 const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 const isPreviewMode = computed(() => !auth.canViewRealData)
-const isLandlordMode = computed(() => modeStore.mode === 'landlord')
 
 const keyword = ref('')
-const filters = ref<PropertyFilterState>({
-  userLng: DEFAULT_CENTER.longitude,
-  userLat: DEFAULT_CENTER.latitude,
-})
+const filters = ref<PropertyFilterState>({})
 const mapLat = ref(DEFAULT_CENTER.latitude)
 const mapLng = ref(DEFAULT_CENTER.longitude)
 const mapScale = ref(13)
@@ -43,12 +41,26 @@ const loading = ref(false)
 const locating = ref(false)
 const choosingReferencePoint = ref(false)
 const locationLabel = ref('点击选择位置')
+const recentActivities = ref<SlSupplyRecentOutput[]>([])
+const leaderboard = ref<SlSupplyLeaderboardOutput[]>([])
+const leaderboardVisible = ref(false)
+const leaderboardLoading = ref(false)
+const leaderboardDays = ref(7)
+const leaderboardSort = ref<'affectedCount' | 'activityCount' | 'communityCount'>('affectedCount')
 let mapContext: UniApp.MapContext | null = null
 let referencePointVersion = 0
+
+const leaderboardDayOptions = [1, 3, 7, 30]
+const leaderboardSortOptions = [
+  { value: 'affectedCount' as const, label: '更新数量' },
+  { value: 'activityCount' as const, label: '操作次数' },
+  { value: 'communityCount' as const, label: '覆盖楼盘' },
+]
 
 const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
+const showSupplyTicker = computed(() => auth.canViewSupplyActivity && recentActivities.value.length > 0)
 const mapBadgeText = computed(() => {
   if (loading.value)
     return '加载中'
@@ -151,7 +163,6 @@ function buildQuery(pageNumber = 1, size = 200): PageSlCommunityInput {
     name: keyword.value.trim() || undefined,
     status: 0,
     ...buildCommunityFilterQuery(filters.value),
-    ...(isLandlordMode.value ? { ownerScope: 'self' } : {}),
   }
 }
 
@@ -331,8 +342,8 @@ function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string)
   }
   filters.value = {
     ...nextFilters,
-    userLng: filters.value.userLng,
-    userLat: filters.value.userLat,
+    userLng: nextFilters.userLng ?? filters.value.userLng,
+    userLat: nextFilters.userLat ?? filters.value.userLat,
   }
   if (nextKeyword !== undefined)
     keyword.value = isPreviewMode.value ? '' : nextKeyword
@@ -382,6 +393,62 @@ function goProperties(item: SlCommunityOutput | null) {
   })
 }
 
+async function loadSupplyActivity() {
+  if (!auth.canViewSupplyActivity) {
+    recentActivities.value = []
+    return
+  }
+  try {
+    recentActivities.value = await getRecentSupplyActivity(7, 20)
+  }
+  catch {
+    recentActivities.value = []
+  }
+}
+
+async function loadLeaderboard() {
+  if (!auth.canViewSupplyActivity || leaderboardLoading.value)
+    return
+  leaderboardLoading.value = true
+  try {
+    leaderboard.value = await getSupplyLeaderboard(leaderboardDays.value, 20, leaderboardSort.value)
+  }
+  catch {
+    leaderboard.value = []
+    uni.showToast({ title: '更新榜单加载失败', icon: 'none' })
+  }
+  finally {
+    leaderboardLoading.value = false
+  }
+}
+
+function openLeaderboard() {
+  leaderboardVisible.value = true
+  void loadLeaderboard()
+}
+
+function selectLeaderboardDays(days: number) {
+  if (leaderboardDays.value === days)
+    return
+  leaderboardDays.value = days
+  void loadLeaderboard()
+}
+
+function selectLeaderboardSort(sort: 'affectedCount' | 'activityCount' | 'communityCount') {
+  if (leaderboardSort.value === sort)
+    return
+  leaderboardSort.value = sort
+  void loadLeaderboard()
+}
+
+function leaderboardValue(item: SlSupplyLeaderboardOutput) {
+  if (leaderboardSort.value === 'activityCount')
+    return `${item.activityCount} 次`
+  if (leaderboardSort.value === 'communityCount')
+    return `${item.communityCount} 个`
+  return `${item.affectedCount} 项`
+}
+
 onLoad(() => {
   // 微信合规：打开即可匿名浏览地图/楼盘，不强制登录；搜索/详情/联系等动作再触发登录
   mapContext = uni.createMapContext(mapId)
@@ -406,7 +473,10 @@ onLoad(() => {
   }
   catch {}
 })
-onPullDownRefresh(loadCommunities)
+onShow(() => {
+  void loadSupplyActivity()
+})
+onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
 </script>
 
 <template>
@@ -421,6 +491,8 @@ onPullDownRefresh(loadCommunities)
       :filters="filters"
       :keyword="keyword"
       :guarded="isPreviewMode"
+      :show-mine-filters="auth.canUseMineFilters"
+      :show-operator-filters="auth.canFilterBySupplyOperator"
       guard-tip="登录并通过审核后可使用筛选"
       mount-key="admin-map-filter"
       @confirm="onFilterConfirm"
@@ -458,7 +530,23 @@ onPullDownRefresh(loadCommunities)
         </cover-view>
       </map>
 
-      <view v-if="selectedPreview" class="map-card">
+      <view v-if="showSupplyTicker" class="supply-ticker">
+        <view class="supply-ticker__signal">
+          <wd-icon name="edit" size="16px" color="#fff" />
+        </view>
+        <swiper class="supply-ticker__swiper" vertical autoplay circular :interval="4000" :duration="350">
+          <swiper-item v-for="activity in recentActivities" :key="String(activity.id)">
+            <view class="supply-ticker__item">
+              <text>{{ formatRecentSupplyActivity(activity) }}</text>
+            </view>
+          </swiper-item>
+        </swiper>
+        <view class="supply-ticker__rank" @tap.stop="openLeaderboard">
+          <wd-icon name="chart-bar" size="19px" color="#126b4f" />
+        </view>
+      </view>
+
+      <view v-if="selectedPreview" class="map-card" :class="{ 'map-card--with-ticker': showSupplyTicker }">
         <view class="map-card__close" @tap="selectedPreview = null">
           <wd-icon name="close" size="16px" color="#9aa3af" />
         </view>
@@ -480,7 +568,7 @@ onPullDownRefresh(loadCommunities)
         </view>
       </view>
 
-      <view v-if="selected" class="map-card">
+      <view v-if="selected" class="map-card" :class="{ 'map-card--with-ticker': showSupplyTicker }">
         <view class="map-card__close" @tap="selected = null">
           <wd-icon name="close" size="16px" color="#9aa3af" />
         </view>
@@ -505,6 +593,71 @@ onPullDownRefresh(loadCommunities)
         </view>
       </view>
     </view>
+
+    <wd-popup
+      v-model="leaderboardVisible"
+      position="bottom"
+      custom-style="border-radius: 24rpx 24rpx 0 0; overflow: hidden;"
+      safe-area-inset-bottom
+      @touchmove.stop
+    >
+      <view class="leaderboard-sheet" @tap.stop @touchmove.stop>
+        <view class="leaderboard-sheet__head">
+          <view>
+            <text class="leaderboard-sheet__title">盘源更新榜</text>
+            <text class="leaderboard-sheet__sub">按实际业务更新记录统计</text>
+          </view>
+          <view class="leaderboard-sheet__close" @tap="leaderboardVisible = false">
+            <wd-icon name="close" size="21px" color="#72817b" />
+          </view>
+        </view>
+
+        <view class="leaderboard-filter">
+          <text class="leaderboard-filter__label">时间范围</text>
+          <view class="leaderboard-options leaderboard-options--days">
+            <view
+              v-for="days in leaderboardDayOptions"
+              :key="days"
+              class="leaderboard-option"
+              :class="{ active: leaderboardDays === days }"
+              @tap="selectLeaderboardDays(days)"
+            >
+              {{ days === 1 ? '今天' : `近 ${days} 天` }}
+            </view>
+          </view>
+        </view>
+
+        <view class="leaderboard-filter">
+          <text class="leaderboard-filter__label">排序方式</text>
+          <view class="leaderboard-options leaderboard-options--sort">
+            <view
+              v-for="option in leaderboardSortOptions"
+              :key="option.value"
+              class="leaderboard-option"
+              :class="{ active: leaderboardSort === option.value }"
+              @tap="selectLeaderboardSort(option.value)"
+            >
+              {{ option.label }}
+            </view>
+          </view>
+        </view>
+
+        <scroll-view scroll-y class="leaderboard-list">
+          <view v-if="leaderboardLoading" class="leaderboard-empty">榜单加载中...</view>
+          <view v-else-if="!leaderboard.length" class="leaderboard-empty">所选时间范围内暂无更新记录</view>
+          <view v-for="(item, index) in leaderboard" v-else :key="String(item.userId)" class="leaderboard-row">
+            <text class="leaderboard-row__rank" :class="`rank-${index + 1}`">{{ index + 1 }}</text>
+            <view class="leaderboard-row__body">
+              <text class="leaderboard-row__name">{{ item.nickName }}</text>
+              <text class="leaderboard-row__meta">
+                {{ item.activityCount }} 次操作 · {{ item.communityCount }} 个楼盘 · {{ formatSupplyTime(item.lastUpdateTime) }}
+              </text>
+            </view>
+            <text class="leaderboard-row__value">{{ leaderboardValue(item) }}</text>
+          </view>
+        </scroll-view>
+      </view>
+    </wd-popup>
   </view>
 </template>
 
@@ -586,6 +739,70 @@ onPullDownRefresh(loadCommunities)
   box-shadow: 0 10rpx 36rpx rgb(31 51 41 / 16%);
 }
 
+.map-card--with-ticker {
+  bottom: 104rpx;
+}
+
+.supply-ticker {
+  position: absolute;
+  right: 16rpx;
+  bottom: 16rpx;
+  left: 16rpx;
+  z-index: 11;
+  display: grid;
+  height: 72rpx;
+  grid-template-columns: 52rpx minmax(0, 1fr) 64rpx;
+  align-items: center;
+  overflow: hidden;
+  border: 1rpx solid rgb(18 107 79 / 14%);
+  border-radius: 8rpx;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 8rpx 28rpx rgb(31 51 41 / 16%);
+}
+
+.supply-ticker__signal {
+  display: flex;
+  width: 38rpx;
+  height: 38rpx;
+  align-items: center;
+  justify-content: center;
+  justify-self: center;
+  border-radius: 50%;
+  background: #126b4f;
+}
+
+.supply-ticker__swiper,
+.supply-ticker__item {
+  width: 100%;
+  height: 72rpx;
+}
+
+.supply-ticker__item {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.supply-ticker__item text {
+  width: 100%;
+  overflow: hidden;
+  color: #33443c;
+  font-size: 22rpx;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supply-ticker__rank {
+  display: flex;
+  width: 64rpx;
+  height: 72rpx;
+  align-items: center;
+  justify-content: center;
+  border-left: 1rpx solid #e6ece7;
+  background: #f4f9f5;
+}
+
 .map-card__close {
   position: absolute;
   top: 14rpx;
@@ -638,5 +855,167 @@ onPullDownRefresh(loadCommunities)
   color: var(--sl-brand);
   font-size: 22rpx;
   font-weight: 800;
+}
+
+.leaderboard-sheet {
+  padding: 26rpx 24rpx 0;
+  background: #f7faf7;
+}
+
+.leaderboard-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+}
+
+.leaderboard-sheet__title,
+.leaderboard-sheet__sub {
+  display: block;
+}
+
+.leaderboard-sheet__title {
+  color: var(--sl-ink);
+  font-size: 32rpx;
+  font-weight: 900;
+}
+
+.leaderboard-sheet__sub {
+  margin-top: 6rpx;
+  color: var(--sl-muted);
+  font-size: 21rpx;
+}
+
+.leaderboard-sheet__close {
+  display: flex;
+  width: 56rpx;
+  height: 56rpx;
+  align-items: center;
+  justify-content: center;
+}
+
+.leaderboard-filter {
+  margin-top: 22rpx;
+}
+
+.leaderboard-filter__label {
+  display: block;
+  margin-bottom: 10rpx;
+  color: #53615a;
+  font-size: 22rpx;
+  font-weight: 800;
+}
+
+.leaderboard-options {
+  display: grid;
+  gap: 8rpx;
+  padding: 6rpx;
+  border-radius: 8rpx;
+  background: #eaf0eb;
+}
+
+.leaderboard-options--days {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.leaderboard-options--sort {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.leaderboard-option {
+  display: flex;
+  min-width: 0;
+  height: 58rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6rpx;
+  color: #617068;
+  font-size: 22rpx;
+  font-weight: 750;
+}
+
+.leaderboard-option.active {
+  background: #fff;
+  box-shadow: 0 3rpx 12rpx rgb(31 60 45 / 10%);
+  color: #126b4f;
+}
+
+.leaderboard-list {
+  height: 560rpx;
+  margin-top: 24rpx;
+}
+
+.leaderboard-row {
+  display: grid;
+  grid-template-columns: 52rpx minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14rpx;
+  padding: 22rpx 4rpx;
+  border-bottom: 1rpx solid #e3eae5;
+}
+
+.leaderboard-row__rank {
+  display: flex;
+  width: 44rpx;
+  height: 44rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #e7ece8;
+  color: #68766f;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.leaderboard-row__rank.rank-1 {
+  background: #e2b23a;
+  color: #fff;
+}
+
+.leaderboard-row__rank.rank-2 {
+  background: #84979b;
+  color: #fff;
+}
+
+.leaderboard-row__rank.rank-3 {
+  background: #b77b4c;
+  color: #fff;
+}
+
+.leaderboard-row__body {
+  min-width: 0;
+}
+
+.leaderboard-row__name,
+.leaderboard-row__meta {
+  display: block;
+}
+
+.leaderboard-row__name {
+  overflow: hidden;
+  color: var(--sl-ink);
+  font-size: 26rpx;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.leaderboard-row__meta {
+  margin-top: 5rpx;
+  color: var(--sl-muted);
+  font-size: 19rpx;
+}
+
+.leaderboard-row__value {
+  color: #126b4f;
+  font-size: 25rpx;
+  font-weight: 900;
+}
+
+.leaderboard-empty {
+  padding: 90rpx 20rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+  text-align: center;
 }
 </style>

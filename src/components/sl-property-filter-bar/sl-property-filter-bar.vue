@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import type { PropertyFilterState, ShenLeId, SlRegionTreeOutput } from '@/types/shenle'
+import type { PropertyFilterState, ShenLeId, SlRegionTreeOutput, SlSupplyOperatorOutput } from '@/types/shenle'
 import { computed, getCurrentInstance, nextTick, onMounted, ref, watch } from 'vue'
 import { getRegionTree } from '@/api/region'
+import { getSupplyOperators } from '@/api/supply-activity'
 import { DISTANCE_OPTIONS } from '@/constants/shenle'
+import { getLocationOnceCached } from '@/utils/location-cache'
 import { clonePropertyFilters, sameId } from '@/utils/property-filter'
 
-type DropdownName = 'location' | 'price'
+type DropdownName = 'location' | 'price' | 'sort'
 
 interface RegionHit {
   node: SlRegionTreeOutput
@@ -18,6 +20,8 @@ const props = defineProps<{
   mountKey?: string
   guarded?: boolean
   guardTip?: string
+  showMineFilters?: boolean
+  showOperatorFilters?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -28,12 +32,16 @@ const emit = defineEmits<{
 
 const PRICE_MAX = 10000
 const PRICE_STEP = 100
+const UPDATED_DAY_OPTIONS = [1, 3, 7] as const
 const activeDropdown = ref<DropdownName | null>(null)
 const sheetVisible = ref(false)
 const draft = ref<PropertyFilterState>({})
 const draftKeyword = ref('')
 const regionTree = ref<SlRegionTreeOutput[]>([])
 const regionLoading = ref(false)
+const operatorLoading = ref(false)
+const ownerOptions = ref<SlSupplyOperatorOutput[]>([])
+const updaterOptions = ref<SlSupplyOperatorOutput[]>([])
 const regionParentId = ref<ShenLeId | undefined>()
 const instance = getCurrentInstance()
 
@@ -53,6 +61,8 @@ function guardInteraction() {
 const locationActive = computed(() => !!props.filters.regionId || props.filters.distanceKm !== undefined)
 const priceActive = computed(() => props.filters.minPrice !== undefined || props.filters.maxPrice !== undefined)
 const keywordActive = computed(() => !!props.keyword?.trim())
+const sortActive = computed(() => props.filters.sortBy === 'distance')
+const sortLabel = computed(() => props.filters.sortBy === 'distance' ? '距离最近' : '最新更新')
 
 const locationLabel = computed(() => {
   const parts: string[] = []
@@ -172,6 +182,7 @@ function openSheet() {
   syncDraft()
   sheetVisible.value = true
   loadRegions()
+  loadOperators()
   nextTick(() => measureTrack())
 }
 
@@ -184,8 +195,6 @@ function clearLocation() {
   draft.value.regionId = undefined
   draft.value.regionName = undefined
   draft.value.distanceKm = undefined
-  draft.value.userLng = undefined
-  draft.value.userLat = undefined
   regionParentId.value = undefined
 }
 
@@ -223,14 +232,11 @@ function applyRegionReferencePoint(region: SlRegionTreeOutput) {
   }
 }
 
-function selectDistance(value?: number) {
+async function selectDistance(value?: number) {
   draft.value.distanceKm = value
-  if (value === undefined) {
-    draft.value.userLng = undefined
-    draft.value.userLat = undefined
+  if (value === undefined)
     return
-  }
-  void ensureReferencePoint()
+  await ensureReferencePoint()
 }
 
 async function ensureReferencePoint() {
@@ -238,28 +244,63 @@ async function ensureReferencePoint() {
   if (region?.centerLng !== undefined && region.centerLat !== undefined) {
     draft.value.userLng = Number(region.centerLng)
     draft.value.userLat = Number(region.centerLat)
-    return
+    return true
   }
   if (draft.value.userLng !== undefined && draft.value.userLat !== undefined)
-    return
+    return true
   try {
-    const position = await getLocationOnce()
+    const position = await getLocationOnceCached()
     draft.value.userLng = position.longitude
     draft.value.userLat = position.latitude
+    return true
   }
   catch {
     uni.showToast({ title: '附近距离需要定位授权', icon: 'none' })
+    return false
   }
 }
 
-function getLocationOnce(): Promise<{ longitude: number, latitude: number }> {
-  return new Promise((resolve, reject) => {
-    uni.getLocation({
-      type: 'gcj02',
-      success: res => resolve({ longitude: res.longitude, latitude: res.latitude }),
-      fail: reject,
-    })
-  })
+async function selectSort(value: 'latest' | 'distance') {
+  if (value === 'distance' && !await ensureReferencePoint())
+    return
+  draft.value.sortBy = value === 'latest' ? undefined : value
+}
+
+async function loadOperators() {
+  if (!props.showOperatorFilters || operatorLoading.value || ownerOptions.value.length || updaterOptions.value.length)
+    return
+  operatorLoading.value = true
+  try {
+    const [owners, updaters] = await Promise.all([
+      getSupplyOperators('owner'),
+      getSupplyOperators('updater'),
+    ])
+    ownerOptions.value = owners
+    updaterOptions.value = updaters
+  }
+  finally {
+    operatorLoading.value = false
+  }
+}
+
+function selectOperator(type: 'owner' | 'updater', item?: SlSupplyOperatorOutput) {
+  const idKey = type === 'owner' ? 'ownerUserId' : 'updaterUserId'
+  const nameKey = type === 'owner' ? 'ownerUserName' : 'updaterUserName'
+  if (!item || sameId(draft.value[idKey], item.userId)) {
+    draft.value[idKey] = undefined
+    draft.value[nameKey] = undefined
+    return
+  }
+  draft.value[idKey] = item.userId
+  draft.value[nameKey] = item.nickName
+}
+
+function selectUpdatedWithin(days?: 1 | 3 | 7) {
+  draft.value.updatedWithinDays = draft.value.updatedWithinDays === days ? undefined : days
+}
+
+function toggleMineFilter(key: 'onlyManagedByMe' | 'onlyUpdatedByMe') {
+  draft.value[key] = !draft.value[key] || undefined
 }
 
 function setPriceRange(min: number, max: number) {
@@ -281,25 +322,30 @@ function resetCurrent() {
     clearLocation()
   if (activeDropdown.value === 'price')
     clearPrice()
+  if (activeDropdown.value === 'sort')
+    draft.value.sortBy = undefined
   confirmCurrent()
 }
 
 async function confirmCurrent() {
-  if (draft.value.distanceKm !== undefined)
-    await ensureReferencePoint()
+  if ((draft.value.distanceKm !== undefined || draft.value.sortBy === 'distance') && !await ensureReferencePoint())
+    return
   activeDropdown.value = null
   emit('confirm', clonePropertyFilters(draft.value), props.keyword)
 }
 
 function resetSheet() {
-  draft.value = {}
+  draft.value = {
+    userLng: draft.value.userLng,
+    userLat: draft.value.userLat,
+  }
   draftKeyword.value = ''
   regionParentId.value = undefined
 }
 
 async function confirmSheet() {
-  if (draft.value.distanceKm !== undefined)
-    await ensureReferencePoint()
+  if ((draft.value.distanceKm !== undefined || draft.value.sortBy === 'distance') && !await ensureReferencePoint())
+    return
   sheetVisible.value = false
   emit('confirm', clonePropertyFilters(draft.value), draftKeyword.value.trim())
 }
@@ -397,6 +443,14 @@ function onThumbTouchEnd() {
         @tap="toggleDropdown('price')"
       >
         <text class="filter-tab__label">{{ priceLabel }}</text>
+        <text class="filter-tab__arrow">▾</text>
+      </view>
+      <view
+        class="filter-tab filter-tab--sort"
+        :class="{ active: sortActive, open: activeDropdown === 'sort' }"
+        @tap="toggleDropdown('sort')"
+      >
+        <text class="filter-tab__label">{{ sortLabel }}</text>
         <text class="filter-tab__arrow">▾</text>
       </view>
       <view class="filter-spacer" />
@@ -497,6 +551,18 @@ function onThumbTouchEnd() {
             <text>¥0</text>
             <text>¥5000</text>
             <text>¥10000</text>
+          </view>
+        </view>
+      </view>
+
+      <view v-if="activeDropdown === 'sort'" class="dropdown-section dropdown-section--short">
+        <text class="section-title">排序方式</text>
+        <view class="option-row">
+          <view class="filter-chip" :class="{ active: draft.sortBy !== 'distance' }" @tap="selectSort('latest')">
+            <text>最新更新优先</text>
+          </view>
+          <view class="filter-chip" :class="{ active: draft.sortBy === 'distance' }" @tap="selectSort('distance')">
+            <text>距离最近优先</text>
           </view>
         </view>
       </view>
@@ -629,6 +695,91 @@ function onThumbTouchEnd() {
               </view>
             </view>
           </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">最新更新</text>
+            <view class="option-row">
+              <view class="filter-chip" :class="{ active: !draft.updatedWithinDays }" @tap="selectUpdatedWithin()">
+                <text>不限</text>
+              </view>
+              <view
+                v-for="days in UPDATED_DAY_OPTIONS"
+                :key="days"
+                class="filter-chip"
+                :class="{ active: draft.updatedWithinDays === days }"
+                @tap="selectUpdatedWithin(days)"
+              >
+                <text>最近{{ days }}天</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">排序方式</text>
+            <view class="option-row">
+              <view class="filter-chip" :class="{ active: draft.sortBy !== 'distance' }" @tap="selectSort('latest')">
+                <text>最新更新优先</text>
+              </view>
+              <view class="filter-chip" :class="{ active: draft.sortBy === 'distance' }" @tap="selectSort('distance')">
+                <text>距离最近优先</text>
+              </view>
+            </view>
+          </view>
+
+          <view v-if="showMineFilters" class="sheet-block">
+            <text class="sheet-block__title">我的盘源</text>
+            <view class="option-row">
+              <view class="filter-chip" :class="{ active: draft.onlyManagedByMe }" @tap="toggleMineFilter('onlyManagedByMe')">
+                <text>仅看我管理</text>
+              </view>
+              <view class="filter-chip" :class="{ active: draft.onlyUpdatedByMe }" @tap="toggleMineFilter('onlyUpdatedByMe')">
+                <text>仅看我更新</text>
+              </view>
+            </view>
+          </view>
+
+          <template v-if="showOperatorFilters">
+            <view class="sheet-block">
+              <text class="sheet-block__title">盘源对接人</text>
+              <scroll-view scroll-x class="chip-scroll">
+                <view class="chip-scroll__inner">
+                  <view class="filter-chip" :class="{ active: !draft.ownerUserId }" @tap="selectOperator('owner')">
+                    <text>全部</text>
+                  </view>
+                  <view
+                    v-for="item in ownerOptions"
+                    :key="String(item.userId)"
+                    class="filter-chip"
+                    :class="{ active: sameId(draft.ownerUserId, item.userId) }"
+                    @tap="selectOperator('owner', item)"
+                  >
+                    <text>{{ item.nickName }}</text>
+                  </view>
+                </view>
+              </scroll-view>
+            </view>
+
+            <view class="sheet-block">
+              <text class="sheet-block__title">盘源更新人</text>
+              <scroll-view scroll-x class="chip-scroll">
+                <view class="chip-scroll__inner">
+                  <view class="filter-chip" :class="{ active: !draft.updaterUserId }" @tap="selectOperator('updater')">
+                    <text>全部</text>
+                  </view>
+                  <view
+                    v-for="item in updaterOptions"
+                    :key="String(item.userId)"
+                    class="filter-chip"
+                    :class="{ active: sameId(draft.updaterUserId, item.userId) }"
+                    @tap="selectOperator('updater', item)"
+                  >
+                    <text>{{ item.nickName }}</text>
+                  </view>
+                </view>
+              </scroll-view>
+              <text v-if="operatorLoading" class="operator-loading">正在加载人员...</text>
+            </view>
+          </template>
         </scroll-view>
 
         <view class="sheet-footer">
@@ -710,6 +861,10 @@ function onThumbTouchEnd() {
   font-size: 22rpx;
   line-height: 1;
   transition: transform 0.18s ease;
+}
+
+.filter-tab--sort {
+  max-width: 190rpx;
 }
 
 .filter-spacer {
@@ -797,10 +952,18 @@ function onThumbTouchEnd() {
   font-weight: 800;
 }
 
-.chip-row {
+.chip-row,
+.option-row {
   display: flex;
   flex-wrap: wrap;
   gap: 18rpx;
+}
+
+.operator-loading {
+  display: block;
+  margin-top: 12rpx;
+  color: #8b95a5;
+  font-size: 23rpx;
 }
 
 .chip-scroll {

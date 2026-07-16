@@ -3,6 +3,7 @@ import type { SlCommunityOutput } from '@/types/shenle'
 import { computed, ref, watch } from 'vue'
 import { downloadFile } from '@/api/file'
 import { formatMoney, resolveAssetUrl } from '@/utils/shenle'
+import { formatSupplyTime } from '@/utils/supply-activity'
 
 const props = defineProps<{
   item: SlCommunityOutput
@@ -114,6 +115,10 @@ watch(
       <view class="community__bottom">
         <text>{{ item.propertyCount || 0 }} 套房源符合要求</text>
         <text v-if="item.address" class="community__address">{{ item.address }}</text>
+      </view>
+      <view v-if="item.lastUpdaterName || item.ownerName" class="community__people">
+        <text v-if="item.lastUpdaterName">更新：{{ item.lastUpdaterName }}{{ formatSupplyTime(item.supplyUpdateTime) ? ` · ${formatSupplyTime(item.supplyUpdateTime)}` : '' }}</text>
+        <text v-if="item.ownerName">对接：{{ item.ownerName }}</text>
       </view>
     </view>
 
@@ -239,6 +244,16 @@ watch(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.community__people {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8rpx 16rpx;
+  margin-top: 10rpx;
+  color: #718078;
+  font-size: 21rpx;
 }
 
 .community__nav {

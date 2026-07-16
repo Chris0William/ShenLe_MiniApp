@@ -85,6 +85,14 @@ export interface PropertyFilterState {
   communityId?: ShenLeId
   communityName?: string
   depositRule?: string
+  updatedWithinDays?: 1 | 3 | 7
+  ownerUserId?: ShenLeId
+  ownerUserName?: string
+  updaterUserId?: ShenLeId
+  updaterUserName?: string
+  onlyManagedByMe?: boolean
+  onlyUpdatedByMe?: boolean
+  sortBy?: 'latest' | 'distance'
 }
 
 export interface ListSlPropertyInput {
@@ -304,6 +312,12 @@ export interface PageSlCommunityInput extends BasePageInput {
   userLat?: number
   distanceKm?: number
   ownerScope?: string
+  updatedWithinDays?: 1 | 3 | 7
+  ownerUserId?: ShenLeId
+  updaterUserId?: ShenLeId
+  onlyManagedByMe?: boolean
+  onlyUpdatedByMe?: boolean
+  sortBy?: 'latest' | 'distance'
 }
 
 export interface ListSlCommunityInput {
@@ -361,6 +375,12 @@ export interface SlCommunityOutput {
   isMine?: boolean
   ownerId?: ShenLeId | null
   ownerName?: string | null
+  ownerPhone?: string | null
+  lastUpdaterUserId?: ShenLeId | null
+  lastUpdaterName?: string | null
+  lastUpdaterPhone?: string | null
+  supplyUpdateTime?: string | null
+  lastSupplyAction?: string | null
 }
 
 export interface SlCommunitySelectOutput {
@@ -551,6 +571,20 @@ export interface LoginUserOutput {
   tenantId?: ShenLeId
   isLandlord?: boolean
   landlordApplyStatus?: number
+  hasPhone?: boolean
+  canViewRealData?: boolean
+  canCreateCommunity?: boolean
+  canWriteAssignedSupply?: boolean
+  canWriteAllSupply?: boolean
+  canBatchWriteSupply?: boolean
+  canViewSupplyContactPhone?: boolean
+  canViewSupplyActivity?: boolean
+  canUseMineFilters?: boolean
+  canFilterBySupplyOperator?: boolean
+  canAssignCommunityContact?: boolean
+  canManageSourceContacts?: boolean
+  canManageUsers?: boolean
+  communityManageScope?: number
 }
 
 export interface SlPublicRegionQueryInput extends BasePageInput {
@@ -581,8 +615,11 @@ export interface SetSlUserNickNameInput {
   nickName: string
 }
 
-export interface WxOpenIdOutput {
-  openId: string
+export interface WxAuthPrepareOutput {
+  loginTicket: string
+  needProfile: boolean
+  needPhone: boolean
+  avatar?: string | null
 }
 
 export interface WxLoginOutput {
@@ -591,14 +628,14 @@ export interface WxLoginOutput {
   userId: ShenLeId
   nickName?: string
   accountType: number
-  needProfile?: boolean
+  hasPhone: boolean
 }
 
 export interface CompleteProfileInput {
-  openId: string
+  loginTicket: string
   nickName: string
   avatar: string
-  phone?: string
+  phoneCode: string
 }
 
 export interface UploadAvatarOutput {
@@ -629,6 +666,46 @@ export interface MyAccessOutput {
   applyStatus: number
   isLandlord?: boolean
   landlordApplyStatus?: number
+  hasPhone: boolean
+  canViewRealData: boolean
+  canCreateCommunity: boolean
+  canWriteAssignedSupply: boolean
+  canWriteAllSupply: boolean
+  canBatchWriteSupply: boolean
+  canViewSupplyContactPhone: boolean
+  canViewSupplyActivity: boolean
+  canUseMineFilters: boolean
+  canFilterBySupplyOperator: boolean
+  canAssignCommunityContact: boolean
+  canManageSourceContacts: boolean
+  canManageUsers: boolean
+  communityManageScope: number
+}
+
+export interface SlSupplyOperatorOutput {
+  userId: ShenLeId
+  nickName: string
+}
+
+export interface SlSupplyRecentOutput {
+  id: ShenLeId
+  communityId: ShenLeId
+  communityName: string
+  operatorUserId: ShenLeId
+  operatorNickName: string
+  action: string
+  actionName: string
+  affectedCount: number
+  updateTime: string
+}
+
+export interface SlSupplyLeaderboardOutput {
+  userId: ShenLeId
+  nickName: string
+  activityCount: number
+  affectedCount: number
+  communityCount: number
+  lastUpdateTime: string
 }
 
 export interface SlLandlordApplyOutput {

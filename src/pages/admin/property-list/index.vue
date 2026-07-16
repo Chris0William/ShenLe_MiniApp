@@ -26,15 +26,11 @@ const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
 const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 const isPreviewMode = computed(() => !auth.canViewRealData)
-const isLandlordMode = computed(() => modeStore.mode === 'landlord')
 
 const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
 
 const keyword = ref('')
-const filters = ref<PropertyFilterState>({
-  userLng: DEFAULT_LOCATION.longitude,
-  userLat: DEFAULT_LOCATION.latitude,
-})
+const filters = ref<PropertyFilterState>({})
 const page = ref(1)
 const pageSize = 200
 const total = ref(0)
@@ -62,7 +58,6 @@ function buildQuery(pageNumber = page.value, size = pageSize): PageSlCommunityIn
     name: keyword.value.trim() || undefined,
     status: 0,
     ...buildCommunityFilterQuery(filters.value),
-    ...(isLandlordMode.value ? { ownerScope: 'self' } : {}),
   }
 }
 
@@ -144,8 +139,7 @@ async function autoLocate() {
   catch {
     if (requestVersion !== referencePointVersion)
       return
-    setReferencePoint(DEFAULT_LOCATION.longitude, DEFAULT_LOCATION.latitude, '深圳市中心')
-    await load(true)
+    locationLabel.value = '点击选择位置'
   }
   finally {
     if (requestVersion === referencePointVersion)
@@ -189,8 +183,8 @@ function onFilterConfirm(nextFilters: PropertyFilterState, nextKeyword?: string)
   }
   filters.value = {
     ...nextFilters,
-    userLng: filters.value.userLng,
-    userLat: filters.value.userLat,
+    userLng: nextFilters.userLng ?? filters.value.userLng,
+    userLat: nextFilters.userLat ?? filters.value.userLat,
   }
   if (nextKeyword !== undefined)
     keyword.value = isPreviewMode.value ? '' : nextKeyword
@@ -324,6 +318,8 @@ onReachBottom(() => {
       :filters="filters"
       :keyword="keyword"
       :guarded="isPreviewMode"
+      :show-mine-filters="auth.canUseMineFilters"
+      :show-operator-filters="auth.canFilterBySupplyOperator"
       guard-tip="登录并通过审核后可使用筛选"
       mount-key="admin-community-filter"
       @confirm="onFilterConfirm"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AddSlPropertyInput, ImageOutput, ShenLeId, SlPropertyImageOutput, SlPropertyOutput, SlTagOutput } from '@/types/shenle'
+import type { AddSlPropertyInput, ImageOutput, ShenLeId, SlCommunityOutput, SlPropertyImageOutput, SlPropertyOutput, SlTagOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { getBuildingDetail } from '@/api/building'
@@ -8,6 +8,7 @@ import { downloadFile, uploadFile } from '@/api/file'
 import { addProperty, getPropertyDetail, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
 import SlMediaSourceSheet from '@/components/sl-media-source-sheet/sl-media-source-sheet.vue'
+import SlSupplyContacts from '@/components/sl-supply-contacts/sl-supply-contacts.vue'
 import {
   DECORATION_OPTIONS,
   DEPOSIT_RULE_OPTIONS,
@@ -111,6 +112,7 @@ const houseTags = ref<SlTagOutput[]>([])
 const facilityTags = ref<SlTagOutput[]>([])
 const contextCommunityName = ref('')
 const contextBuildingName = ref('')
+const communityDetail = ref<SlCommunityOutput | null>(null)
 const changeStore = useEntityChangeStore()
 
 const form = reactive<FormState>({
@@ -389,6 +391,7 @@ async function loadCommunityMediaPool() {
   communityMediaLoading.value = true
   try {
     const community = await getCommunityDetail(form.communityId)
+    communityDetail.value = community
     const medias = (community.images || []).map(item => normalizeMedia(item, resolveAssetUrl(item.url), 'community'))
     if (community.coverImageId && community.coverImage) {
       const cover = normalizeMedia({
@@ -405,6 +408,17 @@ async function loadCommunityMediaPool() {
   }
   finally {
     communityMediaLoading.value = false
+  }
+}
+
+async function loadCommunityContext() {
+  if (!form.communityId)
+    return
+  try {
+    communityDetail.value = await getCommunityDetail(form.communityId)
+  }
+  catch {
+    communityDetail.value = null
   }
 }
 
@@ -599,6 +613,7 @@ async function fillDetail(detail: SlPropertyOutput) {
     form.media = [normalizeMedia(cover)]
   }
   form.coverImageId = detail.coverImageId ? String(detail.coverImageId) : String(form.media[0]?.id || '')
+  await loadCommunityContext()
 }
 
 onLoad(async (query) => {
@@ -643,6 +658,7 @@ onLoad(async (query) => {
       setTimeout(leaveInvalidEntry, 700)
       return
     }
+    await loadCommunityContext()
     uni.setNavigationBarTitle({ title: '新增房源' })
   }
   finally {
@@ -678,6 +694,11 @@ onLoad(async (query) => {
             <text class="ownership-value">{{ contextTotalFloorsLabel }}</text>
           </view>
         </view>
+        <sl-supply-contacts
+          v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)"
+          class="ownership-contacts"
+          :community="communityDetail"
+        />
         <view class="form-item">
           <text class="form-label">楼层 *</text>
           <input v-model="form.floor" class="form-input" type="number" placeholder="如 6">
@@ -937,6 +958,12 @@ onLoad(async (query) => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14rpx;
+}
+
+.ownership-contacts {
+  margin-top: 22rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid var(--sl-line);
 }
 
 .ownership-item {

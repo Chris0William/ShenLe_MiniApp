@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { PageSlPropertyInput, ShenLeId, SlPropertyListOutput } from '@/types/shenle'
+import type { PageSlPropertyInput, ShenLeId, SlCommunityOutput, SlPropertyListOutput } from '@/types/shenle'
 import type { MediaKind } from '@/utils/media'
 import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
@@ -7,6 +7,7 @@ import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
 import { deleteProperty, getPropertyBatchList, getPropertyDetail, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import SlPropertyBatch from '@/components/sl-property-batch/sl-property-batch.vue'
+import SlSupplyContacts from '@/components/sl-supply-contacts/sl-supply-contacts.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
@@ -52,6 +53,7 @@ const page = ref(1)
 const pageSize = 10
 const total = ref(0)
 const items = ref<SlPropertyListOutput[]>([])
+const communityDetail = ref<SlCommunityOutput | null>(null)
 const loading = ref(false)
 const hasLoaded = ref(false)
 const refresherTriggered = ref(false)
@@ -322,7 +324,7 @@ async function handleRefresh() {
     return
   refresherTriggered.value = true
   try {
-    await load(true)
+    await Promise.all([load(true), loadMedia()])
   }
   catch {
     uni.showToast({ title: '刷新失败，请重试', icon: 'none' })
@@ -351,6 +353,7 @@ async function loadMedia() {
     return
   try {
     const detail = await getCommunityDetail(communityId.value)
+    communityDetail.value = detail
     const list: CommunityMediaItem[] = (detail.images || []).map(media => ({
       id: media.id,
       name: media.fileName || `文件${media.id}`,
@@ -374,6 +377,7 @@ async function loadMedia() {
     }
   }
   catch {
+    communityDetail.value = null
     mediaList.value = []
   }
 }
@@ -618,6 +622,7 @@ onShow(async () => {
       await patchBatchUpdatedItems(change.payload.ids)
     else
       await reloadLoadedRangePreservingScroll()
+    await loadMedia()
   }
   catch {
     uni.showToast({ title: '房源刷新失败，请下拉重试', icon: 'none' })
@@ -734,6 +739,10 @@ onShow(async () => {
               </wd-button>
             </view>
           </view>
+        </view>
+
+        <view v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)" class="supply-contacts-card sl-card">
+          <sl-supply-contacts :community="communityDetail" />
         </view>
 
         <scroll-view v-if="canManageBuildingScope" scroll-x class="chips">
@@ -955,6 +964,11 @@ onShow(async () => {
   margin-top: 16rpx;
   overflow: hidden;
   padding: 0;
+}
+
+.supply-contacts-card {
+  margin-top: 16rpx;
+  padding: 22rpx;
 }
 
 .property-filters__tabs {

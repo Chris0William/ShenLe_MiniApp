@@ -45,6 +45,18 @@ export function countCommunityFilters(filters: PropertyFilterState) {
     count += 1
   if (filters.communityId)
     count += 1
+  if (filters.updatedWithinDays)
+    count += 1
+  if (filters.ownerUserId)
+    count += 1
+  if (filters.updaterUserId)
+    count += 1
+  if (filters.onlyManagedByMe)
+    count += 1
+  if (filters.onlyUpdatedByMe)
+    count += 1
+  if (filters.sortBy === 'distance')
+    count += 1
   return count
 }
 
@@ -88,6 +100,12 @@ export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<Pa
     distanceKm: filters.distanceKm,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
+    updatedWithinDays: filters.updatedWithinDays,
+    ownerUserId: filters.ownerUserId,
+    updaterUserId: filters.updaterUserId,
+    onlyManagedByMe: filters.onlyManagedByMe,
+    onlyUpdatedByMe: filters.onlyUpdatedByMe,
+    sortBy: filters.sortBy || 'latest',
   }
 }
 
@@ -166,5 +184,17 @@ export function getCommunityFilterLabels(filters: PropertyFilterState, maps: {
     labels.push(maps.communityName || filters.communityName || '已选楼盘')
   if (filters.minPrice !== undefined || filters.maxPrice !== undefined)
     labels.push(PRICE_SEGMENTS.find(item => item.min === filters.minPrice && item.max === filters.maxPrice)?.label || rangeLabel(filters.minPrice, filters.maxPrice, '元'))
+  if (filters.updatedWithinDays)
+    labels.push(`最近${filters.updatedWithinDays}天更新`)
+  if (filters.ownerUserId)
+    labels.push(`对接人：${filters.ownerUserName || '已选择'}`)
+  if (filters.updaterUserId)
+    labels.push(`更新人：${filters.updaterUserName || '已选择'}`)
+  if (filters.onlyManagedByMe)
+    labels.push('仅看我管理')
+  if (filters.onlyUpdatedByMe)
+    labels.push('仅看我更新')
+  if (filters.sortBy === 'distance')
+    labels.push('距离最近优先')
   return labels
 }

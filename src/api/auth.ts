@@ -3,8 +3,8 @@ import type {
   CompleteProfileInput,
   LoginUserOutput,
   UploadAvatarOutput,
+  WxAuthPrepareOutput,
   WxLoginOutput,
-  WxOpenIdOutput,
 } from '@/types/shenle'
 import { getApiBaseUrl } from '@/utils/shenle'
 import { get, post } from './request'
@@ -17,25 +17,25 @@ export function logout() {
   return post<void>('/api/sysAuth/logout')
 }
 
-export function getWxOpenId(jsCode: string) {
-  return get<WxOpenIdOutput>('/api/sysWxOpen/wxOpenId', { JsCode: jsCode }, { auth: false })
+export function prepareWxLogin(jsCode: string) {
+  return post<WxAuthPrepareOutput>('/api/slWxAuth/prepare', { jsCode }, { auth: false })
 }
 
-export function wxOpenIdLogin(openId: string) {
-  return post<WxLoginOutput>('/api/sysWxOpen/wxOpenIdLogin', { openId }, { auth: false })
+export function loginWithWxTicket(loginTicket: string, phoneCode?: string) {
+  return post<WxLoginOutput>('/api/slWxAuth/login', { loginTicket, phoneCode }, { auth: false })
 }
 
 export function completeProfile(input: CompleteProfileInput) {
-  return post<WxLoginOutput>('/api/sysWxOpen/completeProfile', input as unknown as Record<string, unknown>, { auth: false })
+  return post<WxLoginOutput>('/api/slWxAuth/completeProfile', input as unknown as Record<string, unknown>, { auth: false })
 }
 
-export function uploadAvatar(openId: string, tempFilePath: string): Promise<UploadAvatarOutput> {
+export function uploadAvatar(loginTicket: string, tempFilePath: string): Promise<UploadAvatarOutput> {
   return new Promise((resolve, reject) => {
     uni.uploadFile({
-      url: `${getApiBaseUrl()}/api/sysWxOpen/uploadAvatar`,
+      url: `${getApiBaseUrl()}/api/slWxAuth/uploadAvatar`,
       filePath: tempFilePath,
       name: 'file',
-      formData: { openId },
+      formData: { loginTicket },
       success(res) {
         try {
           const body = JSON.parse(res.data) as AdminResult<UploadAvatarOutput>

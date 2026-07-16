@@ -8,6 +8,7 @@ import { LOGIN_REQUEST_EVENT } from '@/utils/login-flow'
 const auth = useShenleAuthStore()
 const agreementVisible = ref(false)
 const profileVisible = ref(false)
+const phoneVisible = ref(false)
 const loading = ref(false)
 const currentRequest = ref<LoginRequestPayload | null>(null)
 const profileNickName = ref('')
@@ -41,6 +42,7 @@ function handleRequest(payload: LoginRequestPayload) {
   }
   currentRequest.value = payload
   profileVisible.value = false
+  phoneVisible.value = false
   agreementVisible.value = true
 }
 
@@ -75,6 +77,7 @@ function resetProfile() {
 function finishLogin() {
   agreementVisible.value = false
   profileVisible.value = false
+  phoneVisible.value = false
   const req = currentRequest.value
   currentRequest.value = null
   resetProfile()
@@ -95,6 +98,11 @@ async function agreeAndLogin() {
     if (result === 'needProfile') {
       agreementVisible.value = false
       profileVisible.value = true
+      return
+    }
+    if (result === 'needPhone') {
+      agreementVisible.value = false
+      phoneVisible.value = true
       return
     }
     finishLogin()
@@ -121,7 +129,40 @@ function cancelProfile() {
   resetProfile()
 }
 
-async function submitProfile() {
+function getPhoneCode(event: any) {
+  const code = event.detail?.code as string | undefined
+  if (!code)
+    uni.showToast({ title: '需要授权手机号才能完成登录', icon: 'none' })
+  return code || ''
+}
+
+function cancelPhone() {
+  if (loading.value)
+    return
+  phoneVisible.value = false
+  currentRequest.value?.onCancel?.()
+  currentRequest.value = null
+}
+
+async function submitPhone(event: any) {
+  const phoneCode = getPhoneCode(event)
+  if (!phoneCode || loading.value)
+    return
+  loading.value = true
+  try {
+    await auth.wxLoginWithPhone(phoneCode)
+    finishLogin()
+  }
+  catch (error) {
+    console.error('手机号授权登录失败', error)
+    uni.showToast({ title: '手机号授权失败，请重试', icon: 'none' })
+  }
+  finally {
+    loading.value = false
+  }
+}
+
+async function submitProfile(event: any) {
   const nickName = profileNickName.value.trim()
   if (!profileAvatarTemp.value) {
     uni.showToast({ title: '请先选择头像', icon: 'none' })
@@ -131,11 +172,14 @@ async function submitProfile() {
     uni.showToast({ title: '请填写昵称', icon: 'none' })
     return
   }
+  const phoneCode = getPhoneCode(event)
+  if (!phoneCode)
+    return
   if (loading.value)
     return
   loading.value = true
   try {
-    await auth.wxLoginStep2(nickName, profileAvatarTemp.value)
+    await auth.wxLoginStep2(nickName, profileAvatarTemp.value, phoneCode)
     finishLogin()
   }
   catch (error) {
@@ -191,7 +235,7 @@ defineExpose({ open })
   <wd-popup v-model="profileVisible" :z-index="3001" custom-style="border-radius: 28rpx; overflow: hidden; width: 650rpx;" @touchmove.stop.prevent>
     <view class="login-consent profile-consent" @touchmove.stop.prevent>
       <text class="login-consent__title">完善账号资料</text>
-      <text class="login-consent__desc">首次登录需要选择头像并填写昵称，用于账号展示和申请审核。</text>
+      <text class="login-consent__desc">首次登录需要选择头像、填写昵称并授权手机号，用于账号展示和业务联系。</text>
       <button class="avatar-chooser" open-type="chooseAvatar" @chooseavatar="onChooseAvatar">
         <image v-if="profileAvatarTemp" class="avatar-preview" :src="profileAvatarTemp" mode="aspectFill" />
         <view v-else class="avatar-placeholder">
@@ -210,9 +254,27 @@ defineExpose({ open })
         <wd-button plain block :disabled="loading" @click="cancelProfile">
           取消
         </wd-button>
-        <wd-button type="success" block :loading="loading" @click="submitProfile">
-          完成登录
+        <button class="phone-auth-button" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="submitProfile">
+          {{ loading ? '正在登录...' : '授权手机号并登录' }}
+        </button>
+      </view>
+    </view>
+  </wd-popup>
+
+  <wd-popup v-model="phoneVisible" :z-index="3002" custom-style="border-radius: 28rpx; overflow: hidden; width: 650rpx;" @touchmove.stop.prevent>
+    <view class="login-consent" @touchmove.stop.prevent>
+      <view class="login-consent__mark">
+        <wd-icon name="phone" size="34px" color="#126b4f" />
+      </view>
+      <text class="login-consent__title">授权手机号</text>
+      <text class="login-consent__desc">当前账号尚未绑定手机号，授权后即可继续登录。</text>
+      <view class="login-consent__actions">
+        <wd-button plain block :disabled="loading" @click="cancelPhone">
+          取消
         </wd-button>
+        <button class="phone-auth-button" open-type="getPhoneNumber" :disabled="loading" @getphonenumber="submitPhone">
+          {{ loading ? '正在登录...' : '授权并登录' }}
+        </button>
       </view>
     </view>
   </wd-popup>
@@ -271,6 +333,31 @@ defineExpose({ open })
   grid-template-columns: 1fr 1fr;
   gap: 18rpx;
   margin-top: 6rpx;
+}
+
+.phone-auth-button {
+  display: flex;
+  height: 88rpx;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 18rpx;
+  border: 0;
+  border-radius: 16rpx;
+  background: #126b4f;
+  color: #fff;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.phone-auth-button::after {
+  border: 0;
+}
+
+.phone-auth-button[disabled] {
+  background: #8eb5a7;
+  color: rgba(255, 255, 255, 0.86);
 }
 
 .profile-consent {

@@ -1,21 +1,26 @@
 import type { LoginUserOutput, WxLoginOutput } from '@/types/shenle'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { completeProfile, getUserInfo, getWxOpenId, logout, uploadAvatar, wxOpenIdLogin } from '@/api/auth'
+import { completeProfile, getUserInfo, loginWithWxTicket, logout, prepareWxLogin, uploadAvatar } from '@/api/auth'
 import { getMyAccess } from '@/api/user-manage'
 import { modeStore } from '@/store/mode'
-import { SHENLE_OPENID_KEY, SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
+import { SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
 export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const token = ref<string>(uni.getStorageSync(SHENLE_TOKEN_KEY) || '')
-  const openId = ref<string>(uni.getStorageSync(SHENLE_OPENID_KEY) || uni.getStorageSync('openId') || '')
   const user = ref<LoginUserOutput | null>(uni.getStorageSync(SHENLE_USER_KEY) || null)
+  const loginTicket = ref('')
+
+  // 新登录链路不再让客户端持有 OpenId，清理旧版本遗留值。
+  uni.removeStorageSync('shenle_openid')
+  uni.removeStorageSync('openId')
 
   // 请求层 401 时只能清 storage，这里同步清内存态；
   // 否则 isLogin 仍为 true，登录页会把过期用户弹回业务页，形成来回横跳死循环
   uni.$on('shenle:unauthorized', () => {
     token.value = ''
     user.value = null
+    loginTicket.value = ''
     // 同步退回用户端，避免过期后仍停留在管理端外壳（tabbar/视图与已登出状态不一致）
     modeStore.setMode('user')
   })
@@ -28,6 +33,9 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const canViewRealData = computed(() => canUseApp.value || isAdmin.value)
   const isLandlord = computed(() => !!user.value?.isLandlord)
   const landlordApplyStatus = computed(() => user.value?.landlordApplyStatus)
+  const canViewSupplyActivity = computed(() => !!user.value?.canViewSupplyActivity)
+  const canUseMineFilters = computed(() => !!user.value?.canUseMineFilters)
+  const canFilterBySupplyOperator = computed(() => !!user.value?.canFilterBySupplyOperator)
   const displayName = computed(() => (isLogin.value ? user.value?.nickName || '微信用户' : '未登录'))
 
   function setToken(value: string) {
@@ -36,14 +44,6 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
       uni.setStorageSync(SHENLE_TOKEN_KEY, value)
     else
       uni.removeStorageSync(SHENLE_TOKEN_KEY)
-  }
-
-  function setOpenId(value: string) {
-    openId.value = value
-    if (value)
-      uni.setStorageSync(SHENLE_OPENID_KEY, value)
-    else
-      uni.removeStorageSync(SHENLE_OPENID_KEY)
   }
 
   function setUser(value: LoginUserOutput | null) {
@@ -70,8 +70,8 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
       if (user.value) {
         user.value = {
           ...user.value,
+          ...access,
           isLandlord: !!access.isLandlord,
-          landlordApplyStatus: access.landlordApplyStatus,
         }
         uni.setStorageSync(SHENLE_USER_KEY, user.value)
       }
@@ -107,49 +107,44 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     return res.code
   }
 
-  async function wxLoginStep1(): Promise<'done' | 'needProfile'> {
+  async function wxLoginStep1(): Promise<'done' | 'needProfile' | 'needPhone'> {
     const code = await getWxLoginCode()
-    const wxRes = await getWxOpenId(code)
-    setOpenId(wxRes.openId)
+    const prepared = await prepareWxLogin(code)
+    loginTicket.value = prepared.loginTicket
 
-    const session = await wxOpenIdLogin(wxRes.openId)
-    if (session.needProfile)
+    if (prepared.needProfile)
       return 'needProfile'
+    if (prepared.needPhone)
+      return 'needPhone'
 
+    const session = await loginWithWxTicket(prepared.loginTicket)
     await applyWxSession(session)
+    loginTicket.value = ''
     return 'done'
   }
 
-  async function wxLoginStep2(nickName: string, avatarTempPath: string) {
-    if (!openId.value)
+  async function wxLoginWithPhone(phoneCode: string) {
+    if (!loginTicket.value)
       throw new Error('请先完成微信授权')
 
-    const file = await uploadAvatar(openId.value, avatarTempPath)
-    const session = await completeProfile({
-      openId: openId.value,
-      nickName,
-      avatar: file.url,
-    })
-    await applyWxSession({ ...session, needProfile: false })
+    const session = await loginWithWxTicket(loginTicket.value, phoneCode)
+    await applyWxSession(session)
+    loginTicket.value = ''
   }
 
-  async function autoLogin() {
-    if (!openId.value)
-      return false
+  async function wxLoginStep2(nickName: string, avatarTempPath: string, phoneCode: string) {
+    if (!loginTicket.value)
+      throw new Error('请先完成微信授权')
 
-    setToken('')
-    setUser(null)
-    try {
-      const session = await wxOpenIdLogin(openId.value)
-      if (session.needProfile)
-        return false
-      await applyWxSession(session)
-      return true
-    }
-    catch {
-      setOpenId('')
-      return false
-    }
+    const file = await uploadAvatar(loginTicket.value, avatarTempPath)
+    const session = await completeProfile({
+      loginTicket: loginTicket.value,
+      nickName,
+      avatar: file.url,
+      phoneCode,
+    })
+    await applyWxSession(session)
+    loginTicket.value = ''
   }
 
   async function signOut() {
@@ -160,15 +155,14 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     catch {}
     finally {
       setToken('')
-      setOpenId('')
       setUser(null)
+      loginTicket.value = ''
       modeStore.setMode('user')
     }
   }
 
   return {
     token,
-    openId,
     user,
     isLogin,
     isAdmin,
@@ -178,13 +172,15 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     isGuest,
     isLandlord,
     landlordApplyStatus,
+    canViewSupplyActivity,
+    canUseMineFilters,
+    canFilterBySupplyOperator,
     displayName,
     setToken,
-    setOpenId,
     setUser,
     wxLoginStep1,
+    wxLoginWithPhone,
     wxLoginStep2,
-    autoLogin,
     refreshUser,
     signOut,
   }

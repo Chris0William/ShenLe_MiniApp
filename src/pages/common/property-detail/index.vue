@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import type { ImageOutput, SlPropertyImageOutput, SlPropertyOutput } from '@/types/shenle'
+import type { ImageOutput, SlCommunityOutput, SlPropertyImageOutput, SlPropertyOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
+import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
 import { getPropertyDetail } from '@/api/property'
+import SlSupplyContacts from '@/components/sl-supply-contacts/sl-supply-contacts.vue'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
@@ -16,6 +18,7 @@ definePage({
 
 const id = ref('')
 const detail = ref<SlPropertyOutput | null>(null)
+const communityDetail = ref<SlCommunityOutput | null>(null)
 const loading = ref(true)
 const gallery = ref<PropertyDetailMedia[]>([])
 const previewVideo = ref<PropertyDetailMedia | null>(null)
@@ -140,7 +143,10 @@ async function loadDetail() {
   try {
     const nextDetail = await getPropertyDetail(id.value)
     detail.value = nextDetail
-    await loadGallery(nextDetail)
+    const communityTask = getCommunityDetail(nextDetail.communityId)
+      .then((community) => { communityDetail.value = community })
+      .catch(() => { communityDetail.value = null })
+    await Promise.all([loadGallery(nextDetail), communityTask])
   }
   finally {
     loading.value = false
@@ -201,6 +207,10 @@ onLoad((query) => {
           <view><text>{{ formatArea(detail.area) }}</text><text>面积</text></view>
           <view><text>{{ detail.floorInfo || `${detail.floor || '--'}/${detail.totalFloors || '--'}层` }}</text><text>楼层</text></view>
         </view>
+      </view>
+
+      <view v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)" class="section sl-card">
+        <sl-supply-contacts :community="communityDetail" />
       </view>
 
       <view class="section sl-card">
