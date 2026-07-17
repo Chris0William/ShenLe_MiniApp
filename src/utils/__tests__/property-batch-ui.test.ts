@@ -282,10 +282,14 @@ describe('batch property management UI contract', () => {
   it('keeps the current batch content intact until the close animation finishes', () => {
     const component = fs.readFileSync(componentPath, 'utf8')
     const closeStart = component.indexOf('async function closeBatchSheet')
-    const closeEnd = component.indexOf('\n}\n\nfunction showBatchSheet', closeStart)
+    const closeTail = component.slice(closeStart)
+    const closeDelimiter = closeTail.match(/\r?\n\}\r?\n\r?\nfunction showBatchSheet/)
+    const closeEnd = closeStart + (closeDelimiter?.index ?? closeTail.length)
     const closeHandler = component.slice(closeStart, closeEnd)
     const afterLeaveStart = component.indexOf('function handleBatchSheetAfterLeave')
-    const afterLeaveEnd = component.indexOf('\n}\n', afterLeaveStart)
+    const afterLeaveTail = component.slice(afterLeaveStart)
+    const afterLeaveDelimiter = afterLeaveTail.match(/\r?\n\}\r?\n/)
+    const afterLeaveEnd = afterLeaveStart + (afterLeaveDelimiter?.index ?? afterLeaveTail.length)
     const afterLeaveHandler = component.slice(afterLeaveStart, afterLeaveEnd)
 
     expect(closeHandler).toContain('hideBatchSheet()')
@@ -369,14 +373,17 @@ describe('batch property management UI contract', () => {
     expect(component).toContain('coverSelection: coverEnabled.value')
   })
 
-  it('uploads batch media into a draft session without changing existing upload callers', () => {
+  it('uploads batch media and its poster into the same draft session', () => {
     const component = fs.readFileSync(componentPath, 'utf8')
 
     expect(fileApi).toContain('export interface UploadFileOptions')
     expect(fileApi).toContain('formData: buildUploadFormData(options)')
     expect(component).toContain('createMediaDraftSession')
     expect(component).toContain('const draftId = await ensureMediaDraftSession()')
-    expect(component).toContain('uploadFile(local.tempFilePath, { belongId: draftId })')
+    expect(component).toContain('uploadMediaFile(local.tempFilePath, {')
+    expect(component).toContain('belongId: draftId')
+    expect(component).toContain('posterPath: local.thumbTempFilePath')
+    expect(component).toContain('onUploaded: file => uploadedDraftIds.value.push(file.id)')
   })
 
   it('reports partial upload failures and cleans abandoned draft files on close', () => {

@@ -3,7 +3,7 @@ import type { AddSlCommunityInput, ImageOutput, ShenLeId, SlCommunityOutput, SlL
 import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, updateCommunity } from '@/api/community'
-import { downloadFile, uploadFile } from '@/api/file'
+import { downloadFile, uploadMediaFile } from '@/api/file'
 import { assignOwner, getLandlordPage, unassignOwner } from '@/api/landlord'
 import { getRegionTree } from '@/api/region'
 import { useEntityChangeStore } from '@/store/entity-change'
@@ -34,6 +34,8 @@ interface CommunityMedia {
   fileName?: string | null
   fileType?: string | null
   suffix?: string | null
+  posterFileId?: ShenLeId | null
+  posterUrl?: string | null
 }
 
 interface CommunityForm {
@@ -56,11 +58,13 @@ interface CommunityForm {
 interface LocalUploadMedia {
   tempPath: string
   kind: UploadMediaKind
+  posterPath?: string
 }
 
 interface WechatChooseMediaFile {
   tempFilePath?: string
   fileType?: UploadMediaKind
+  thumbTempFilePath?: string
 }
 
 interface WechatChooseMediaResult {
@@ -224,6 +228,8 @@ function normalizeMedia(media: ImageOutput, url?: string): CommunityMedia {
     fileName: media.fileName,
     fileType: media.fileType,
     suffix: media.suffix,
+    posterFileId: media.posterFileId,
+    posterUrl: media.posterUrl ? resolveAssetUrl(media.posterUrl) : '',
   }
 }
 
@@ -235,7 +241,10 @@ function coverMedia(item: SlCommunityOutput): Partial<ImageOutput> | null {
     return {
       id: item.coverImageId || 0,
       url: item.coverImage,
-      suffix: extensionOf(item.coverImage),
+      fileType: item.coverFileType,
+      suffix: item.coverSuffix || extensionOf(item.coverImage),
+      posterFileId: item.coverPosterFileId,
+      posterUrl: item.coverPosterUrl,
     }
   }
   return item.images?.[0] || null
@@ -247,7 +256,7 @@ function coverUrl(item: SlCommunityOutput) {
     return cached
   const media = coverMedia(item)
   if (isVideoMedia(media))
-    return ''
+    return media?.posterUrl ? resolveAssetUrl(media.posterUrl) : ''
   const url = media?.url
   return url ? resolveAssetUrl(url) : ''
 }
@@ -282,8 +291,21 @@ async function hydrateCoverImages(items: SlCommunityOutput[]) {
     const key = String(item.id)
     if (!item.coverImageId || coverMap.value[key])
       return
-    if (hasVideoCover(item))
+    if (hasVideoCover(item)) {
+      const media = coverMedia(item)
+      const posterFileId = media?.posterFileId || item.coverPosterFileId
+      if (posterFileId) {
+        try {
+          next[key] = await downloadFile(posterFileId)
+          return
+        }
+        catch {}
+      }
+      const posterUrl = media?.posterUrl || item.coverPosterUrl
+      if (posterUrl)
+        next[key] = resolveAssetUrl(posterUrl)
       return
+    }
     try {
       next[key] = await downloadFile(item.coverImageId)
     }
@@ -392,7 +414,16 @@ function resetForm(item?: SlCommunityOutput) {
 
 async function loadFormImages(item: SlCommunityOutput) {
   const images = item.images || []
-  form.media = images.map(image => normalizeMedia(image))
+  form.media = await Promise.all(images.map(async (image) => {
+    const media = normalizeMedia(image)
+    if (media.kind === 'video' && media.posterFileId) {
+      try {
+        media.posterUrl = await downloadFile(media.posterFileId)
+      }
+      catch {}
+    }
+    return media
+  }))
 
   if (!form.media.length && item.coverImageId && item.coverImage) {
     const cover = {
@@ -496,8 +527,13 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
   uploading.value = true
   try {
     for (const item of files) {
-      const file = await uploadFile(item.tempPath)
-      form.media.push(normalizeMedia({ ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) }, item.tempPath))
+      const file = await uploadMediaFile(item.tempPath, { kind: item.kind, posterPath: item.posterPath })
+      form.media.push(normalizeMedia(
+        { ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) },
+        item.tempPath,
+      ))
+      if (file.posterLocalPath)
+        form.media[form.media.length - 1].posterUrl = file.posterLocalPath
       if (!form.coverImageId)
         form.coverImageId = String(file.id)
     }
@@ -543,6 +579,7 @@ function chooseMedia() {
         .map(item => ({
           tempPath: item.tempFilePath!,
           kind: localMediaKind(item.tempFilePath!, item.fileType),
+          posterPath: item.thumbTempFilePath,
         }))
       void uploadSelectedMedia(files)
     },
@@ -657,8 +694,9 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
   const cover = form.media.find(item => sameId(item.id, effectiveCoverId.value))
   const coverUrlValue = cover?.url || ''
   const coverKey = String(payload.id)
-  if (coverUrlValue && cover?.kind === 'image') {
-    coverMap.value = { ...coverMap.value, [coverKey]: coverUrlValue }
+  const coverDisplayUrl = cover?.kind === 'video' ? cover.posterUrl : coverUrlValue
+  if (coverDisplayUrl) {
+    coverMap.value = { ...coverMap.value, [coverKey]: coverDisplayUrl }
   }
   else if (coverMap.value[coverKey]) {
     const { [coverKey]: _removed, ...nextCoverMap } = coverMap.value
@@ -682,6 +720,10 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
     remark: payload.remark ?? null,
     coverImageId: payload.coverImageId ?? null,
     coverImage: coverUrlValue || null,
+    coverFileType: cover?.fileType || cover?.kind || null,
+    coverSuffix: cover?.suffix || null,
+    coverPosterFileId: cover?.posterFileId || null,
+    coverPosterUrl: cover?.posterUrl || null,
     ownerId: form.ownerId || null,
     ownerName: form.ownerName || null,
     images: form.media.map(item => ({
@@ -690,6 +732,8 @@ function patchCommunityListItem(payload: AddSlCommunityInput & { id: ShenLeId })
       fileType: item.fileType,
       suffix: item.suffix,
       url: item.url || null,
+      posterFileId: item.posterFileId,
+      posterUrl: item.posterUrl,
     })),
   })
 }
@@ -816,13 +860,14 @@ onReachBottom(() => loadData())
     <view class="community-list">
       <view v-for="item in list" :key="String(item.id)" class="community-card sl-card">
         <view class="community-card__main">
-          <image v-if="coverUrl(item)" class="card-cover card-cover--tap" :src="coverUrl(item)" mode="aspectFill" @tap.stop="previewCommunityCover(item)" />
-          <view v-else-if="hasVideoCover(item)" class="card-cover card-cover--video card-cover--tap" @tap.stop="previewCommunityCover(item)">
+          <view v-if="hasVideoCover(item)" class="card-cover card-cover--video card-cover--tap" @tap.stop="previewCommunityCover(item)">
+            <image v-if="coverUrl(item)" class="card-cover__poster" :src="coverUrl(item)" mode="aspectFill" />
             <view class="card-cover__overlay">
               <wd-icon name="play-circle" size="26px" color="#fff" />
               <text>视频</text>
             </view>
           </view>
+          <image v-else-if="coverUrl(item)" class="card-cover card-cover--tap" :src="coverUrl(item)" mode="aspectFill" @tap.stop="previewCommunityCover(item)" />
           <view class="card-content">
             <view class="card-head">
               <view>
@@ -945,6 +990,7 @@ onReachBottom(() => loadData())
               <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
                 <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
                 <view v-else class="video-tile" @tap="previewMedia(index)">
+                  <image v-if="media.posterUrl" class="video-tile__poster" :src="media.posterUrl" mode="aspectFill" />
                   <view class="video-tile__overlay">
                     <wd-icon name="play-circle" size="32px" color="#fff" />
                     <text>{{ media.fileName || '视频' }}</text>
@@ -1150,6 +1196,12 @@ onReachBottom(() => loadData())
   justify-content: center;
   gap: 8rpx;
   background: transparent;
+}
+
+.card-cover__poster,
+.video-tile__poster {
+  width: 100%;
+  height: 100%;
 }
 
 .card-content {

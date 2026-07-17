@@ -66,11 +66,30 @@ function distanceText(item: SlCommunityOutput) {
 }
 
 watch(
-  () => [props.item.coverImageId, props.item.coverImage, props.item.coverFileType, props.item.coverSuffix],
+  () => [
+    props.item.coverImageId,
+    props.item.coverImage,
+    props.item.coverFileType,
+    props.item.coverSuffix,
+    props.item.coverPosterFileId,
+    props.item.coverPosterUrl,
+  ],
   async () => {
     const seq = ++coverSeq
-    if (coverKind.value === 'video' || !props.item.coverImageId) {
-      cover.value = resolveAssetUrl(props.item.coverImage)
+    if (coverKind.value === 'video') {
+      cover.value = props.item.coverPosterUrl ? resolveAssetUrl(props.item.coverPosterUrl) : ''
+      if (!props.item.coverPosterFileId)
+        return
+      try {
+        const localPath = await downloadFile(props.item.coverPosterFileId)
+        if (seq === coverSeq)
+          cover.value = localPath
+      }
+      catch {}
+      return
+    }
+    if (!props.item.coverImageId) {
+      cover.value = props.item.coverImage ? resolveAssetUrl(props.item.coverImage) : ''
       return
     }
     try {
@@ -91,6 +110,7 @@ watch(
   <view class="community sl-card" :class="{ 'community--compact': compact }" @tap="emit('select', item)">
     <image v-if="coverKind === 'image' && cover" class="community__cover" :src="cover" mode="aspectFill" />
     <view v-else-if="coverKind === 'video'" class="community__cover community__cover--video" @tap.stop="emit('previewVideo', item)">
+      <image v-if="cover" class="community__poster" :src="cover" mode="aspectFill" />
       <view class="community__play">
         <wd-icon name="play-circle" size="28px" color="#fff" />
         <text>视频</text>
@@ -156,11 +176,17 @@ watch(
 
 .community__cover--video {
   position: relative;
+  overflow: hidden;
   gap: 10rpx;
   background: linear-gradient(135deg, #0f6a4c, #173f34);
   color: #fff;
   font-size: 22rpx;
   font-weight: 800;
+}
+
+.community__poster {
+  width: 100%;
+  height: 100%;
 }
 
 .community__play {

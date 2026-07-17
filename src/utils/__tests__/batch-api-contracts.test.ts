@@ -1,6 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { describe, expect, expectTypeOf, it } from 'vitest'
 import type {
   AddSlPropertyImageInput,
   AddSlPropertyInput,
@@ -10,6 +7,7 @@ import type {
   BatchSaveSlPropertyInput,
   BatchSlPropertyResult,
   BatchUpdateSlPropertyStatusInput,
+  BindSlMediaPosterInput,
   CleanupSlMediaDraftInput,
   ShenLeId,
   SlPropertyBatchError,
@@ -17,13 +15,16 @@ import type {
   SlPropertyImageOutput,
   UpdateSlPropertyInput,
 } from '@/types/shenle'
+import fs from 'node:fs'
+import path from 'node:path'
+import { describe, expect, expectTypeOf, it } from 'vitest'
 
-type ExpectedAddSlPropertyImageInput = {
+interface ExpectedAddSlPropertyImageInput {
   fileId: ShenLeId
   fileType?: string | null
 }
 
-type ExpectedAddSlPropertyInput = {
+interface ExpectedAddSlPropertyInput {
   title: string
   communityId: ShenLeId
   buildingId: ShenLeId
@@ -57,7 +58,7 @@ interface ExpectedUpdateSlPropertyInput extends ExpectedAddSlPropertyInput {
   id: ShenLeId
 }
 
-type ExpectedBatchAddSlBuildingInput = {
+interface ExpectedBatchAddSlBuildingInput {
   communityId: ShenLeId
   count: number
   seqMode: 'number' | 'alpha'
@@ -71,32 +72,37 @@ type ExpectedBatchAddSlBuildingInput = {
   status?: number
 }
 
-type ExpectedBatchAddSlBuildingOutput = {
+interface ExpectedBatchAddSlBuildingOutput {
   created: ShenLeId[]
   skipped: string[]
 }
 
-type ExpectedCleanupSlMediaDraftInput = {
+interface ExpectedCleanupSlMediaDraftInput {
   draftId: ShenLeId
   fileIds: ShenLeId[]
 }
 
-type ExpectedBatchDeleteSlPropertyInput = {
+interface ExpectedBindSlMediaPosterInput {
+  videoFileId: ShenLeId
+  posterFileId: ShenLeId
+}
+
+interface ExpectedBatchDeleteSlPropertyInput {
   ids: ShenLeId[]
 }
 
-type ExpectedBatchUpdateSlPropertyStatusInput = {
+interface ExpectedBatchUpdateSlPropertyStatusInput {
   ids: ShenLeId[]
   status: number | null
 }
 
-type ExpectedBatchSaveSlPropertyInput = {
+interface ExpectedBatchSaveSlPropertyInput {
   adds: AddSlPropertyInput[]
   updates: UpdateSlPropertyInput[]
   deleteIds: ShenLeId[]
 }
 
-type ExpectedSlPropertyBatchError = {
+interface ExpectedSlPropertyBatchError {
   operation: 'add' | 'update' | 'delete' | 'updateStatus' | 'batchSave'
   scope: 'items' | 'ids' | 'status' | 'adds' | 'updates' | 'deleteIds' | 'request'
   index: number
@@ -104,7 +110,7 @@ type ExpectedSlPropertyBatchError = {
   message: string
 }
 
-type ExpectedBatchSlPropertyResult = {
+interface ExpectedBatchSlPropertyResult {
   success: boolean
   createdIds: ShenLeId[]
   updatedCount: number
@@ -113,7 +119,7 @@ type ExpectedBatchSlPropertyResult = {
   errors: SlPropertyBatchError[]
 }
 
-type ExpectedSlPropertyBatchRowOutput = {
+interface ExpectedSlPropertyBatchRowOutput {
   id: ShenLeId
   title: string
   communityId: ShenLeId
@@ -196,15 +202,15 @@ describe('property batch API contract', () => {
 
   it('exposes every committed property batch route without replacing single-write routes', () => {
     expect(api).toContain('getPropertyBatchList = (buildingId: ShenLeId)')
-    expect(api).toContain("get<SlPropertyBatchRowOutput[]>('/api/slProperty/batchList'")
-    expect(api).toContain("post<BatchSlPropertyResult>('/api/slProperty/batchAdd'")
-    expect(api).toContain("post<BatchSlPropertyResult>('/api/slProperty/batchUpdate'")
-    expect(api).toContain("post<BatchSlPropertyResult>('/api/slProperty/batchDelete'")
-    expect(api).toContain("post<BatchSlPropertyResult>('/api/slProperty/batchUpdateStatus'")
-    expect(api).toContain("post<BatchSlPropertyResult>('/api/slProperty/batchSave'")
-    expect(api).toContain("post<string | number>('/api/slProperty/add'")
-    expect(api).toContain("post<void>('/api/slProperty/update'")
-    expect(api).toContain("post<void>('/api/slProperty/delete'")
+    expect(api).toContain('get<SlPropertyBatchRowOutput[]>(\'/api/slProperty/batchList\'')
+    expect(api).toContain('post<BatchSlPropertyResult>(\'/api/slProperty/batchAdd\'')
+    expect(api).toContain('post<BatchSlPropertyResult>(\'/api/slProperty/batchUpdate\'')
+    expect(api).toContain('post<BatchSlPropertyResult>(\'/api/slProperty/batchDelete\'')
+    expect(api).toContain('post<BatchSlPropertyResult>(\'/api/slProperty/batchUpdateStatus\'')
+    expect(api).toContain('post<BatchSlPropertyResult>(\'/api/slProperty/batchSave\'')
+    expect(api).toContain('post<string | number>(\'/api/slProperty/add\'')
+    expect(api).toContain('post<void>(\'/api/slProperty/update\'')
+    expect(api).toContain('post<void>(\'/api/slProperty/delete\'')
   })
 
   it('models the complete editable property snapshot with ShenLeId identifiers', () => {
@@ -240,8 +246,8 @@ describe('property batch API contract', () => {
     expect(result).toContain('deletedCount: number')
     expect(result).toContain('affectedCount: number')
     expect(result).toContain('errors: SlPropertyBatchError[]')
-    expect(error).toContain("operation: 'add' | 'update' | 'delete' | 'updateStatus' | 'batchSave'")
-    expect(error).toContain("scope: 'items' | 'ids' | 'status' | 'adds' | 'updates' | 'deleteIds' | 'request'")
+    expect(error).toContain('operation: \'add\' | \'update\' | \'delete\' | \'updateStatus\' | \'batchSave\'')
+    expect(error).toContain('scope: \'items\' | \'ids\' | \'status\' | \'adds\' | \'updates\' | \'deleteIds\' | \'request\'')
     expect(error).toContain('index: number')
     expect(error).toContain('field?: string | null')
     expect(error).toContain('message: string')
@@ -318,9 +324,9 @@ describe('building and media draft API contracts', () => {
     const input = interfaceBlock(types, 'BatchAddSlBuildingInput')
     const output = interfaceBlock(types, 'BatchAddSlBuildingOutput')
 
-    expect(buildingApi).toContain("post<BatchAddSlBuildingOutput>('/api/slBuilding/batchAdd'")
+    expect(buildingApi).toContain('post<BatchAddSlBuildingOutput>(\'/api/slBuilding/batchAdd\'')
     expect(input).toContain('communityId: ShenLeId')
-    expect(input).toContain("seqMode: 'number' | 'alpha'")
+    expect(input).toContain('seqMode: \'number\' | \'alpha\'')
     expect(input).toContain('count: number')
     expect(input).toContain('startNo?: number')
     expect(input).toContain('startLetter?: string')
@@ -330,19 +336,23 @@ describe('building and media draft API contracts', () => {
     expect(output).toContain('skipped: string[]')
   })
 
-  it('exposes only the media draft routes currently implemented by the backend', () => {
+  it('exposes the implemented media draft and video poster routes', () => {
     const cleanup = interfaceBlock(types, 'CleanupSlMediaDraftInput')
+    const bindPoster = interfaceBlock(types, 'BindSlMediaPosterInput')
 
-    expect(fileApi).toContain("post<ShenLeId>('/api/slMediaDraft/createSession'")
-    expect(fileApi).toContain("post<number>('/api/slMediaDraft/cleanup'")
-    expect(fileApi).not.toContain('/api/slMediaDraft/bindPoster')
+    expect(fileApi).toContain('post<ShenLeId>(\'/api/slMediaDraft/createSession\'')
+    expect(fileApi).toContain('post<number>(\'/api/slMediaDraft/cleanup\'')
+    expect(fileApi).toContain('post<void>(\'/api/slMediaDraft/bindPoster\'')
     expect(cleanup).toContain('draftId: ShenLeId')
     expect(cleanup).toContain('fileIds: ShenLeId[]')
+    expect(bindPoster).toContain('videoFileId: ShenLeId')
+    expect(bindPoster).toContain('posterFileId: ShenLeId')
   })
 
   it('matches building batch and media draft DTOs exactly', () => {
     expectTypeOf<BatchAddSlBuildingInput>().toEqualTypeOf<ExpectedBatchAddSlBuildingInput>()
     expectTypeOf<BatchAddSlBuildingOutput>().toEqualTypeOf<ExpectedBatchAddSlBuildingOutput>()
     expectTypeOf<CleanupSlMediaDraftInput>().toEqualTypeOf<ExpectedCleanupSlMediaDraftInput>()
+    expectTypeOf<BindSlMediaPosterInput>().toEqualTypeOf<ExpectedBindSlMediaPosterInput>()
   })
 })

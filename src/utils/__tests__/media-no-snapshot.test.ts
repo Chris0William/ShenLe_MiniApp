@@ -43,4 +43,37 @@ describe('video poster fallback', () => {
 
     expect(overlayRule).toContain('background: transparent;')
   })
+
+  it('uploads and binds the WeChat-generated video poster as a child file', () => {
+    const fileApi = fs.readFileSync(path.resolve(process.cwd(), 'src/api/file.ts'), 'utf8')
+
+    expect(fileApi).toContain('\'/api/slMediaDraft/bindPoster\'')
+    expect(fileApi).toContain('fileType: \'image:video_poster\'')
+    expect(fileApi).toContain('posterFileId: poster.id')
+    expect(fileApi).toContain('posterLocalPath: options.posterPath')
+  })
+
+  it('keeps video and poster as one media item across upload and display entry points', () => {
+    const uploadPages = [
+      'src/pages/common/community-manage/index.vue',
+      'src/pages/common/property-form/index.vue',
+      'src/components/sl-property-batch/sl-property-batch.vue',
+    ]
+    const displayFiles = [
+      'src/components/sl-community-card/sl-community-card.vue',
+      'src/components/sl-property-card/sl-property-card.vue',
+      'src/pages/common/community-properties/index.vue',
+      'src/pages/common/property-detail/index.vue',
+    ]
+
+    for (const pagePath of uploadPages) {
+      const source = fs.readFileSync(path.resolve(process.cwd(), pagePath), 'utf8')
+      expect(source, pagePath).toContain('thumbTempFilePath')
+      expect(source, pagePath).toContain('posterFileId')
+    }
+    for (const filePath of displayFiles) {
+      const source = fs.readFileSync(path.resolve(process.cwd(), filePath), 'utf8')
+      expect(source, filePath).toContain('coverPosterFileId')
+    }
+  })
 })

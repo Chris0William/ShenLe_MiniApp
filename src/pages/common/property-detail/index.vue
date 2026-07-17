@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ImageOutput, SlCommunityOutput, SlPropertyImageOutput, SlPropertyOutput } from '@/types/shenle'
+import type { ImageOutput, ShenLeId, SlCommunityOutput, SlPropertyImageOutput, SlPropertyOutput } from '@/types/shenle'
 import { onLoad } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityDetail } from '@/api/community'
@@ -40,6 +40,8 @@ interface PropertyDetailMedia {
   fileName?: string | null
   fileType?: string | null
   suffix?: string | null
+  posterFileId?: ShenLeId | null
+  posterUrl?: string
 }
 
 const IMAGE_SUFFIXES = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.heic']
@@ -69,6 +71,8 @@ function normalizeMedia(media: ImageOutput | SlPropertyImageOutput, url?: string
     fileName: media.fileName,
     fileType: media.fileType,
     suffix: media.suffix,
+    posterFileId: media.posterFileId,
+    posterUrl: media.posterUrl ? resolveAssetUrl(media.posterUrl) : '',
   }
 }
 
@@ -85,7 +89,14 @@ async function loadGallery(nextDetail: SlPropertyOutput) {
       }
       catch {}
     }
-    return normalizeMedia(image)
+    const media = normalizeMedia(image)
+    if (media.kind === 'video' && media.posterFileId) {
+      try {
+        media.posterUrl = await downloadFile(media.posterFileId)
+      }
+      catch {}
+    }
+    return media
   }))
 
   if (!medias.length && nextDetail.coverImageId) {
@@ -94,6 +105,8 @@ async function loadGallery(nextDetail: SlPropertyOutput) {
       url: nextDetail.coverImage,
       fileType: nextDetail.coverFileType,
       suffix: nextDetail.coverSuffix || extensionOf(nextDetail.coverImage),
+      posterFileId: nextDetail.coverPosterFileId,
+      posterUrl: nextDetail.coverPosterUrl,
     }
     if (mediaKind(cover) === 'image') {
       try {
@@ -104,7 +117,14 @@ async function loadGallery(nextDetail: SlPropertyOutput) {
       }
     }
     else {
-      medias.push(normalizeMedia(cover))
+      const media = normalizeMedia(cover)
+      if (media.posterFileId) {
+        try {
+          media.posterUrl = await downloadFile(media.posterFileId)
+        }
+        catch {}
+      }
+      medias.push(media)
     }
   }
 
@@ -180,8 +200,11 @@ onLoad((query) => {
             @tap="previewGalleryMedia(media)"
           />
           <view v-else-if="media.kind === 'video'" class="gallery__video" @tap="previewGalleryMedia(media)">
-            <wd-icon name="play-circle" size="46px" color="#fff" />
-            <text>{{ media.fileName || '视频预览' }}</text>
+            <image v-if="media.posterUrl" class="gallery__poster" :src="media.posterUrl" mode="aspectFill" />
+            <view class="gallery__video-overlay">
+              <wd-icon name="play-circle" size="46px" color="#fff" />
+              <text>{{ media.fileName || '视频预览' }}</text>
+            </view>
           </view>
           <view v-else class="gallery__file">
             <wd-icon name="file" size="34px" color="#7d8e86" />
@@ -302,10 +325,32 @@ onLoad((query) => {
 }
 
 .gallery__video {
+  position: relative;
+  overflow: hidden;
   background: linear-gradient(135deg, #0f6a4c, #163b32);
   color: #fff;
   font-size: 28rpx;
   font-weight: 900;
+}
+
+.gallery__poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.gallery__video-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18rpx;
+  padding: 40rpx;
+  background: rgb(16 38 31 / 22%);
 }
 
 .gallery__file {

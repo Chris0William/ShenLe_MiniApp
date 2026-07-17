@@ -1,7 +1,7 @@
+import type { AdminResult, BindSlMediaPosterInput, CleanupSlMediaDraftInput, ImageOutput, ShenLeId } from '@/types/shenle'
 import JSONBigInt from 'json-bigint'
-import { post } from './request'
-import type { AdminResult, CleanupSlMediaDraftInput, ImageOutput, ShenLeId } from '@/types/shenle'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY } from '@/utils/shenle'
+import { post } from './request'
 
 const fileCache = new Map<string, string>()
 const losslessJson = JSONBigInt({ storeAsString: true })
@@ -9,6 +9,16 @@ const losslessJson = JSONBigInt({ storeAsString: true })
 export interface UploadFileOptions {
   belongId?: ShenLeId | null
   fileType?: string
+}
+
+export interface UploadMediaFileOptions extends UploadFileOptions {
+  kind: 'image' | 'video'
+  posterPath?: string
+  onUploaded?: (file: ImageOutput) => void
+}
+
+export interface UploadedMediaOutput extends ImageOutput {
+  posterLocalPath?: string
 }
 
 export function buildUploadFormData(options?: UploadFileOptions) {
@@ -25,11 +35,17 @@ export function parseUploadResponse(raw: string): AdminResult<ImageOutput> {
   return losslessJson.parse(raw) as AdminResult<ImageOutput>
 }
 
-export const createMediaDraftSession = () =>
-  post<ShenLeId>('/api/slMediaDraft/createSession')
+export function createMediaDraftSession() {
+  return post<ShenLeId>('/api/slMediaDraft/createSession')
+}
 
-export const cleanupMediaDraft = (input: CleanupSlMediaDraftInput) =>
-  post<number>('/api/slMediaDraft/cleanup', input as unknown as Record<string, unknown>)
+export function cleanupMediaDraft(input: CleanupSlMediaDraftInput) {
+  return post<number>('/api/slMediaDraft/cleanup', input as unknown as Record<string, unknown>)
+}
+
+export function bindMediaPoster(input: BindSlMediaPosterInput) {
+  return post<void>('/api/slMediaDraft/bindPoster', input as unknown as Record<string, unknown>)
+}
 
 export function uploadFile(filePath: string, options?: UploadFileOptions): Promise<ImageOutput> {
   return new Promise((resolve, reject) => {
@@ -63,6 +79,30 @@ export function uploadFile(filePath: string, options?: UploadFileOptions): Promi
       },
     })
   })
+}
+
+export async function uploadMediaFile(filePath: string, options: UploadMediaFileOptions): Promise<UploadedMediaOutput> {
+  const media = await uploadFile(filePath, {
+    belongId: options.belongId,
+    fileType: options.kind,
+  })
+  options.onUploaded?.(media)
+
+  if (options.kind !== 'video' || !options.posterPath)
+    return media
+
+  const poster = await uploadFile(options.posterPath, {
+    belongId: options.belongId,
+    fileType: 'image:video_poster',
+  })
+  options.onUploaded?.(poster)
+  await bindMediaPoster({ videoFileId: media.id, posterFileId: poster.id })
+  return {
+    ...media,
+    posterFileId: poster.id,
+    posterUrl: poster.url,
+    posterLocalPath: options.posterPath,
+  }
 }
 
 export function getPreviewUrl(fileId: string | number) {

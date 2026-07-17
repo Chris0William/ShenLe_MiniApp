@@ -17,6 +17,7 @@ const emit = defineEmits<{
 
 const status = computed(() => getStatusMeta(props.item.status))
 const cover = ref(resolveAssetUrl(props.item.coverImage))
+const videoUrl = ref(resolveAssetUrl(props.item.coverImage))
 const previewVideo = ref<{ url: string, title: string } | null>(null)
 let coverSeq = 0
 
@@ -49,9 +50,9 @@ function mediaKind(fileType?: string | null, suffixOrUrl?: string | null) {
 }
 
 function previewCoverVideo() {
-  if (coverKind.value !== 'video' || !cover.value)
+  if (coverKind.value !== 'video' || !videoUrl.value)
     return
-  previewVideo.value = { url: cover.value, title: props.item.title || '视频预览' }
+  previewVideo.value = { url: videoUrl.value, title: props.item.title || '视频预览' }
 }
 
 function savePreviewVideo() {
@@ -67,15 +68,31 @@ function openSavePreviewMenu() {
 }
 
 watch(
-  () => [props.item.coverImageId, props.item.coverImage, props.item.coverFileType, props.item.coverSuffix],
+  () => [
+    props.item.coverImageId,
+    props.item.coverImage,
+    props.item.coverFileType,
+    props.item.coverSuffix,
+    props.item.coverPosterFileId,
+    props.item.coverPosterUrl,
+  ],
   async () => {
     const seq = ++coverSeq
+    videoUrl.value = props.item.coverImage ? resolveAssetUrl(props.item.coverImage) : ''
     if (coverKind.value === 'video') {
-      cover.value = resolveAssetUrl(props.item.coverImage)
+      cover.value = props.item.coverPosterUrl ? resolveAssetUrl(props.item.coverPosterUrl) : ''
+      if (!props.item.coverPosterFileId)
+        return
+      try {
+        const localPath = await downloadFile(props.item.coverPosterFileId)
+        if (seq === coverSeq)
+          cover.value = localPath
+      }
+      catch {}
       return
     }
     if (!props.item.coverImageId) {
-      cover.value = resolveAssetUrl(props.item.coverImage)
+      cover.value = props.item.coverImage ? resolveAssetUrl(props.item.coverImage) : ''
       return
     }
     try {
@@ -95,7 +112,8 @@ watch(
 <template>
   <view class="property sl-card" :class="{ 'property--compact': compact }" @tap="emit('select', item)">
     <image v-if="coverKind === 'image' && cover" class="property__cover" :src="cover" mode="aspectFill" />
-    <view v-else-if="coverKind === 'video' && cover" class="property__cover property__cover--video" @tap.stop="previewCoverVideo">
+    <view v-else-if="coverKind === 'video'" class="property__cover property__cover--video" @tap.stop="previewCoverVideo">
+      <image v-if="cover" class="property__poster" :src="cover" mode="aspectFill" />
       <view class="property__play">
         <wd-icon name="play-circle" size="28px" color="#fff" />
         <text>视频</text>
@@ -164,11 +182,17 @@ watch(
 
 .property__cover--video {
   position: relative;
+  overflow: hidden;
   gap: 10rpx;
   background: linear-gradient(135deg, #0f6a4c, #163b32);
   color: #fff;
   font-size: 22rpx;
   font-weight: 800;
+}
+
+.property__poster {
+  width: 100%;
+  height: 100%;
 }
 
 .property__play {

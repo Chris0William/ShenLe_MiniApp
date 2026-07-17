@@ -306,6 +306,8 @@ interface CommunityMediaItem {
   name: string
   kind: MediaKind
   url: string
+  posterFileId?: ShenLeId | null
+  posterUrl?: string
 }
 
 const mediaList = ref<CommunityMediaItem[]>([])
@@ -359,6 +361,8 @@ async function loadMedia() {
       name: media.fileName || `文件${media.id}`,
       kind: mediaKindOf(media.fileType, media.suffix || media.url),
       url: resolveAssetUrl(media.url),
+      posterFileId: media.posterFileId,
+      posterUrl: media.posterUrl ? resolveAssetUrl(media.posterUrl) : '',
     }))
     // 部分导入批次媒体池绑定缺失：媒体池为空但有封面时至少展示封面
     if (!list.length && detail.coverImageId && detail.coverImage) {
@@ -367,13 +371,22 @@ async function loadMedia() {
         name: detail.name || '封面',
         kind: mediaKindOf(detail.coverFileType, detail.coverSuffix || detail.coverImage),
         url: resolveAssetUrl(detail.coverImage),
+        posterFileId: detail.coverPosterFileId,
+        posterUrl: detail.coverPosterUrl ? resolveAssetUrl(detail.coverPosterUrl) : '',
       })
     }
     mediaList.value = list
-    // 私有图需鉴权下载后才能显示缩略图，逐个替换为本地路径
+    // 私有图片和视频子封面需鉴权下载后才能稳定显示缩略图。
     for (const item of list) {
-      if (item.kind === 'image')
-        downloadFile(item.id).then((path) => { item.url = path }).catch(() => {})
+      const previewId = item.kind === 'video' ? item.posterFileId : item.id
+      if (!previewId)
+        continue
+      downloadFile(previewId).then((path) => {
+        if (item.kind === 'video')
+          item.posterUrl = path
+        else
+          item.url = path
+      }).catch(() => {})
     }
   }
   catch {
@@ -648,6 +661,7 @@ onShow(async () => {
             <view v-for="media in mediaList" :key="String(media.id)" class="media-item" @tap="openMedia(media)">
               <image v-if="media.kind === 'image'" class="media-item__thumb" :src="media.url" mode="aspectFill" />
               <view v-else class="media-item__thumb media-item__thumb--video">
+                <image v-if="media.posterUrl" class="media-item__poster" :src="media.posterUrl" mode="aspectFill" />
                 <view class="media-item__play">
                   <wd-icon name="play-circle" size="26px" color="#fff" />
                 </view>
@@ -927,7 +941,13 @@ onShow(async () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   background: linear-gradient(135deg, #0f6a4c, #173f34);
+}
+
+.media-item__poster {
+  width: 100%;
+  height: 100%;
 }
 
 .media-item__play {

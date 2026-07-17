@@ -34,6 +34,8 @@ export interface ImageOutput {
   url?: string | null
   fileType?: string | null
   suffix?: string | null
+  posterFileId?: ShenLeId | null
+  posterUrl?: string | null
 }
 
 export enum PropertyStatus {
@@ -113,6 +115,8 @@ export interface SlPropertyListOutput {
   coverImage?: string | null
   coverFileType?: string | null
   coverSuffix?: string | null
+  coverPosterFileId?: ShenLeId | null
+  coverPosterUrl?: string | null
   status: number
   statusName: string
   createTime: string
@@ -364,6 +368,8 @@ export interface SlCommunityOutput {
   coverImage?: string | null
   coverFileType?: string | null
   coverSuffix?: string | null
+  coverPosterFileId?: ShenLeId | null
+  coverPosterUrl?: string | null
   propertyCount: number
   availableCount?: number
   rentedCount?: number
@@ -510,6 +516,10 @@ export interface SlBuildingOutput {
   propertyCount: number
   coverImageId?: ShenLeId | null
   coverImage?: string | null
+  coverFileType?: string | null
+  coverSuffix?: string | null
+  coverPosterFileId?: ShenLeId | null
+  coverPosterUrl?: string | null
   images?: ImageOutput[]
 }
 
@@ -525,6 +535,11 @@ export interface SlBuildingStatsOutput {
 export interface CleanupSlMediaDraftInput {
   draftId: ShenLeId
   fileIds: ShenLeId[]
+}
+
+export interface BindSlMediaPosterInput {
+  videoFileId: ShenLeId
+  posterFileId: ShenLeId
 }
 
 export interface ListSlTagInput {

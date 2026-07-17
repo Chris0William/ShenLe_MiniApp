@@ -4,7 +4,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { getBuildingDetail } from '@/api/building'
 import { getCommunityDetail } from '@/api/community'
-import { downloadFile, uploadFile } from '@/api/file'
+import { downloadFile, uploadMediaFile } from '@/api/file'
 import { addProperty, getPropertyDetail, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
 import SlMediaSourceSheet from '@/components/sl-media-source-sheet/sl-media-source-sheet.vue'
@@ -67,6 +67,8 @@ interface PropertyMedia {
   fileName?: string | null
   fileType?: string | null
   suffix?: string | null
+  posterFileId?: ShenLeId | null
+  posterUrl?: string | null
   source?: MediaSource
   originId?: ShenLeId
 }
@@ -74,11 +76,13 @@ interface PropertyMedia {
 interface LocalUploadMedia {
   tempPath: string
   kind: UploadMediaKind
+  posterPath?: string
 }
 
 interface WechatChooseMediaFile {
   tempFilePath?: string
   fileType?: UploadMediaKind
+  thumbTempFilePath?: string
 }
 
 interface WechatChooseMediaResult {
@@ -203,6 +207,8 @@ function normalizeMedia(media: ImageOutput | SlPropertyImageOutput, url?: string
     fileName: media.fileName,
     fileType: media.fileType,
     suffix: media.suffix,
+    posterFileId: media.posterFileId,
+    posterUrl: media.posterUrl ? resolveAssetUrl(media.posterUrl) : '',
     source,
   }
 }
@@ -267,8 +273,10 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
   uploading.value = true
   try {
     for (const item of files) {
-      const file = await uploadFile(item.tempPath)
+      const file = await uploadMediaFile(item.tempPath, { kind: item.kind, posterPath: item.posterPath })
       form.media.push(normalizeMedia({ ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) }, item.tempPath, 'upload'))
+      if (file.posterLocalPath)
+        form.media[form.media.length - 1].posterUrl = file.posterLocalPath
       if (!form.coverImageId)
         form.coverImageId = String(file.id)
     }
@@ -308,6 +316,7 @@ function chooseMedia() {
         .map(item => ({
           tempPath: item.tempFilePath!,
           kind: localMediaKind(item.tempFilePath!, item.fileType),
+          posterPath: item.thumbTempFilePath,
         }))
       void uploadSelectedMedia(files)
     },
@@ -394,12 +403,22 @@ async function loadCommunityMediaPool() {
         url: community.coverImage,
         fileType: community.coverFileType,
         suffix: community.coverSuffix || extensionOf(community.coverImage),
+        posterFileId: community.coverPosterFileId,
+        posterUrl: community.coverPosterUrl,
       }, resolveAssetUrl(community.coverImage), 'community')
 
       if (!medias.some(media => idEquals(media.id, cover.id) || sameMediaAsset(media, cover)))
         medias.unshift(cover)
     }
     communityMediaPool.value = medias
+    await Promise.all(communityMediaPool.value.map(async (media) => {
+      if (media.kind !== 'video' || !media.posterFileId)
+        return
+      try {
+        media.posterUrl = await downloadFile(media.posterFileId)
+      }
+      catch {}
+    }))
   }
   finally {
     communityMediaLoading.value = false
@@ -589,7 +608,14 @@ async function fillDetail(detail: SlPropertyOutput) {
       }
       catch {}
     }
-    return normalizeMedia(image)
+    const media = normalizeMedia(image)
+    if (media.posterFileId) {
+      try {
+        media.posterUrl = await downloadFile(media.posterFileId)
+      }
+      catch {}
+    }
+    return media
   }))
   if (!form.media.length && detail.coverImageId && detail.coverImage) {
     const cover = {
@@ -597,6 +623,8 @@ async function fillDetail(detail: SlPropertyOutput) {
       url: detail.coverImage,
       fileType: detail.coverFileType,
       suffix: detail.coverSuffix || extensionOf(detail.coverImage),
+      posterFileId: detail.coverPosterFileId,
+      posterUrl: detail.coverPosterUrl,
     }
     form.media = [normalizeMedia(cover)]
   }
@@ -790,6 +818,7 @@ onLoad(async (query) => {
           <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
             <view v-else class="video-tile" @tap="previewMedia(index)">
+              <image v-if="media.posterUrl" class="video-poster" :src="media.posterUrl" mode="aspectFill" />
               <view class="video-tile__overlay">
                 <wd-icon name="play-circle" size="32px" color="#fff" />
                 <text>{{ media.fileName || '视频' }}</text>
@@ -856,6 +885,7 @@ onLoad(async (query) => {
           >
             <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
+              <image v-if="media.posterUrl" class="video-poster" :src="media.posterUrl" mode="aspectFill" />
               <view class="pool-media__overlay">
                 <wd-icon name="play-circle" size="30px" color="#fff" />
               </view>
@@ -1120,6 +1150,11 @@ onLoad(async (query) => {
   justify-content: center;
   gap: 8rpx;
   background: rgb(16 38 31 / 22%);
+}
+
+.video-poster {
+  width: 100%;
+  height: 100%;
 }
 
 .video-tile text {

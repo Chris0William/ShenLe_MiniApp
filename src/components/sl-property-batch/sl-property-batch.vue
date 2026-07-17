@@ -15,7 +15,7 @@ import {
   cleanupMediaDraft,
   createMediaDraftSession,
   downloadFile,
-  uploadFile,
+  uploadMediaFile,
 } from '@/api/file'
 import {
   batchAddProperties,
@@ -59,6 +59,8 @@ interface BatchMediaChoice extends AddSlPropertyImageInput {
   kind: MediaKind
   url: string
   mediaKey?: string
+  posterFileId?: ShenLeId | null
+  posterUrl?: string | null
 }
 
 interface AddDraftRow extends Omit<GeneratedPropertyDraft, 'images'> {
@@ -80,7 +82,7 @@ interface BatchCoverChoice {
 }
 
 interface WechatChooseMediaResult {
-  tempFiles?: Array<{ tempFilePath?: string, fileType?: 'image' | 'video' }>
+  tempFiles?: Array<{ tempFilePath?: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }>
 }
 
 type WechatChooseMedia = (options: {
@@ -228,7 +230,7 @@ const batchCoverChoices = computed<BatchCoverChoice[]>(() => {
       key: `existing:${media.mediaKey}`,
       name: media.name,
       kind: media.kind,
-      url: media.url,
+      url: media.kind === 'video' ? media.posterUrl || '' : media.url,
       mediaKey: media.mediaKey,
     }))
   }
@@ -237,7 +239,7 @@ const batchCoverChoices = computed<BatchCoverChoice[]>(() => {
       key: `source:${String(media.fileId)}`,
       name: media.name,
       kind: media.kind,
-      url: media.url,
+      url: media.kind === 'video' ? media.posterUrl || '' : media.url,
       sourceFileId: media.fileId,
     }))
   }
@@ -450,6 +452,8 @@ function toBatchMediaChoice(media: SlPropertyBatchRowOutput['images'][number]): 
     kind: mediaKindOf(media.fileType, media.suffix || media.url),
     url: resolveAssetUrl(media.url),
     mediaKey: mediaIdentityKey(media),
+    posterFileId: media.posterFileId,
+    posterUrl: media.posterUrl ? resolveAssetUrl(media.posterUrl) : '',
   }
 }
 
@@ -459,8 +463,15 @@ async function loadCommonPropertyMedia(snapshots: SlPropertyBatchRowOutput[]) {
   if (!commonPropertyMedia.value)
     return
   commonPropertyMedia.value.forEach((media) => {
-    if (media.kind === 'image')
-      downloadFile(media.fileId).then((path) => { media.url = path }).catch(() => {})
+    const previewId = media.kind === 'video' ? media.posterFileId : media.fileId
+    if (previewId) {
+      downloadFile(previewId).then((path) => {
+        if (media.kind === 'video')
+          media.posterUrl = path
+        else
+          media.url = path
+      }).catch(() => {})
+    }
   })
 }
 
@@ -814,12 +825,21 @@ async function openCommunityMedia() {
       kind: mediaKindOf(media.fileType, media.suffix || media.url),
       url: resolveAssetUrl(media.url),
       mediaKey: mediaIdentityKey(media),
+      posterFileId: media.posterFileId,
+      posterUrl: media.posterUrl ? resolveAssetUrl(media.posterUrl) : '',
     }))
     communityMediaSelection.value = []
     communityMediaVisible.value = true
     communityMediaPool.value.forEach((media) => {
-      if (media.kind === 'image')
-        downloadFile(media.fileId).then((path) => { media.url = path }).catch(() => {})
+      const previewId = media.kind === 'video' ? media.posterFileId : media.fileId
+      if (previewId) {
+        downloadFile(previewId).then((path) => {
+          if (media.kind === 'video')
+            media.posterUrl = path
+          else
+            media.url = path
+        }).catch(() => {})
+      }
     })
   }
   catch {
@@ -923,7 +943,7 @@ function wxChooseMedia() {
     || (uni as unknown as { chooseMedia?: WechatChooseMedia }).chooseMedia
 }
 
-async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video' }>) {
+async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }>) {
   if (!files.length)
     return
 
@@ -935,16 +955,22 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
     const draftId = await ensureMediaDraftSession()
     for (const local of files) {
       try {
-        const uploaded = await uploadFile(local.tempFilePath, { belongId: draftId })
-        uploadedDraftIds.value.push(uploaded.id)
+        const kind = mediaKindOf(local.fileType, local.tempFilePath)
+        const uploaded = await uploadMediaFile(local.tempFilePath, {
+          belongId: draftId,
+          kind: kind === 'video' ? 'video' : 'image',
+          posterPath: local.thumbTempFilePath,
+          onUploaded: file => uploadedDraftIds.value.push(file.id),
+        })
         successCount += 1
-        const kind = mediaKindOf(uploaded.fileType || local.fileType, uploaded.suffix || local.tempFilePath)
         uploadedMedia.push({
           fileId: uploaded.id,
           fileType: uploaded.fileType || kind,
           name: uploaded.fileName || (kind === 'video' ? '视频' : '图片'),
           kind,
           url: local.tempFilePath,
+          posterFileId: uploaded.posterFileId,
+          posterUrl: uploaded.posterLocalPath || uploaded.posterUrl,
         })
       }
       catch {
@@ -964,7 +990,7 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
   }
 }
 
-function startMediaUpload(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video' }>) {
+function startMediaUpload(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }>) {
   if (activeUploadPromise)
     return
   const task = uploadMediaFiles(files)
@@ -1003,7 +1029,7 @@ function chooseUploadMedia() {
     maxDuration: 60,
     success: result => startMediaUpload((result.tempFiles || [])
       .filter(item => !!item.tempFilePath)
-      .map(item => ({ tempFilePath: item.tempFilePath!, fileType: item.fileType }))),
+      .map(item => ({ tempFilePath: item.tempFilePath!, fileType: item.fileType, thumbTempFilePath: item.thumbTempFilePath }))),
   })
 }
 
@@ -1280,7 +1306,10 @@ defineExpose({ openAdd, openEdit, requestDelete })
                 <view v-for="media in selectedMedia" :key="String(media.fileId)" class="selected-media__item">
                   <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
                   <view v-else class="selected-media__video">
-                    <wd-icon name="play-circle" size="24px" color="#fff" />
+                    <image v-if="media.posterUrl" class="media-poster" :src="media.posterUrl" mode="aspectFill" />
+                    <view class="media-play">
+                      <wd-icon name="play-circle" size="24px" color="#fff" />
+                    </view>
                   </view>
                   <text class="media-name">{{ media.name }}</text>
                   <view class="selected-media__remove" @tap="removeSelectedMedia(media.fileId)">
@@ -1302,7 +1331,10 @@ defineExpose({ openAdd, openEdit, requestDelete })
                   <view v-for="choice in batchCoverChoices" :key="choice.key" class="cover-choice" :class="{ selected: batchCoverChoice?.key === choice.key }" @tap="batchCoverChoice = choice">
                     <image v-if="choice.kind === 'image'" class="cover-choice__media" :src="choice.url" mode="aspectFill" />
                     <view v-else class="cover-choice__video">
-                      <wd-icon name="play-circle" size="24px" color="#fff" />
+                      <image v-if="choice.url" class="media-poster" :src="choice.url" mode="aspectFill" />
+                      <view class="media-play">
+                        <wd-icon name="play-circle" size="24px" color="#fff" />
+                      </view>
                     </view>
                     <text class="cover-choice__name">{{ choice.name }}</text>
                     <text v-if="batchCoverChoice?.key === choice.key" class="cover-choice__badge">封面</text>
@@ -1340,7 +1372,10 @@ defineExpose({ openAdd, openEdit, requestDelete })
           <view v-for="media in activeAddMediaRow.images" :key="String(media.fileId)" class="pool-media add-row-media" @tap="setAddRowCover(media.fileId)">
             <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
-              <wd-icon name="play-circle" size="28px" color="#fff" />
+              <image v-if="media.posterUrl" class="media-poster" :src="media.posterUrl" mode="aspectFill" />
+              <view class="media-play">
+                <wd-icon name="play-circle" size="28px" color="#fff" />
+              </view>
             </view>
             <text class="media-name">{{ media.name }}</text>
             <text v-if="sameId(activeAddMediaRow.coverImageId, media.fileId)" class="cover-choice__badge">封面</text>
@@ -1373,7 +1408,10 @@ defineExpose({ openAdd, openEdit, requestDelete })
           <view v-for="media in communityMediaPool" :key="String(media.fileId)" class="pool-media" :class="{ selected: communityMediaSelection.some(item => sameId(item.fileId, media.fileId)) }" @tap="toggleCommunityMedia(media)">
             <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
-              <wd-icon name="play-circle" size="28px" color="#fff" />
+              <image v-if="media.posterUrl" class="media-poster" :src="media.posterUrl" mode="aspectFill" />
+              <view class="media-play">
+                <wd-icon name="play-circle" size="28px" color="#fff" />
+              </view>
             </view>
             <text class="media-name">{{ media.name }}</text>
             <view class="pool-media__check">
@@ -1765,11 +1803,13 @@ defineExpose({ openAdd, openEdit, requestDelete })
 
 .cover-choice__media,
 .cover-choice__video {
+  position: relative;
   display: flex;
   width: 100%;
   height: 132rpx;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   background: linear-gradient(135deg, #0f6a4c, #173f34);
 }
 
@@ -1836,12 +1876,31 @@ defineExpose({ openAdd, openEdit, requestDelete })
 .media-thumb,
 .selected-media__video,
 .pool-media__video {
+  position: relative;
   display: flex;
   width: 100%;
   height: 132rpx;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   background: linear-gradient(135deg, #0f6a4c, #173f34);
+}
+
+.media-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.media-play {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(16 38 31 / 20%);
 }
 
 .media-name {
