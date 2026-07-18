@@ -851,15 +851,15 @@ onShow(async () => {
     <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
       <view class="video-preview" @touchmove.stop.prevent>
         <view class="video-preview__head">
-          <text>{{ previewVideoMedia?.name || '视频预览' }}</text>
+          <text class="video-preview__title">{{ previewVideoMedia?.name || '视频预览' }}</text>
           <view class="video-preview__actions">
-            <wd-button size="small" plain icon="download" @click="savePreviewVideo">
+            <wd-button size="small" plain icon="download" @click.stop="savePreviewVideo">
               保存
             </wd-button>
-            <wd-icon name="close" size="20px" color="#72817b" @click="previewVideoMedia = null" />
+            <wd-icon name="close" size="20px" color="#72817b" @click.stop="previewVideoMedia = null" />
           </view>
         </view>
-        <video v-if="previewVideoMedia" class="video-preview__player" :src="previewVideoMedia.url" controls autoplay @longpress="openSavePreviewMenu" />
+        <video v-if="previewVideoMedia" class="video-preview__player" :src="previewVideoMedia.url" controls autoplay @longpress.stop="openSavePreviewMenu" />
       </view>
     </wd-popup>
 
@@ -1302,19 +1302,34 @@ onShow(async () => {
 }
 
 .video-preview__head {
+  position: relative;
   display: flex;
+  min-height: 88rpx;
+  box-sizing: border-box;
   align-items: center;
-  justify-content: space-between;
-  padding: 22rpx 24rpx;
+  padding: 20rpx 224rpx 20rpx 24rpx;
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 900;
 }
 
+.video-preview__title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .video-preview__actions {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 20rpx;
   display: flex;
   align-items: center;
   gap: 16rpx;
+  transform: translateY(-50%);
 }
 
 .video-preview__player {

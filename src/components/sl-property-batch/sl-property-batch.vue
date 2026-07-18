@@ -32,7 +32,7 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
-import { mediaKindOf } from '@/utils/media'
+import { isLocalMediaUrl, mediaKindOf } from '@/utils/media'
 import {
   buildBatchAddInputs,
   buildBatchUpdateInputs,
@@ -87,7 +87,7 @@ interface WechatChooseMediaResult {
 
 type WechatChooseMedia = (options: {
   count: number
-  mediaType: ('image' | 'video' | 'mix')[]
+  mediaType: ('image' | 'video')[]
   sourceType?: ('album' | 'camera')[]
   sizeType?: ('original' | 'compressed')[]
   maxDuration?: number
@@ -939,8 +939,20 @@ function clearAllAddMedia() {
 }
 
 function wxChooseMedia() {
-  return (globalThis as unknown as { wx?: { chooseMedia?: WechatChooseMedia } }).wx?.chooseMedia
-    || (uni as unknown as { chooseMedia?: WechatChooseMedia }).chooseMedia
+  const wxApi = (globalThis as unknown as { wx?: { chooseMedia?: WechatChooseMedia } }).wx
+  if (wxApi?.chooseMedia)
+    return wxApi.chooseMedia.bind(wxApi)
+
+  const uniApi = uni as unknown as { chooseMedia?: WechatChooseMedia }
+  return uniApi.chooseMedia?.bind(uniApi)
+}
+
+function localMediaKind(file: { tempFilePath: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }) {
+  if (file.fileType)
+    return file.fileType
+  if (file.thumbTempFilePath)
+    return 'video'
+  return mediaKindOf(undefined, file.tempFilePath)
 }
 
 async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }>) {
@@ -955,7 +967,7 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
     const draftId = await ensureMediaDraftSession()
     for (const local of files) {
       try {
-        const kind = mediaKindOf(local.fileType, local.tempFilePath)
+        const kind = localMediaKind(local)
         const uploaded = await uploadMediaFile(local.tempFilePath, {
           belongId: draftId,
           kind: kind === 'video' ? 'video' : 'image',
@@ -1023,7 +1035,7 @@ function chooseUploadMedia() {
   }
   chooseMedia({
     count: 9,
-    mediaType: ['mix'],
+    mediaType: ['image', 'video'],
     sourceType: ['album', 'camera'],
     sizeType: ['compressed'],
     maxDuration: 60,
@@ -1307,12 +1319,25 @@ defineExpose({ openAdd, openEdit, requestDelete })
                   <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
                   <view v-else class="selected-media__video">
                     <image v-if="media.posterUrl" class="media-poster" :src="media.posterUrl" mode="aspectFill" />
+                    <video
+                      v-else-if="isLocalMediaUrl(media.url)"
+                      class="media-poster media-poster--local"
+                      :src="media.url"
+                      :controls="false"
+                      :show-center-play-btn="false"
+                      :show-play-btn="false"
+                      :show-fullscreen-btn="false"
+                      :enable-progress-gesture="false"
+                      :initial-time="0.1"
+                      muted
+                      object-fit="cover"
+                    />
                     <view class="media-play">
                       <wd-icon name="play-circle" size="24px" color="#fff" />
                     </view>
                   </view>
                   <text class="media-name">{{ media.name }}</text>
-                  <view class="selected-media__remove" @tap="removeSelectedMedia(media.fileId)">
+                  <view class="selected-media__remove" @tap.stop="removeSelectedMedia(media.fileId)">
                     <wd-icon name="close" size="12px" color="#fff" />
                   </view>
                 </view>
@@ -1373,6 +1398,20 @@ defineExpose({ openAdd, openEdit, requestDelete })
             <image v-if="media.kind === 'image'" class="media-thumb" :src="media.url" mode="aspectFill" />
             <view v-else class="pool-media__video">
               <image v-if="media.posterUrl" class="media-poster" :src="media.posterUrl" mode="aspectFill" />
+              <video
+                v-else-if="isLocalMediaUrl(media.url)"
+                class="media-poster media-poster--local"
+                :src="media.url"
+                :controls="false"
+                :show-center-play-btn="false"
+                :show-play-btn="false"
+                :show-fullscreen-btn="false"
+                :enable-progress-gesture="false"
+                :initial-time="0.1"
+                muted
+                object-fit="cover"
+                @tap.stop="setAddRowCover(media.fileId)"
+              />
               <view class="media-play">
                 <wd-icon name="play-circle" size="28px" color="#fff" />
               </view>
@@ -1826,6 +1865,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
 
 .cover-choice__badge {
   position: absolute;
+  z-index: 2;
   top: 8rpx;
   left: 8rpx;
   padding: 4rpx 10rpx;
@@ -1893,6 +1933,10 @@ defineExpose({ openAdd, openEdit, requestDelete })
   height: 100%;
 }
 
+.media-poster--local {
+  pointer-events: none;
+}
+
 .media-play {
   position: absolute;
   inset: 0;
@@ -1917,6 +1961,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
 .selected-media__remove,
 .pool-media__check {
   position: absolute;
+  z-index: 3;
   top: 8rpx;
   right: 8rpx;
   display: flex;

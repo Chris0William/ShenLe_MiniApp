@@ -526,7 +526,9 @@ onPullDownRefresh(reloadAll)
             </view>
             <view class="image-grid">
               <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
-                <image :src="url" mode="aspectFill" @tap="previewImage(index)" />
+                <view class="media-preview-hit" :class="{ 'media-preview-hit--with-action': !isCoverImage(index) }" @tap.stop="previewImage(index)">
+                  <image :src="url" mode="aspectFill" />
+                </view>
                 <text v-if="isCoverImage(index)" class="cover-badge">封面</text>
                 <view class="image-remove" @tap.stop="removeImage(index)">
                   <wd-icon name="close" size="14px" color="#fff" />
@@ -787,8 +789,20 @@ onPullDownRefresh(reloadAll)
   height: 100%;
 }
 
+.media-preview-hit {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+}
+
+.media-preview-hit--with-action {
+  bottom: 56rpx;
+}
+
 .cover-badge {
   position: absolute;
+  z-index: 6;
   top: 8rpx;
   left: 8rpx;
   padding: 4rpx 10rpx;
@@ -801,11 +815,12 @@ onPullDownRefresh(reloadAll)
 
 .image-remove {
   position: absolute;
-  top: 8rpx;
-  right: 8rpx;
+  z-index: 7;
+  top: 2rpx;
+  right: 2rpx;
   display: flex;
-  width: 34rpx;
-  height: 34rpx;
+  width: 52rpx;
+  height: 52rpx;
   align-items: center;
   justify-content: center;
   border-radius: 999rpx;
@@ -814,12 +829,14 @@ onPullDownRefresh(reloadAll)
 
 .image-cover-action {
   position: absolute;
+  z-index: 5;
   right: 0;
   bottom: 0;
   left: 0;
+  height: 56rpx;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
-  padding: 10rpx 0;
   background: rgb(0 0 0 / 48%);
   color: #fff;
   font-size: 20rpx;

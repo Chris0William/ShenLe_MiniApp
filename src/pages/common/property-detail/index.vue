@@ -272,7 +272,7 @@ onLoad((query) => {
       <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
         <view class="video-preview" @tap.stop @touchmove.stop.prevent>
           <view class="video-preview__head">
-            <text>{{ previewVideo?.fileName || '视频预览' }}</text>
+            <text class="video-preview__title">{{ previewVideo?.fileName || '视频预览' }}</text>
             <view class="video-preview__actions">
               <wd-button size="small" plain icon="download" @click.stop="savePreviewVideo">
                 保存
@@ -463,19 +463,34 @@ onLoad((query) => {
 }
 
 .video-preview__head {
+  position: relative;
   display: flex;
+  min-height: 88rpx;
+  box-sizing: border-box;
   align-items: center;
-  justify-content: space-between;
-  padding: 22rpx 24rpx;
+  padding: 20rpx 224rpx 20rpx 24rpx;
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 900;
 }
 
+.video-preview__title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .video-preview__actions {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 20rpx;
   display: flex;
   align-items: center;
   gap: 16rpx;
+  transform: translateY(-50%);
 }
 
 .video-preview__player {

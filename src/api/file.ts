@@ -5,6 +5,7 @@ import { post } from './request'
 
 const fileCache = new Map<string, string>()
 const losslessJson = JSONBigInt({ storeAsString: true })
+const MIN_VIDEO_POSTER_SIZE = 256
 
 export interface UploadFileOptions {
   belongId?: ShenLeId | null
@@ -47,6 +48,32 @@ export function bindMediaPoster(input: BindSlMediaPosterInput) {
   return post<void>('/api/slMediaDraft/bindPoster', input as unknown as Record<string, unknown>)
 }
 
+function getLocalFileSize(filePath: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    uni.getFileInfo({
+      filePath,
+      success: result => resolve(result.size),
+      fail: reject,
+    })
+  })
+}
+
+async function usablePosterPath(filePath?: string) {
+  if (!filePath)
+    return undefined
+
+  try {
+    const size = await getLocalFileSize(filePath)
+    if (size >= MIN_VIDEO_POSTER_SIZE)
+      return filePath
+    console.warn(`ignore invalid video poster: ${size} bytes`)
+  }
+  catch (error) {
+    console.warn('ignore unreadable video poster', error)
+  }
+  return undefined
+}
+
 export function uploadFile(filePath: string, options?: UploadFileOptions): Promise<ImageOutput> {
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync(SHENLE_TOKEN_KEY) as string
@@ -57,6 +84,12 @@ export function uploadFile(filePath: string, options?: UploadFileOptions): Promi
       header: token ? { Authorization: `Bearer ${token}` } : {},
       formData: buildUploadFormData(options),
       success(res) {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          const message = `上传失败（HTTP ${res.statusCode}）`
+          uni.showToast({ title: message, icon: 'none' })
+          reject(new Error(message))
+          return
+        }
         let body: AdminResult<ImageOutput>
         try {
           body = parseUploadResponse(res.data)
@@ -88,10 +121,14 @@ export async function uploadMediaFile(filePath: string, options: UploadMediaFile
   })
   options.onUploaded?.(media)
 
-  if (options.kind !== 'video' || !options.posterPath)
+  if (options.kind !== 'video')
     return media
 
-  const poster = await uploadFile(options.posterPath, {
+  const posterPath = await usablePosterPath(options.posterPath)
+  if (!posterPath)
+    return media
+
+  const poster = await uploadFile(posterPath, {
     belongId: options.belongId,
     fileType: 'image:video_poster',
   })
@@ -101,7 +138,7 @@ export async function uploadMediaFile(filePath: string, options: UploadMediaFile
     ...media,
     posterFileId: poster.id,
     posterUrl: poster.url,
-    posterLocalPath: options.posterPath,
+    posterLocalPath: posterPath,
   }
 }
 

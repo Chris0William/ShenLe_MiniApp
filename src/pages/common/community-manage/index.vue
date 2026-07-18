@@ -7,7 +7,7 @@ import { downloadFile, uploadMediaFile } from '@/api/file'
 import { assignOwner, getLandlordPage, unassignOwner } from '@/api/landlord'
 import { getRegionTree } from '@/api/region'
 import { useEntityChangeStore } from '@/store/entity-change'
-import { MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
+import { isLocalMediaUrl, MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
@@ -73,7 +73,7 @@ interface WechatChooseMediaResult {
 
 interface WechatChooseMediaOption {
   count: number
-  mediaType: ('image' | 'video' | 'mix')[]
+  mediaType: ('image' | 'video')[]
   sourceType: ('album' | 'camera')[]
   sizeType: string[]
   maxDuration: number
@@ -509,14 +509,21 @@ async function saveOwnerAssignment(communityId: ShenLeId) {
 }
 
 function wxChooseMedia() {
-  return (globalThis as unknown as { wx?: { chooseMedia?: WechatChooseMedia } }).wx?.chooseMedia
+  const wxApi = (globalThis as unknown as { wx?: { chooseMedia?: WechatChooseMedia } }).wx
+  if (wxApi?.chooseMedia)
+    return wxApi.chooseMedia.bind(wxApi)
+
+  const uniApi = uni as unknown as { chooseMedia?: WechatChooseMedia }
+  return uniApi.chooseMedia?.bind(uniApi)
 }
 
-function localMediaKind(tempPath: string, fileType?: UploadMediaKind): UploadMediaKind {
+function localMediaKind(tempPath: string, fileType?: UploadMediaKind, posterPath?: string): UploadMediaKind {
   if (fileType === 'video')
     return 'video'
   if (fileType === 'image')
     return 'image'
+  if (posterPath)
+    return 'video'
   return VIDEO_SUFFIXES.includes(extensionOf(tempPath)) ? 'video' : 'image'
 }
 
@@ -557,6 +564,15 @@ function chooseImageFallback() {
   })
 }
 
+function handleChooseMediaFailure(error: unknown) {
+  const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
+  if (message.includes('cancel'))
+    return
+
+  console.error('choose community media failed', error)
+  uni.showToast({ title: '媒体选择失败，请重试', icon: 'none' })
+}
+
 function chooseMedia() {
   if (uploading.value)
     return
@@ -569,7 +585,7 @@ function chooseMedia() {
 
   chooseMediaApi({
     count: MEDIA_SELECTION_BATCH_LIMIT,
-    mediaType: ['mix'],
+    mediaType: ['image', 'video'],
     sourceType: ['album', 'camera'],
     sizeType: ['compressed'],
     maxDuration: 60,
@@ -578,16 +594,12 @@ function chooseMedia() {
         .filter(item => !!item.tempFilePath)
         .map(item => ({
           tempPath: item.tempFilePath!,
-          kind: localMediaKind(item.tempFilePath!, item.fileType),
+          kind: localMediaKind(item.tempFilePath!, item.fileType, item.thumbTempFilePath),
           posterPath: item.thumbTempFilePath,
         }))
       void uploadSelectedMedia(files)
     },
-    fail: (error) => {
-      const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
-      if (!message.includes('cancel'))
-        chooseImageFallback()
-    },
+    fail: handleChooseMediaFailure,
   })
 }
 
@@ -931,7 +943,7 @@ onReachBottom(() => loadData())
           <wd-icon name="close" size="22px" color="#72817b" @click="formVisible = false" />
         </view>
 
-        <view class="form-body">
+        <scroll-view scroll-y class="form-body" :show-scrollbar="false">
           <view class="form-row">
             <text>楼盘名称</text>
             <input v-model="form.name" placeholder="如：西田八巷8">
@@ -988,12 +1000,27 @@ onReachBottom(() => loadData())
             </view>
             <view class="image-grid">
               <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
-                <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" @tap="previewMedia(index)" />
-                <view v-else class="video-tile" @tap="previewMedia(index)">
-                  <image v-if="media.posterUrl" class="video-tile__poster" :src="media.posterUrl" mode="aspectFill" />
-                  <view class="video-tile__overlay">
-                    <wd-icon name="play-circle" size="32px" color="#fff" />
-                    <text>{{ media.fileName || '视频' }}</text>
+                <view class="media-preview-hit" :class="{ 'media-preview-hit--with-action': !isCoverMedia(media) }" @tap.stop="previewMedia(index)">
+                  <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
+                  <view v-else class="video-tile">
+                    <image v-if="media.posterUrl" class="video-tile__poster" :src="media.posterUrl" mode="aspectFill" />
+                    <video
+                      v-else-if="isLocalMediaUrl(media.url)"
+                      class="video-tile__poster video-tile__local-preview"
+                      :src="media.url"
+                      :controls="false"
+                      :show-center-play-btn="false"
+                      :show-play-btn="false"
+                      :show-fullscreen-btn="false"
+                      :enable-progress-gesture="false"
+                      :initial-time="0.1"
+                      muted
+                      object-fit="cover"
+                    />
+                    <view class="video-tile__overlay">
+                      <wd-icon name="play-circle" size="32px" color="#fff" />
+                      <text>{{ media.fileName || '视频' }}</text>
+                    </view>
                   </view>
                 </view>
                 <text v-if="isCoverMedia(media)" class="cover-badge">封面</text>
@@ -1033,7 +1060,7 @@ onReachBottom(() => loadData())
             <text>备注</text>
             <textarea v-model="form.remark" placeholder="内部管理备注" />
           </view>
-        </view>
+        </scroll-view>
 
         <view class="sheet-actions">
           <wd-button plain block type="default" @click="formVisible = false">
@@ -1078,15 +1105,15 @@ onReachBottom(() => loadData())
     <wd-popup v-model="videoPreviewVisible" custom-style="border-radius: 24rpx; overflow: hidden; width: 680rpx;" @touchmove.stop.prevent>
       <view class="video-preview" @touchmove.stop.prevent>
         <view class="video-preview__head">
-          <text>{{ previewVideo?.fileName || '视频预览' }}</text>
+          <text class="video-preview__title">{{ previewVideo?.fileName || '视频预览' }}</text>
           <view class="video-preview__actions">
-            <wd-button size="small" plain icon="download" @click="savePreviewVideo">
+            <wd-button size="small" plain icon="download" @click.stop="savePreviewVideo">
               保存
             </wd-button>
-            <wd-icon name="close" size="20px" color="#72817b" @click="previewVideo = null" />
+            <wd-icon name="close" size="20px" color="#72817b" @click.stop="previewVideo = null" />
           </view>
         </view>
-        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay @longpress="openSavePreviewMenu" />
+        <video v-if="previewVideo" class="video-preview__player" :src="previewVideo.url" controls autoplay @longpress.stop="openSavePreviewMenu" />
       </view>
     </wd-popup>
   </view>
@@ -1204,6 +1231,10 @@ onReachBottom(() => loadData())
   height: 100%;
 }
 
+.video-tile__local-preview {
+  pointer-events: none;
+}
+
 .card-content {
   min-width: 0;
   flex: 1;
@@ -1312,7 +1343,11 @@ onReachBottom(() => loadData())
 }
 
 .form-sheet {
+  display: flex;
+  height: 86vh;
   max-height: 86vh;
+  box-sizing: border-box;
+  flex-direction: column;
   padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
   background: #fff;
 }
@@ -1323,9 +1358,10 @@ onReachBottom(() => loadData())
 }
 
 .form-body {
-  max-height: 62vh;
+  height: 0;
+  min-height: 0;
+  flex: 1;
   margin-top: 22rpx;
-  overflow-y: auto;
 }
 
 .form-row {
@@ -1508,6 +1544,17 @@ onReachBottom(() => loadData())
   height: 100%;
 }
 
+.media-preview-hit {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+}
+
+.media-preview-hit--with-action {
+  bottom: 56rpx;
+}
+
 .image-item--video {
   background: linear-gradient(135deg, #173f34, #0f6a4c);
 }
@@ -1520,8 +1567,8 @@ onReachBottom(() => loadData())
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12rpx;
-  padding: 18rpx;
+  gap: 6rpx;
+  padding: 10rpx;
   color: #fff;
   font-size: 22rpx;
   font-weight: 800;
@@ -1545,11 +1592,12 @@ onReachBottom(() => loadData())
   max-width: 100%;
   overflow: hidden;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
 }
 
 .cover-badge {
   position: absolute;
+  z-index: 6;
   top: 8rpx;
   left: 8rpx;
   padding: 4rpx 10rpx;
@@ -1562,11 +1610,12 @@ onReachBottom(() => loadData())
 
 .image-remove {
   position: absolute;
-  top: 8rpx;
-  right: 8rpx;
+  z-index: 7;
+  top: 2rpx;
+  right: 2rpx;
   display: flex;
-  width: 34rpx;
-  height: 34rpx;
+  width: 52rpx;
+  height: 52rpx;
   align-items: center;
   justify-content: center;
   border-radius: 999rpx;
@@ -1575,13 +1624,15 @@ onReachBottom(() => loadData())
 
 .image-cover-action {
   position: absolute;
+  z-index: 5;
   right: 0;
   bottom: 0;
   left: 0;
   display: flex;
+  height: 56rpx;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
-  padding: 10rpx 0;
   background: rgb(0 0 0 / 48%);
   color: #fff;
   font-size: 20rpx;
@@ -1604,19 +1655,34 @@ onReachBottom(() => loadData())
 }
 
 .video-preview__head {
+  position: relative;
   display: flex;
+  min-height: 88rpx;
+  box-sizing: border-box;
   align-items: center;
-  justify-content: space-between;
-  padding: 22rpx 24rpx;
+  padding: 20rpx 224rpx 20rpx 24rpx;
   color: var(--sl-ink);
   font-size: 28rpx;
   font-weight: 900;
 }
 
+.video-preview__title {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .video-preview__actions {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  right: 20rpx;
   display: flex;
   align-items: center;
   gap: 16rpx;
+  transform: translateY(-50%);
 }
 
 .video-preview__player {
@@ -1708,6 +1774,7 @@ onReachBottom(() => loadData())
 }
 
 .sheet-actions {
+  flex: 0 0 auto;
   gap: 16rpx;
   margin-top: 24rpx;
 }

@@ -19,3 +19,12 @@ export function mediaKindOf(fileType?: string | null, suffixOrUrl?: string | nul
     return 'video'
   return 'image'
 }
+
+export function isLocalMediaUrl(value?: string | null) {
+  const url = String(value || '').toLowerCase()
+  return url.startsWith('wxfile://')
+    || url.startsWith('file://')
+    || url.startsWith('blob:')
+    || url.startsWith('_doc/')
+    || /^https?:\/\/tmp\//.test(url)
+}

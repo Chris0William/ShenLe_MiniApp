@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildUploadFormData, parseUploadResponse } from '@/api/file'
 
@@ -12,5 +14,12 @@ describe('file API identifiers', () => {
     expect(buildUploadFormData({ belongId: '-2030123456789012345' })).toEqual({
       belongId: '-2030123456789012345',
     })
+  })
+
+  it('rejects non-success upload HTTP responses before parsing JSON', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'src/api/file.ts'), 'utf8')
+
+    expect(source).toContain('res.statusCode < 200 || res.statusCode >= 300')
+    expect(source).toMatch(/上传失败（HTTP \$\{res\.statusCode\}）/)
   })
 })
