@@ -3,6 +3,7 @@ import {
   deduplicatePropertyDrafts,
   filterPropertyRows,
   findDuplicateRoomNumbers,
+  generateMultiRoomPropertyDrafts,
   generatePropertyDrafts,
   generateRoomNumbers,
   identicalMedia,
@@ -137,6 +138,38 @@ describe('property draft generation', () => {
     expect(drafts.map(draft => [draft.roomNo, draft.rentPrice])).toEqual([
       ['31A', 1000],
       ['41A', 1000],
+    ])
+  })
+
+  it('generates multiple numbered rooms per floor with floor-grouped rent increments', () => {
+    const drafts = generateMultiRoomPropertyDrafts({
+      startFloor: 1,
+      endFloor: 5,
+      roomsPerFloor: 3,
+      bedrooms: 1,
+      livingRooms: 0,
+      bathrooms: 0,
+      baseRentPrice: 1030,
+      incrementEveryFloors: 2,
+      incrementAmount: 30,
+    })
+
+    expect(drafts.map(draft => [draft.roomNo, draft.rentPrice])).toEqual([
+      ['101', 1030],
+      ['102', 1030],
+      ['103', 1030],
+      ['201', 1030],
+      ['202', 1030],
+      ['203', 1030],
+      ['301', 1060],
+      ['302', 1060],
+      ['303', 1060],
+      ['401', 1060],
+      ['402', 1060],
+      ['403', 1060],
+      ['501', 1090],
+      ['502', 1090],
+      ['503', 1090],
     ])
   })
 

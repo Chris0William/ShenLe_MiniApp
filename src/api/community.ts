@@ -25,6 +25,6 @@ export function updateCommunity(input: UpdateSlCommunityInput) {
   return post<void>('/api/slCommunity/update', input as unknown as Record<string, unknown>)
 }
 
-export function deleteCommunity(id: ShenLeId) {
-  return post<void>('/api/slCommunity/delete', { id })
+export function deleteCommunity(id: ShenLeId, cascade = false) {
+  return post<void>('/api/slCommunity/delete', { id, cascade })
 }

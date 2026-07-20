@@ -38,6 +38,7 @@ import {
   buildBatchUpdateInputs,
   buildBuildingFloorUpdate,
   deduplicatePropertyDrafts,
+  generateMultiRoomPropertyDrafts,
   generatePropertyDrafts,
   identicalMedia,
   mediaIdentityKey,
@@ -46,6 +47,7 @@ import { resolveAssetUrl } from '@/utils/shenle'
 
 type BatchAction = 'added' | 'updated' | 'deleted'
 type BatchEditableField = Exclude<keyof UpdateSlPropertyInput, 'id' | 'title' | 'communityId' | 'buildingId' | 'unit' | 'roomNo' | 'floor' | 'totalFloors' | 'coverImageId'>
+type AddRuleMode = '固定房号' | '每层多房'
 
 interface BatchCompletedEvent {
   action: BatchAction
@@ -109,8 +111,10 @@ const emit = defineEmits<{
   visibilityChange: [visible: boolean]
 }>()
 
+const ADD_RULE_MODE_OPTIONS: AddRuleMode[] = ['固定房号', '每层多房']
 const activeSheet = ref<'add' | 'edit' | null>(null)
 const addStep = ref<'rules' | 'preview'>('rules')
+const addRuleMode = ref<AddRuleMode>('固定房号')
 const submitting = ref(false)
 const loadingSnapshots = ref(false)
 const allSnapshots = ref<SlPropertyBatchRowOutput[]>([])
@@ -123,6 +127,7 @@ const addForm = reactive({
   bathrooms: '0',
   area: '',
   roomSuffix: '01',
+  roomsPerFloor: '3',
   baseRentPrice: '0',
   incrementEveryFloors: '0',
   incrementAmount: '',
@@ -132,18 +137,7 @@ const excludedRoomNumbers = ref<string[]>([])
 const generatedRuleSignature = ref('')
 const addValidationMessage = computed(() => {
   try {
-    generatePropertyDrafts({
-      startFloor: Number(addForm.startFloor),
-      endFloor: Number(addForm.endFloor),
-      roomSuffix: addForm.roomSuffix,
-      bedrooms: Number(addForm.bedrooms),
-      livingRooms: Number(addForm.livingRooms),
-      bathrooms: Number(addForm.bathrooms),
-      area: addForm.area.trim() ? Number(addForm.area) : null,
-      baseRentPrice: Number(addForm.baseRentPrice),
-      incrementEveryFloors: addForm.incrementEveryFloors.trim() ? Number(addForm.incrementEveryFloors) : 0,
-      incrementAmount: addForm.incrementAmount.trim() ? Number(addForm.incrementAmount) : 0,
-    })
+    generateDraftsByRule()
     return ''
   }
   catch (error) {
@@ -308,6 +302,7 @@ function resetEnabledFields() {
 
 function resetAddDraft() {
   addStep.value = 'rules'
+  addRuleMode.value = '固定房号'
   addForm.startFloor = '1'
   addForm.endFloor = '1'
   addForm.bedrooms = '1'
@@ -315,6 +310,7 @@ function resetAddDraft() {
   addForm.bathrooms = '0'
   addForm.area = ''
   addForm.roomSuffix = '01'
+  addForm.roomsPerFloor = '3'
   addForm.baseRentPrice = '0'
   addForm.incrementEveryFloors = '0'
   addForm.incrementAmount = ''
@@ -400,10 +396,9 @@ async function fetchAllSnapshots() {
 }
 
 function generatedDraftInput() {
-  return {
+  const common = {
     startFloor: Number(addForm.startFloor),
     endFloor: Number(addForm.endFloor),
-    roomSuffix: addForm.roomSuffix,
     bedrooms: Number(addForm.bedrooms),
     livingRooms: Number(addForm.livingRooms),
     bathrooms: Number(addForm.bathrooms),
@@ -412,11 +407,28 @@ function generatedDraftInput() {
     incrementEveryFloors: addForm.incrementEveryFloors.trim() ? Number(addForm.incrementEveryFloors) : 0,
     incrementAmount: addForm.incrementAmount.trim() ? Number(addForm.incrementAmount) : 0,
   }
+  if (addRuleMode.value === '每层多房') {
+    return {
+      mode: addRuleMode.value,
+      input: { ...common, roomsPerFloor: Number(addForm.roomsPerFloor) },
+    } as const
+  }
+  return {
+    mode: addRuleMode.value,
+    input: { ...common, roomSuffix: addForm.roomSuffix },
+  } as const
+}
+
+function generateDraftsByRule() {
+  const rule = generatedDraftInput()
+  return rule.mode === '每层多房'
+    ? generateMultiRoomPropertyDrafts(rule.input)
+    : generatePropertyDrafts(rule.input)
 }
 
 function generateAddPreview() {
   try {
-    const generated = generatePropertyDrafts(generatedDraftInput())
+    const generated = generateDraftsByRule()
     const result = deduplicatePropertyDrafts(
       generated,
       allSnapshots.value.map(item => item.roomNo || '').filter(Boolean),
@@ -1102,6 +1114,12 @@ defineExpose({ openAdd, openEdit, requestDelete })
         <template v-else-if="activeSheet === 'add' && addStep === 'rules'">
           <view class="batch-section">
             <text class="section-title">生成规则</text>
+            <view class="rule-mode">
+              <wd-segmented v-model:value="addRuleMode" :options="ADD_RULE_MODE_OPTIONS" size="large" />
+              <text class="section-hint">
+                {{ addRuleMode === '固定房号' ? '每层生成同一房号后缀，例如 02 生成 102、202。' : '每层从 01 连续生成，例如 3 间生成 101、102、103。' }}
+              </text>
+            </view>
             <view class="input-grid input-grid--two">
               <label class="field"><text>起始楼层</text><input v-model="addForm.startFloor" class="field-input" type="number" placeholder="1"></label>
               <label class="field"><text>结束楼层</text><input v-model="addForm.endFloor" class="field-input" type="number" placeholder="10"></label>
@@ -1113,7 +1131,8 @@ defineExpose({ openAdd, openEdit, requestDelete })
             </view>
             <view class="input-grid input-grid--two">
               <label class="field"><text>面积</text><view class="field-with-unit"><input v-model="addForm.area" class="field-input field-with-unit__input" type="digit" placeholder="可选"><text class="field-with-unit__suffix">㎡</text></view></label>
-              <label class="field"><text>固定房号</text><input v-model="addForm.roomSuffix" class="field-input" type="text" placeholder="例如 02 / 1A"></label>
+              <label v-if="addRuleMode === '固定房号'" class="field"><text>固定房号</text><input v-model="addForm.roomSuffix" class="field-input" type="text" placeholder="例如 02 / 1A"></label>
+              <label v-else class="field"><text>每层房数</text><input v-model="addForm.roomsPerFloor" class="field-input" type="number" placeholder="例如 3"></label>
             </view>
             <view class="input-grid input-grid--three">
               <label class="field"><text>基础价格</text><input v-model="addForm.baseRentPrice" class="field-input" type="digit" placeholder="0"></label>
@@ -1536,6 +1555,14 @@ defineExpose({ openAdd, openEdit, requestDelete })
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.rule-mode {
+  margin-top: 18rpx;
+}
+
+.rule-mode .section-hint {
+  margin-top: 12rpx;
 }
 
 .input-grid {

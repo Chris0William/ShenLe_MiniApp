@@ -55,6 +55,10 @@ export interface GeneratePropertyDraftsInput {
   incrementAmount?: number
 }
 
+export interface GenerateMultiRoomPropertyDraftsInput extends Omit<GeneratePropertyDraftsInput, 'roomSuffix'> {
+  roomsPerFloor: number
+}
+
 export interface GeneratedPropertyDraft extends GeneratedRoomNumber {
   bedrooms: number
   livingRooms: number
@@ -197,6 +201,33 @@ export function generatePropertyDrafts(input: GeneratePropertyDraftsInput): Gene
       area: input.area ?? null,
       rentPrice: input.baseRentPrice + step * incrementAmount,
       status: 0, // 空置
+      images: [],
+      coverImageId: null,
+    }
+  })
+}
+
+export function generateMultiRoomPropertyDrafts(input: GenerateMultiRoomPropertyDraftsInput): GeneratedPropertyDraft[] {
+  const floorDrafts = generatePropertyDrafts({
+    ...input,
+    roomSuffix: '01',
+  })
+  if (!Number.isInteger(input.roomsPerFloor) || input.roomsPerFloor <= 0)
+    throw new Error('每层房数必须是大于 0 的整数')
+
+  const roomSuffix = String(input.roomsPerFloor).padStart(2, '0')
+  if (`${input.endFloor}${roomSuffix}`.length > 20)
+    throw new Error('生成后的房号不能超过 20 个字符')
+
+  return generateRoomNumbers({
+    startFloor: input.startFloor,
+    floorCount: floorDrafts.length,
+    roomsPerFloor: input.roomsPerFloor,
+  }).map((room) => {
+    const floorDraft = floorDrafts[room.floor - input.startFloor]
+    return {
+      ...floorDraft,
+      ...room,
       images: [],
       coverImageId: null,
     }

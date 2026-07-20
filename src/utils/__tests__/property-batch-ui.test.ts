@@ -330,8 +330,12 @@ describe('batch property management UI contract', () => {
     const component = fs.readFileSync(componentPath, 'utf8')
 
     expect(component).toContain('generatePropertyDrafts')
+    expect(component).toContain('generateMultiRoomPropertyDrafts')
     expect(component).toContain('deduplicatePropertyDrafts')
+    expect(component).toContain('<wd-segmented')
     expect(component).toContain('固定房号')
+    expect(component).toContain('每层多房')
+    expect(component).toContain('每层房数')
     expect(component).toContain('例如 02 / 1A')
     expect(component).toContain('每几层递增')
     expect(component).toContain('incrementEveryFloors: \'0\'')

@@ -789,13 +789,20 @@ async function submitForm() {
 }
 
 function confirmDelete(item: SlCommunityOutput) {
+  const buildingCount = Math.max(0, Number(item.buildingCount) || 0)
+  const propertyCount = Math.max(0, Number(item.propertyCount) || 0)
+  const hasDescendants = buildingCount > 0 || propertyCount > 0
   uni.showModal({
-    title: '删除楼盘',
-    content: `确定删除「${item.name}」？有楼栋或房源时后端会拦截。`,
+    title: hasDescendants ? '删除楼盘及全部数据' : '删除楼盘',
+    content: hasDescendants
+      ? `「${item.name}」下有 ${buildingCount} 栋楼栋、${propertyCount} 套房源，将随楼盘一起删除。请确认已核对数据。`
+      : `确定删除「${item.name}」？删除后将无法在列表中查看。`,
+    confirmText: hasDescendants ? '全部删除' : '删除',
+    confirmColor: '#c94832',
     success: async (res) => {
       if (!res.confirm)
         return
-      await deleteCommunity(item.id)
+      await deleteCommunity(item.id, true)
       publishCommunityChange('deleted', [item.id])
       uni.showToast({ title: '删除成功', icon: 'success' })
       await loadData(true)
@@ -805,10 +812,6 @@ function confirmDelete(item: SlCommunityOutput) {
 
 function goBuildings(item: SlCommunityOutput) {
   uni.navigateTo({ url: `/pages/common/building-manage/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}` })
-}
-
-function goProperties(item: SlCommunityOutput) {
-  uni.navigateTo({ url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}` })
 }
 
 onLoad(async (query) => {
@@ -906,9 +909,6 @@ onReachBottom(() => loadData())
             <view class="actions">
               <wd-button size="small" plain @click="goBuildings(item)">
                 楼栋
-              </wd-button>
-              <wd-button size="small" plain @click="goProperties(item)">
-                房源
               </wd-button>
               <wd-button size="small" type="primary" plain @click="openEdit(item)">
                 编辑

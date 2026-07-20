@@ -64,7 +64,7 @@ const leaderboardSortOptions = [
 const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
-const showSupplyTicker = computed(() => auth.canViewSupplyActivity && recentActivities.value.length > 0)
+const showSupplyTicker = computed(() => auth.isSuperAdmin && recentActivities.value.length > 0)
 const mapBadgeText = computed(() => {
   if (loading.value)
     return '加载中'
@@ -398,8 +398,9 @@ function goProperties(item: SlCommunityOutput | null) {
 }
 
 async function loadSupplyActivity() {
-  if (!auth.canViewSupplyActivity) {
+  if (!auth.isSuperAdmin) {
     recentActivities.value = []
+    leaderboardVisible.value = false
     return
   }
   try {
@@ -411,7 +412,7 @@ async function loadSupplyActivity() {
 }
 
 async function loadLeaderboard() {
-  if (!auth.canViewSupplyActivity || leaderboardLoading.value)
+  if (!auth.isSuperAdmin || leaderboardLoading.value)
     return
   leaderboardLoading.value = true
   try {
@@ -427,6 +428,8 @@ async function loadLeaderboard() {
 }
 
 function openLeaderboard() {
+  if (!auth.isSuperAdmin)
+    return
   leaderboardDetail.value = null
   leaderboardDetails.value = []
   leaderboardVisible.value = true
@@ -438,6 +441,8 @@ function closeLeaderboard() {
 }
 
 async function loadLeaderboardDetails(item: SlSupplyLeaderboardOutput) {
+  if (!auth.isSuperAdmin)
+    return
   leaderboardDetailLoading.value = true
   try {
     leaderboardDetails.value = await getSupplyActivityDetails(item.userId, leaderboardDays.value, 50)
@@ -463,6 +468,8 @@ function backToLeaderboard() {
 }
 
 async function openRecentActivityDetail(activity: SlSupplyRecentOutput) {
+  if (!auth.isSuperAdmin)
+    return
   leaderboardDays.value = 7
   leaderboardSort.value = 'affectedCount'
   leaderboardVisible.value = true
@@ -650,6 +657,7 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
     </view>
 
     <wd-popup
+      v-if="auth.isSuperAdmin"
       v-model="leaderboardVisible"
       position="bottom"
       :z-index="3000"

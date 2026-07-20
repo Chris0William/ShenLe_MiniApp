@@ -53,12 +53,15 @@ describe('supply contact and leaderboard UI contract', () => {
     expect(contacts).not.toContain('lastUpdaterPhone')
   })
 
-  it('loads leaderboard details, fixes popup layering and supports all leaderboard sorts', () => {
+  it('limits activity UI to super administrators and supports leaderboard details and sorts', () => {
     const map = source('src/pages/user/map/index.vue')
     expect(map).toContain('getRecentSupplyActivity')
     expect(map).toContain('getSupplyLeaderboard')
     expect(map).toContain('getSupplyActivityDetails')
     expect(map).toContain('openRecentActivityDetail')
+    expect(map).toContain('showSupplyTicker = computed(() => auth.isSuperAdmin')
+    expect(map).toContain('v-if="auth.isSuperAdmin"')
+    expect(map).not.toContain('auth.canViewSupplyActivity')
     expect(map).toContain(':z-index="3000"')
     expect(map).toContain('更新明细')
     expect(map).toContain('chart-bar')
