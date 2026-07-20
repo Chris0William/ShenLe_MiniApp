@@ -121,6 +121,25 @@ describe('property draft generation', () => {
     expect(drafts[0]).toMatchObject({ bedrooms: 1, livingRooms: 0, bathrooms: 0, area: 28, status: 0 })
   })
 
+  it('accepts an alphanumeric fixed room suffix without requiring price increments', () => {
+    const drafts = generatePropertyDrafts({
+      startFloor: 3,
+      endFloor: 4,
+      roomSuffix: '1A',
+      bedrooms: 1,
+      livingRooms: 0,
+      bathrooms: 0,
+      baseRentPrice: 1000,
+      incrementEveryFloors: 0,
+      incrementAmount: 0,
+    })
+
+    expect(drafts.map(draft => [draft.roomNo, draft.rentPrice])).toEqual([
+      ['31A', 1000],
+      ['41A', 1000],
+    ])
+  })
+
   it('removes existing and repeated room numbers instead of rejecting the whole batch', () => {
     const drafts = generatePropertyDrafts({
       startFloor: 3,

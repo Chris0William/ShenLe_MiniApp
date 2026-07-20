@@ -124,7 +124,7 @@ const addForm = reactive({
   area: '',
   roomSuffix: '01',
   baseRentPrice: '0',
-  incrementEveryFloors: '',
+  incrementEveryFloors: '0',
   incrementAmount: '',
 })
 const addRows = ref<AddDraftRow[]>([])
@@ -316,7 +316,7 @@ function resetAddDraft() {
   addForm.area = ''
   addForm.roomSuffix = '01'
   addForm.baseRentPrice = '0'
-  addForm.incrementEveryFloors = ''
+  addForm.incrementEveryFloors = '0'
   addForm.incrementAmount = ''
   addRows.value = []
   excludedRoomNumbers.value = []
@@ -1113,7 +1113,7 @@ defineExpose({ openAdd, openEdit, requestDelete })
             </view>
             <view class="input-grid input-grid--two">
               <label class="field"><text>面积</text><view class="field-with-unit"><input v-model="addForm.area" class="field-input field-with-unit__input" type="digit" placeholder="可选"><text class="field-with-unit__suffix">㎡</text></view></label>
-              <label class="field"><text>固定房号</text><input v-model="addForm.roomSuffix" class="field-input" type="text" placeholder="例如 02"></label>
+              <label class="field"><text>固定房号</text><input v-model="addForm.roomSuffix" class="field-input" type="text" placeholder="例如 02 / 1A"></label>
             </view>
             <view class="input-grid input-grid--three">
               <label class="field"><text>基础价格</text><input v-model="addForm.baseRentPrice" class="field-input" type="digit" placeholder="0"></label>

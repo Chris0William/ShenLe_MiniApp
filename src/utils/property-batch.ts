@@ -160,8 +160,10 @@ export function generatePropertyDrafts(input: GeneratePropertyDraftsInput): Gene
     throw new Error('结束楼层不能小于起始楼层')
 
   const roomSuffix = input.roomSuffix.trim()
-  if (!/^\d+$/.test(roomSuffix))
-    throw new Error('固定房号只能填写数字')
+  if (!roomSuffix)
+    throw new Error('请输入固定房号')
+  if (`${input.endFloor}${roomSuffix}`.length > 20)
+    throw new Error('生成后的房号不能超过 20 个字符')
 
   assertNonNegativeInteger(input.bedrooms, '室数')
   assertNonNegativeInteger(input.livingRooms, '厅数')
