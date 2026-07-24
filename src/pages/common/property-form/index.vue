@@ -18,6 +18,7 @@ import {
 } from '@/constants/shenle'
 import { useEntityChangeStore } from '@/store/entity-change'
 import { isLocalMediaUrl, MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
+import { createMediaLongPressGuard, renameEditableMedia, showMediaEditActionSheet } from '@/utils/media-edit'
 import { resolvePropertyMediaSource, toOptionalNumber } from '@/utils/property-management'
 import { resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
@@ -119,6 +120,7 @@ const contextCommunityName = ref('')
 const contextBuildingName = ref('')
 const communityDetail = ref<SlCommunityOutput | null>(null)
 const changeStore = useEntityChangeStore()
+const mediaLongPressGuard = createMediaLongPressGuard()
 
 const form = reactive<FormState>({
   communityId: '',
@@ -390,6 +392,45 @@ function previewMedia(index: number) {
     current: media.url,
     urls: imageUrls,
   })
+}
+
+function handleMediaTap(index: number) {
+  if (mediaLongPressGuard.consumeTap())
+    return
+  previewMedia(index)
+}
+
+async function openMediaActionMenu(index: number) {
+  const media = form.media[index]
+  if (!media)
+    return
+
+  mediaLongPressGuard.mark()
+  const action = await showMediaEditActionSheet()
+  if (action === 'view') {
+    previewMedia(index)
+    return
+  }
+  if (action === 'rename') {
+    if (media.source === 'community') {
+      uni.showToast({ title: '请先保存房源，再修改媒体名称', icon: 'none' })
+      return
+    }
+    await renameEditableMedia({
+      id: media.id,
+      fileName: media.fileName,
+      suffix: media.suffix,
+      onRenamed: fileName => media.fileName = fileName,
+    })
+    return
+  }
+  if (action === 'cover') {
+    if (isCoverMedia(media)) {
+      uni.showToast({ title: '当前已是封面', icon: 'none' })
+      return
+    }
+    setCover(index)
+  }
 }
 
 async function openCommunityMediaPicker() {
@@ -830,7 +871,12 @@ onLoad(async (query) => {
         </view>
         <view class="image-grid">
           <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
-            <view class="media-preview-hit" :class="{ 'media-preview-hit--with-action': !isCoverMedia(media) }" @tap.stop="previewMedia(index)">
+            <view
+              class="media-preview-hit"
+              :class="{ 'media-preview-hit--with-action': !isCoverMedia(media) }"
+              @tap.stop="handleMediaTap(index)"
+              @longpress.stop="openMediaActionMenu(index)"
+            >
               <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
               <view v-else class="video-tile">
                 <image v-if="media.posterUrl" class="video-poster" :src="media.posterUrl" mode="aspectFill" />

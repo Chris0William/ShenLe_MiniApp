@@ -38,6 +38,10 @@ export interface ImageOutput {
   posterUrl?: string | null
 }
 
+export interface RenameSlMediaInput extends BaseIdInput {
+  name: string
+}
+
 export enum PropertyStatus {
   Vacant = 0,
   Reserved = 1,

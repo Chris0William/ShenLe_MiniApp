@@ -1,7 +1,7 @@
 {
     "name": "shenle-miniapp-next",
     "type": "module",
-    "version": "0.4.24",
+    "version": "0.4.25",
     "unibest-version": "4.4.0",
     "unibest-update-time": "2026-04-25",
     "packageManager": "pnpm@10.10.0",

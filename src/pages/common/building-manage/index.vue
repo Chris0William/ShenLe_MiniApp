@@ -7,6 +7,7 @@ import { getCommunityList } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
 import { useEntityChangeStore } from '@/store/entity-change'
 import { MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
+import { createMediaLongPressGuard, renameEditableMedia, showMediaEditActionSheet } from '@/utils/media-edit'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 
 definePage({
@@ -26,6 +27,8 @@ interface BuildingForm {
   remark: string
   imageIds: ShenLeId[]
   imageUrls: string[]
+  imageNames: (string | null)[]
+  imageSuffixes: (string | null)[]
   coverImageId: string
 }
 
@@ -42,6 +45,7 @@ const uploading = ref(false)
 const oneClickCreating = ref(false)
 const changeStore = useEntityChangeStore()
 const CHANGE_CONSUMER = 'building-manage'
+const mediaLongPressGuard = createMediaLongPressGuard()
 
 function publishBuildingChange(action: 'created' | 'updated' | 'deleted' | 'structural', ids: ShenLeId[]) {
   changeStore.publishBuildingChange({ action, ids, communityId: communityId.value })
@@ -58,6 +62,8 @@ const form = reactive<BuildingForm>({
   remark: '',
   imageIds: [],
   imageUrls: [],
+  imageNames: [],
+  imageSuffixes: [],
   coverImageId: '',
 })
 
@@ -168,9 +174,13 @@ function resetForm(item?: SlBuildingOutput) {
   form.remark = item?.remark || ''
   form.imageIds = item?.images?.map(image => image.id) || []
   form.imageUrls = item?.images?.map(image => resolveAssetUrl(image.url)) || []
+  form.imageNames = item?.images?.map(image => image.fileName || null) || []
+  form.imageSuffixes = item?.images?.map(image => image.suffix || null) || []
   if (!form.imageIds.length && item?.coverImageId && item.coverImage) {
     form.imageIds = [item.coverImageId]
     form.imageUrls = [resolveAssetUrl(item.coverImage)]
+    form.imageNames = [null]
+    form.imageSuffixes = [item.coverSuffix || null]
   }
   form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.imageIds[0] || '')
 }
@@ -178,6 +188,8 @@ function resetForm(item?: SlBuildingOutput) {
 async function loadFormImages(item: SlBuildingOutput) {
   const images = item.images || []
   form.imageIds = images.map(image => image.id)
+  form.imageNames = images.map(image => image.fileName || null)
+  form.imageSuffixes = images.map(image => image.suffix || null)
   form.imageUrls = await Promise.all(images.map(async (image) => {
     try {
       return await downloadFile(image.id)
@@ -189,6 +201,8 @@ async function loadFormImages(item: SlBuildingOutput) {
 
   if (!form.imageIds.length && item.coverImageId && item.coverImage) {
     form.imageIds = [item.coverImageId]
+    form.imageNames = [null]
+    form.imageSuffixes = [item.coverSuffix || null]
     try {
       form.imageUrls = [await downloadFile(item.coverImageId)]
     }
@@ -235,6 +249,8 @@ async function chooseImages() {
           const file = await uploadFile(tempPath)
           form.imageIds.push(file.id)
           form.imageUrls.push(tempPath)
+          form.imageNames.push(file.fileName || null)
+          form.imageSuffixes.push(file.suffix || null)
           if (!form.coverImageId)
             form.coverImageId = String(file.id)
         }
@@ -250,6 +266,8 @@ function removeImage(index: number) {
   const removed = form.imageIds[index]
   form.imageIds.splice(index, 1)
   form.imageUrls.splice(index, 1)
+  form.imageNames.splice(index, 1)
+  form.imageSuffixes.splice(index, 1)
   if (idEquals(form.coverImageId, removed))
     form.coverImageId = String(form.imageIds[0] || '')
 }
@@ -269,6 +287,41 @@ function previewImage(index: number) {
     current: form.imageUrls[index],
     urls: form.imageUrls,
   })
+}
+
+function handleImageTap(index: number) {
+  if (mediaLongPressGuard.consumeTap())
+    return
+  previewImage(index)
+}
+
+async function openMediaActionMenu(index: number) {
+  const fileId = form.imageIds[index]
+  if (!fileId)
+    return
+
+  mediaLongPressGuard.mark()
+  const action = await showMediaEditActionSheet()
+  if (action === 'view') {
+    previewImage(index)
+    return
+  }
+  if (action === 'rename') {
+    await renameEditableMedia({
+      id: fileId,
+      fileName: form.imageNames[index],
+      suffix: form.imageSuffixes[index],
+      onRenamed: fileName => form.imageNames[index] = fileName,
+    })
+    return
+  }
+  if (action === 'cover') {
+    if (isCoverImage(index)) {
+      uni.showToast({ title: '当前已是封面', icon: 'none' })
+      return
+    }
+    setCover(index)
+  }
 }
 
 function buildPayload(): AddSlBuildingInput {
@@ -526,7 +579,12 @@ onPullDownRefresh(reloadAll)
             </view>
             <view class="image-grid">
               <view v-for="(url, index) in form.imageUrls" :key="`${url}-${index}`" class="image-item">
-                <view class="media-preview-hit" :class="{ 'media-preview-hit--with-action': !isCoverImage(index) }" @tap.stop="previewImage(index)">
+                <view
+                  class="media-preview-hit"
+                  :class="{ 'media-preview-hit--with-action': !isCoverImage(index) }"
+                  @tap.stop="handleImageTap(index)"
+                  @longpress.stop="openMediaActionMenu(index)"
+                >
                   <image :src="url" mode="aspectFill" />
                 </view>
                 <text v-if="isCoverImage(index)" class="cover-badge">封面</text>

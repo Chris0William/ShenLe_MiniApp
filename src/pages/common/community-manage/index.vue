@@ -8,6 +8,7 @@ import { assignOwner, getLandlordPage, unassignOwner } from '@/api/landlord'
 import { getRegionTree } from '@/api/region'
 import { useEntityChangeStore } from '@/store/entity-change'
 import { isLocalMediaUrl, MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
+import { createMediaLongPressGuard, renameEditableMedia, showMediaEditActionSheet } from '@/utils/media-edit'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
@@ -112,6 +113,7 @@ const ownerKeyword = ref('')
 const ownerItems = ref<SlLandlordOutput[]>([])
 const ownerLoading = ref(false)
 const originalOwnerId = ref('')
+const mediaLongPressGuard = createMediaLongPressGuard()
 
 const form = reactive<CommunityForm>({
   id: '',
@@ -635,6 +637,41 @@ function previewMedia(index: number) {
   })
 }
 
+function handleMediaTap(index: number) {
+  if (mediaLongPressGuard.consumeTap())
+    return
+  previewMedia(index)
+}
+
+async function openMediaActionMenu(index: number) {
+  const media = form.media[index]
+  if (!media)
+    return
+
+  mediaLongPressGuard.mark()
+  const action = await showMediaEditActionSheet()
+  if (action === 'view') {
+    previewMedia(index)
+    return
+  }
+  if (action === 'rename') {
+    await renameEditableMedia({
+      id: media.id,
+      fileName: media.fileName,
+      suffix: media.suffix,
+      onRenamed: fileName => media.fileName = fileName,
+    })
+    return
+  }
+  if (action === 'cover') {
+    if (isCoverMedia(media)) {
+      uni.showToast({ title: '当前已是封面', icon: 'none' })
+      return
+    }
+    setCover(index)
+  }
+}
+
 function previewCommunityCover(item: SlCommunityOutput) {
   const media = coverPreviewMedia(item)
   if (!media)
@@ -1000,7 +1037,12 @@ onReachBottom(() => loadData())
             </view>
             <view class="image-grid">
               <view v-for="(media, index) in form.media" :key="`${media.id}-${index}`" class="image-item" :class="{ 'image-item--video': media.kind === 'video' }">
-                <view class="media-preview-hit" :class="{ 'media-preview-hit--with-action': !isCoverMedia(media) }" @tap.stop="previewMedia(index)">
+                <view
+                  class="media-preview-hit"
+                  :class="{ 'media-preview-hit--with-action': !isCoverMedia(media) }"
+                  @tap.stop="handleMediaTap(index)"
+                  @longpress.stop="openMediaActionMenu(index)"
+                >
                   <image v-if="media.kind === 'image'" :src="media.url" mode="aspectFill" />
                   <view v-else class="video-tile">
                     <image v-if="media.posterUrl" class="video-tile__poster" :src="media.posterUrl" mode="aspectFill" />

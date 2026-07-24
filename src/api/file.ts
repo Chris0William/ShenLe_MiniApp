@@ -1,4 +1,4 @@
-import type { AdminResult, BindSlMediaPosterInput, CleanupSlMediaDraftInput, ImageOutput, ShenLeId } from '@/types/shenle'
+import type { AdminResult, BindSlMediaPosterInput, CleanupSlMediaDraftInput, ImageOutput, RenameSlMediaInput, ShenLeId } from '@/types/shenle'
 import JSONBigInt from 'json-bigint'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY } from '@/utils/shenle'
 import { post } from './request'
@@ -46,6 +46,10 @@ export function cleanupMediaDraft(input: CleanupSlMediaDraftInput) {
 
 export function bindMediaPoster(input: BindSlMediaPosterInput) {
   return post<void>('/api/slMediaDraft/bindPoster', input as unknown as Record<string, unknown>)
+}
+
+export function renameMedia(input: RenameSlMediaInput) {
+  return post<string>('/api/slMedia/rename', input as unknown as Record<string, unknown>)
 }
 
 function getLocalFileSize(filePath: string): Promise<number> {

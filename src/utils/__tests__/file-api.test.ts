@@ -22,4 +22,11 @@ describe('file API identifiers', () => {
     expect(source).toContain('res.statusCode < 200 || res.statusCode >= 300')
     expect(source).toMatch(/上传失败（HTTP \$\{res\.statusCode\}）/)
   })
+
+  it('uses the dedicated business route for media names', () => {
+    const source = fs.readFileSync(path.resolve(process.cwd(), 'src/api/file.ts'), 'utf8')
+
+    expect(source).toMatch(/post<string>\('\/api\/slMedia\/rename'/)
+    expect(source).not.toContain('/api/sysFile/updateFile')
+  })
 })
