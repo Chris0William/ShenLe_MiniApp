@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput, SlSupplyLeaderboardOutput, SlSupplyRecentOutput } from '@/types/shenle'
+import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput, SlSupplyLeaderboardDetailItemOutput, SlSupplyLeaderboardDimension, SlSupplyLeaderboardOutput, SlSupplyRecentOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPublicRegionMap } from '@/api/public-preview'
-import { getRecentSupplyActivity, getSupplyActivityDetails, getSupplyLeaderboard } from '@/api/supply-activity'
+import { getRecentSupplyActivity, getSupplyLeaderboard, getSupplyLeaderboardDetails } from '@/api/supply-activity'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
@@ -12,7 +12,7 @@ import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
-import { formatRecentSupplyActivity, formatSupplyTime } from '@/utils/supply-activity'
+import { formatRecentSupplyActivity, formatSupplyDateTime } from '@/utils/supply-activity'
 
 definePage({
   type: 'home',
@@ -27,7 +27,10 @@ const DEFAULT_CENTER = { latitude: 22.5431, longitude: 114.0579 }
 const mapId = 'property-map'
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
-const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const isAdminMode = computed(() => modeStore.mode === 'admin')
+const canManage = computed(() => auth.isAdmin && isAdminMode.value)
+const canViewSupplyLeaderboard = computed(() => auth.isAdmin && isAdminMode.value)
+const canViewSupplyActivityDetails = computed(() => auth.isSuperAdmin && isAdminMode.value)
 const showMineFilters = computed(() => modeStore.mode !== 'user')
 const isPreviewMode = computed(() => !auth.canViewRealData)
 
@@ -47,24 +50,56 @@ const leaderboard = ref<SlSupplyLeaderboardOutput[]>([])
 const leaderboardVisible = ref(false)
 const leaderboardLoading = ref(false)
 const leaderboardDays = ref(7)
-const leaderboardSort = ref<'affectedCount' | 'activityCount' | 'communityCount'>('affectedCount')
+const leaderboardSort = ref<SlSupplyLeaderboardDimension>('affectedCount')
 const leaderboardDetail = ref<SlSupplyLeaderboardOutput | null>(null)
-const leaderboardDetails = ref<SlSupplyRecentOutput[]>([])
+const leaderboardDetails = ref<SlSupplyLeaderboardDetailItemOutput[]>([])
 const leaderboardDetailLoading = ref(false)
+const leaderboardDetailPage = ref(1)
+const leaderboardDetailTotalValue = ref(0)
+const leaderboardDetailHasMore = ref(false)
+const selectedActivity = ref<SlSupplyLeaderboardDetailItemOutput | null>(null)
+const activityTargets = ref<SlSupplyLeaderboardDetailItemOutput[]>([])
+const activityTargetLoading = ref(false)
+const activityTargetPage = ref(1)
+const activityTargetTotalValue = ref(0)
+const activityTargetHasMore = ref(false)
 let mapContext: UniApp.MapContext | null = null
 let referencePointVersion = 0
+let leaderboardRequestVersion = 0
 
 const leaderboardDayOptions = [1, 3, 7, 30]
-const leaderboardSortOptions = [
-  { value: 'affectedCount' as const, label: '更新数量' },
-  { value: 'activityCount' as const, label: '操作次数' },
+const allLeaderboardSortOptions = [
+  { value: 'affectedCount' as const, label: '更新数据' },
+  { value: 'activityCount' as const, label: '操作记录' },
   { value: 'communityCount' as const, label: '覆盖楼盘' },
 ]
+const leaderboardSortOptions = computed(() => auth.isSuperAdmin
+  ? allLeaderboardSortOptions
+  : allLeaderboardSortOptions.filter(option => option.value === 'communityCount'))
 
 const filterCount = computed(() => countCommunityFilters(filters.value))
 const activeCount = computed(() => filterCount.value + (keyword.value.trim() ? 1 : 0))
 const filterLabels = computed(() => getCommunityFilterLabels(filters.value))
-const showSupplyTicker = computed(() => auth.isSuperAdmin && recentActivities.value.length > 0)
+const showSupplyTicker = computed(() => canViewSupplyLeaderboard.value)
+const leaderboardEntryText = computed(() => canViewSupplyActivityDetails.value ? '查看盘源更新榜' : '查看覆盖楼盘榜')
+const leaderboardDimensionLabel = computed(() => leaderboardSortOptions.value.find(option => option.value === leaderboardSort.value)?.label || '更新数据')
+const leaderboardDimensionUnit = computed(() => {
+  if (leaderboardSort.value === 'activityCount')
+    return '次'
+  if (leaderboardSort.value === 'communityCount')
+    return '个'
+  return '条'
+})
+const leaderboardDetailTitle = computed(() => {
+  if (selectedActivity.value)
+    return `${selectedActivity.value.actionName}的具体对象`
+  return `${leaderboardDetail.value?.nickName || '用户'}的${leaderboardDimensionLabel.value}明细`
+})
+const visibleDetailItems = computed(() => selectedActivity.value ? activityTargets.value : leaderboardDetails.value)
+const visibleDetailLoading = computed(() => selectedActivity.value ? activityTargetLoading.value : leaderboardDetailLoading.value)
+const visibleDetailHasMore = computed(() => selectedActivity.value ? activityTargetHasMore.value : leaderboardDetailHasMore.value)
+const visibleDetailTotalValue = computed(() => selectedActivity.value ? activityTargetTotalValue.value : leaderboardDetailTotalValue.value)
+const visibleDetailDimension = computed<SlSupplyLeaderboardDimension>(() => selectedActivity.value ? 'affectedCount' : leaderboardSort.value)
 const mapBadgeText = computed(() => {
   if (loading.value)
     return '加载中'
@@ -398,9 +433,13 @@ function goProperties(item: SlCommunityOutput | null) {
 }
 
 async function loadSupplyActivity() {
-  if (!auth.isSuperAdmin) {
+  if (!canViewSupplyLeaderboard.value) {
     recentActivities.value = []
     leaderboardVisible.value = false
+    return
+  }
+  if (!canViewSupplyActivityDetails.value) {
+    recentActivities.value = []
     return
   }
   try {
@@ -412,26 +451,36 @@ async function loadSupplyActivity() {
 }
 
 async function loadLeaderboard() {
-  if (!auth.isSuperAdmin || leaderboardLoading.value)
+  if (!canViewSupplyLeaderboard.value)
     return
+  if (!auth.isSuperAdmin)
+    leaderboardSort.value = 'communityCount'
+  const requestVersion = ++leaderboardRequestVersion
   leaderboardLoading.value = true
   try {
-    leaderboard.value = await getSupplyLeaderboard(leaderboardDays.value, 50, leaderboardSort.value)
+    const result = await getSupplyLeaderboard(leaderboardDays.value, 50, leaderboardSort.value)
+    if (requestVersion === leaderboardRequestVersion)
+      leaderboard.value = result
   }
   catch {
-    leaderboard.value = []
-    uni.showToast({ title: '更新榜单加载失败', icon: 'none' })
+    if (requestVersion === leaderboardRequestVersion) {
+      leaderboard.value = []
+      uni.showToast({ title: '更新榜单加载失败', icon: 'none' })
+    }
   }
   finally {
-    leaderboardLoading.value = false
+    if (requestVersion === leaderboardRequestVersion)
+      leaderboardLoading.value = false
   }
 }
 
 function openLeaderboard() {
-  if (!auth.isSuperAdmin)
+  if (!canViewSupplyLeaderboard.value)
     return
+  if (!auth.isSuperAdmin)
+    leaderboardSort.value = 'communityCount'
   leaderboardDetail.value = null
-  leaderboardDetails.value = []
+  resetLeaderboardDetail()
   leaderboardVisible.value = true
   void loadLeaderboard()
 }
@@ -440,15 +489,43 @@ function closeLeaderboard() {
   leaderboardVisible.value = false
 }
 
-async function loadLeaderboardDetails(item: SlSupplyLeaderboardOutput) {
-  if (!auth.isSuperAdmin)
+function resetActivityTargets() {
+  selectedActivity.value = null
+  activityTargets.value = []
+  activityTargetPage.value = 1
+  activityTargetTotalValue.value = 0
+  activityTargetHasMore.value = false
+}
+
+function resetLeaderboardDetail() {
+  leaderboardDetails.value = []
+  leaderboardDetailPage.value = 1
+  leaderboardDetailTotalValue.value = 0
+  leaderboardDetailHasMore.value = false
+  resetActivityTargets()
+}
+
+async function loadLeaderboardDetails(item: SlSupplyLeaderboardOutput, append = false) {
+  if (!canViewSupplyLeaderboard.value || leaderboardDetailLoading.value || (append && !leaderboardDetailHasMore.value))
     return
+  const page = append ? leaderboardDetailPage.value + 1 : 1
   leaderboardDetailLoading.value = true
   try {
-    leaderboardDetails.value = await getSupplyActivityDetails(item.userId, leaderboardDays.value, 50)
+    const result = await getSupplyLeaderboardDetails(
+      item.userId,
+      leaderboardDays.value,
+      leaderboardSort.value,
+      page,
+      20,
+    )
+    leaderboardDetails.value = append ? [...leaderboardDetails.value, ...result.items] : result.items
+    leaderboardDetailPage.value = result.page
+    leaderboardDetailTotalValue.value = result.totalValue
+    leaderboardDetailHasMore.value = result.hasMore
   }
   catch {
-    leaderboardDetails.value = []
+    if (!append)
+      resetLeaderboardDetail()
     uni.showToast({ title: '更新明细加载失败', icon: 'none' })
   }
   finally {
@@ -457,18 +534,74 @@ async function loadLeaderboardDetails(item: SlSupplyLeaderboardOutput) {
 }
 
 function openLeaderboardDetail(item: SlSupplyLeaderboardOutput) {
+  if (!canViewSupplyLeaderboard.value)
+    return
   leaderboardDetail.value = item
-  leaderboardDetails.value = []
+  resetLeaderboardDetail()
   void loadLeaderboardDetails(item)
 }
 
 function backToLeaderboard() {
+  if (selectedActivity.value) {
+    resetActivityTargets()
+    return
+  }
   leaderboardDetail.value = null
-  leaderboardDetails.value = []
+  resetLeaderboardDetail()
+}
+
+async function loadActivityTargets(append = false) {
+  if (!canViewSupplyActivityDetails.value || !leaderboardDetail.value || !selectedActivity.value || activityTargetLoading.value || (append && !activityTargetHasMore.value))
+    return
+  const page = append ? activityTargetPage.value + 1 : 1
+  activityTargetLoading.value = true
+  try {
+    const result = await getSupplyLeaderboardDetails(
+      leaderboardDetail.value.userId,
+      leaderboardDays.value,
+      'affectedCount',
+      page,
+      20,
+      selectedActivity.value.activityId,
+    )
+    activityTargets.value = append ? [...activityTargets.value, ...result.items] : result.items
+    activityTargetPage.value = result.page
+    activityTargetTotalValue.value = result.totalValue
+    activityTargetHasMore.value = result.hasMore
+  }
+  catch {
+    if (!append) {
+      activityTargets.value = []
+      activityTargetTotalValue.value = 0
+      activityTargetHasMore.value = false
+    }
+    uni.showToast({ title: '操作对象加载失败', icon: 'none' })
+  }
+  finally {
+    activityTargetLoading.value = false
+  }
+}
+
+function openActivityTargets(activity: SlSupplyLeaderboardDetailItemOutput) {
+  if (!canViewSupplyActivityDetails.value || leaderboardSort.value !== 'activityCount')
+    return
+  selectedActivity.value = activity
+  activityTargets.value = []
+  activityTargetPage.value = 1
+  activityTargetTotalValue.value = 0
+  activityTargetHasMore.value = false
+  void loadActivityTargets()
+}
+
+function loadMoreLeaderboardDetail() {
+  if (selectedActivity.value)
+    void loadActivityTargets(true)
+  else if (leaderboardDetail.value)
+    void loadLeaderboardDetails(leaderboardDetail.value, true)
 }
 
 async function openRecentActivityDetail(activity: SlSupplyRecentOutput) {
-  if (!auth.isSuperAdmin)
+  if (!canViewSupplyActivityDetails.value)
     return
   leaderboardDays.value = 7
   leaderboardSort.value = 'affectedCount'
@@ -482,7 +615,7 @@ async function openRecentActivityDetail(activity: SlSupplyRecentOutput) {
     lastUpdateTime: activity.updateTime,
   }
   leaderboardDetail.value = fallback
-  leaderboardDetails.value = []
+  resetLeaderboardDetail()
   await Promise.all([loadLeaderboard(), loadLeaderboardDetails(fallback)])
   const summary = leaderboard.value.find(item => String(item.userId) === String(activity.operatorUserId))
   if (summary)
@@ -496,7 +629,9 @@ function selectLeaderboardDays(days: number) {
   void loadLeaderboard()
 }
 
-function selectLeaderboardSort(sort: 'affectedCount' | 'activityCount' | 'communityCount') {
+function selectLeaderboardSort(sort: SlSupplyLeaderboardDimension) {
+  if (!auth.isSuperAdmin && sort !== 'communityCount')
+    return
   if (leaderboardSort.value === sort)
     return
   leaderboardSort.value = sort
@@ -508,7 +643,41 @@ function leaderboardValue(item: SlSupplyLeaderboardOutput) {
     return `${item.activityCount} 次`
   if (leaderboardSort.value === 'communityCount')
     return `${item.communityCount} 个`
-  return `${item.affectedCount} 项`
+  return `${item.affectedCount} 条`
+}
+
+function entityTypeLabel(entityType: string) {
+  if (entityType === 'property')
+    return '房源'
+  if (entityType === 'building')
+    return '楼栋'
+  return '楼盘'
+}
+
+function detailTitle(item: SlSupplyLeaderboardDetailItemOutput) {
+  if (visibleDetailDimension.value === 'communityCount')
+    return item.communityName
+  if (visibleDetailDimension.value === 'activityCount') {
+    const hasSpecificTarget = Boolean(item.propertyId || item.buildingId || item.entityType === 'community')
+    return hasSpecificTarget && item.entityName ? `${item.actionName} · ${item.entityName}` : item.actionName
+  }
+  return item.entityName || item.actionName
+}
+
+function detailPath(item: SlSupplyLeaderboardDetailItemOutput) {
+  const parts = [item.communityName]
+  if (item.buildingName && item.buildingName !== item.communityName)
+    parts.push(item.buildingName)
+  return parts.filter(Boolean).join(' / ')
+}
+
+function detailMeta(item: SlSupplyLeaderboardDetailItemOutput) {
+  const time = formatSupplyDateTime(item.updateTime)
+  if (visibleDetailDimension.value === 'communityCount')
+    return `最后更新：${time}`
+  if (visibleDetailDimension.value === 'activityCount')
+    return [detailPath(item), time].filter(Boolean).join(' · ')
+  return [detailPath(item), item.actionName, time].filter(Boolean).join(' · ')
 }
 
 onLoad(() => {
@@ -596,13 +765,16 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
         <view class="supply-ticker__signal">
           <wd-icon name="edit" size="16px" color="#fff" />
         </view>
-        <swiper class="supply-ticker__swiper" vertical autoplay circular :interval="4000" :duration="350">
+        <swiper v-if="canViewSupplyActivityDetails && recentActivities.length" class="supply-ticker__swiper" vertical autoplay circular :interval="4000" :duration="350">
           <swiper-item v-for="activity in recentActivities" :key="String(activity.id)">
             <view class="supply-ticker__item" @tap.stop="openRecentActivityDetail(activity)">
               <text>{{ formatRecentSupplyActivity(activity) }}</text>
             </view>
           </swiper-item>
         </swiper>
+        <view v-else class="supply-ticker__item" @tap.stop="openLeaderboard">
+          <text>{{ leaderboardEntryText }}</text>
+        </view>
         <view class="supply-ticker__rank" @tap.stop="openLeaderboard">
           <wd-icon name="chart-bar" size="19px" color="#126b4f" />
         </view>
@@ -657,7 +829,7 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
     </view>
 
     <wd-popup
-      v-if="auth.isSuperAdmin"
+      v-if="canViewSupplyLeaderboard"
       v-model="leaderboardVisible"
       position="bottom"
       :z-index="3000"
@@ -672,8 +844,10 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
               <wd-icon name="arrow-left" size="20px" color="#126b4f" />
             </view>
             <view class="leaderboard-detail__heading-text">
-              <text class="leaderboard-sheet__title">{{ leaderboardDetail.nickName }}的更新明细</text>
-              <text class="leaderboard-sheet__sub">近 {{ leaderboardDays }} 天的业务操作记录</text>
+              <text class="leaderboard-sheet__title">{{ leaderboardDetailTitle }}</text>
+              <text class="leaderboard-sheet__sub">
+                {{ selectedActivity ? `操作时间：${formatSupplyDateTime(selectedActivity.updateTime)}` : `近 ${leaderboardDays} 天 · ${leaderboardDimensionLabel}` }}
+              </text>
             </view>
           </view>
           <view v-else>
@@ -702,8 +876,7 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
           </view>
 
           <view class="leaderboard-filter">
-            <text class="leaderboard-filter__label">排序方式</text>
-            <view class="leaderboard-options leaderboard-options--sort">
+            <view class="leaderboard-options leaderboard-options--sort" :class="{ 'is-single': leaderboardSortOptions.length === 1 }">
               <view
                 v-for="option in leaderboardSortOptions"
                 :key="option.value"
@@ -728,7 +901,7 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
               <view class="leaderboard-row__body">
                 <text class="leaderboard-row__name">{{ item.nickName }}</text>
                 <text class="leaderboard-row__meta">
-                  {{ item.activityCount }} 次操作 · {{ item.communityCount }} 个楼盘 · {{ formatSupplyTime(item.lastUpdateTime) }}
+                  最近更新：{{ formatSupplyDateTime(item.lastUpdateTime) }}
                 </text>
               </view>
               <view class="leaderboard-row__tail">
@@ -741,23 +914,47 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
 
         <view v-else class="leaderboard-detail">
           <view class="leaderboard-detail__summary">
-            <view><text>{{ leaderboardDetail.affectedCount }}</text><text>更新数量</text></view>
-            <view><text>{{ leaderboardDetail.activityCount }}</text><text>操作次数</text></view>
-            <view><text>{{ leaderboardDetail.communityCount }}</text><text>覆盖楼盘</text></view>
+            <text>{{ selectedActivity ? '本次操作涉及' : '共' }}</text>
+            <text>{{ visibleDetailTotalValue }}</text>
+            <text>{{ selectedActivity ? '条数据' : leaderboardDimensionUnit }}</text>
           </view>
-          <scroll-view scroll-y class="leaderboard-detail__list">
-            <view v-if="leaderboardDetailLoading" class="leaderboard-empty">
+          <scroll-view scroll-y class="leaderboard-detail__list" @scrolltolower="loadMoreLeaderboardDetail">
+            <view v-if="visibleDetailLoading && !visibleDetailItems.length" class="leaderboard-empty">
               明细加载中...
             </view>
-            <view v-else-if="!leaderboardDetails.length" class="leaderboard-empty">
+            <view v-else-if="!visibleDetailItems.length" class="leaderboard-empty">
               所选时间范围内暂无更新明细
             </view>
-            <view v-for="activity in leaderboardDetails" v-else :key="String(activity.id)" class="leaderboard-detail__row">
+            <view
+              v-for="activity in visibleDetailItems"
+              v-else
+              :key="`${String(activity.activityId)}-${String(activity.id)}`"
+              class="leaderboard-detail__row"
+              :class="{ 'is-clickable': visibleDetailDimension === 'activityCount' }"
+              @tap="openActivityTargets(activity)"
+            >
               <view class="leaderboard-detail__body">
-                <text class="leaderboard-detail__action">{{ activity.actionName }} · {{ activity.communityName }}</text>
-                <text class="leaderboard-detail__time">{{ formatSupplyTime(activity.updateTime) }}</text>
+                <view class="leaderboard-detail__title-line">
+                  <text v-if="visibleDetailDimension === 'affectedCount'" class="leaderboard-detail__type">
+                    {{ entityTypeLabel(activity.entityType) }}
+                  </text>
+                  <text class="leaderboard-detail__action">{{ detailTitle(activity) }}</text>
+                  <text v-if="activity.isLegacyAggregate" class="leaderboard-detail__legacy">历史汇总</text>
+                </view>
+                <text class="leaderboard-detail__time">{{ detailMeta(activity) }}</text>
               </view>
-              <text class="leaderboard-detail__count">{{ activity.affectedCount }} 项</text>
+              <view class="leaderboard-detail__tail">
+                <text v-if="visibleDetailDimension === 'affectedCount' && activity.metricValue > 1" class="leaderboard-detail__count">
+                  {{ activity.metricValue }} 条
+                </text>
+                <wd-icon v-if="visibleDetailDimension === 'activityCount'" name="arrow-right" size="16px" color="#8a978f" />
+              </view>
+            </view>
+            <view v-if="visibleDetailLoading && visibleDetailItems.length" class="leaderboard-detail__more">
+              加载中...
+            </view>
+            <view v-else-if="!visibleDetailHasMore && visibleDetailItems.length" class="leaderboard-detail__more">
+              已展示全部明细
             </view>
           </scroll-view>
         </view>
@@ -1050,6 +1247,10 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.leaderboard-options--sort.is-single {
+  grid-template-columns: 1fr;
+}
+
 .leaderboard-option {
   display: flex;
   min-width: 0;
@@ -1151,37 +1352,26 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
 }
 
 .leaderboard-detail__summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  height: 88rpx;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8rpx;
   border: 1rpx solid #dfe9e2;
   border-radius: 8rpx;
   background: #edf6ef;
 }
 
-.leaderboard-detail__summary view {
-  display: flex;
-  min-width: 0;
-  height: 104rpx;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  border-right: 1rpx solid #dfe9e2;
-}
-
-.leaderboard-detail__summary view:last-child {
-  border-right: 0;
-}
-
-.leaderboard-detail__summary text:first-child {
-  color: #126b4f;
-  font-size: 32rpx;
-  font-weight: 900;
-}
-
-.leaderboard-detail__summary text:last-child {
-  margin-top: 4rpx;
+.leaderboard-detail__summary text {
   color: #68766f;
-  font-size: 20rpx;
+  font-size: 22rpx;
+  font-weight: 700;
+}
+
+.leaderboard-detail__summary text:nth-child(2) {
+  color: #126b4f;
+  font-size: 36rpx;
+  font-weight: 900;
 }
 
 .leaderboard-detail__list {
@@ -1198,6 +1388,10 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
   border-bottom: 1rpx solid #e3eae5;
 }
 
+.leaderboard-detail__row.is-clickable:active {
+  background: #eef5f0;
+}
+
 .leaderboard-detail__body {
   min-width: 0;
 }
@@ -1207,7 +1401,34 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
   display: block;
 }
 
+.leaderboard-detail__title-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.leaderboard-detail__type,
+.leaderboard-detail__legacy {
+  flex: 0 0 auto;
+  padding: 5rpx 9rpx;
+  border-radius: 5rpx;
+  font-size: 18rpx;
+  font-weight: 800;
+}
+
+.leaderboard-detail__type {
+  background: #e1f0e6;
+  color: #126b4f;
+}
+
+.leaderboard-detail__legacy {
+  background: #f3eee0;
+  color: #8b6b27;
+}
+
 .leaderboard-detail__action {
+  min-width: 0;
   overflow: hidden;
   color: var(--sl-ink);
   font-size: 24rpx;
@@ -1229,6 +1450,19 @@ onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
   color: #126b4f;
   font-size: 21rpx;
   font-weight: 850;
+}
+
+.leaderboard-detail__tail {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.leaderboard-detail__more {
+  padding: 24rpx 0 32rpx;
+  color: var(--sl-muted);
+  font-size: 20rpx;
+  text-align: center;
 }
 
 .leaderboard-empty {

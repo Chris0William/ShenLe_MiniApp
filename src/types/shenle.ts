@@ -723,6 +723,36 @@ export interface SlSupplyLeaderboardOutput {
   lastUpdateTime: string
 }
 
+export type SlSupplyLeaderboardDimension = 'affectedCount' | 'activityCount' | 'communityCount'
+
+export interface SlSupplyLeaderboardDetailItemOutput {
+  id: ShenLeId
+  activityId: ShenLeId
+  communityId: ShenLeId
+  communityName: string
+  buildingId?: ShenLeId | null
+  buildingName?: string | null
+  propertyId?: ShenLeId | null
+  propertyName?: string | null
+  entityType: 'community' | 'building' | 'property' | string
+  entityName: string
+  action: string
+  actionName: string
+  metricValue: number
+  updateTime: string
+  isLegacyAggregate: boolean
+}
+
+export interface SlSupplyLeaderboardDetailPageOutput {
+  dimension: SlSupplyLeaderboardDimension
+  totalValue: number
+  total: number
+  page: number
+  pageSize: number
+  hasMore: boolean
+  items: SlSupplyLeaderboardDetailItemOutput[]
+}
+
 export interface SlLandlordApplyOutput {
   userId: ShenLeId
   nickName?: string

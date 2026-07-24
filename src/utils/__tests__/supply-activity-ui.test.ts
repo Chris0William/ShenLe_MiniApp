@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { formatRecentSupplyActivity, formatSupplyTime } from '../supply-activity'
+import { formatRecentSupplyActivity, formatSupplyDateTime, formatSupplyTime } from '../supply-activity'
 
 function source(relativePath: string) {
   return fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8')
@@ -28,6 +28,12 @@ describe('supply activity formatting', () => {
       updateTime: '2026-07-16T09:05:00',
     })).toBe('张三 最近更新 马山头花园 · 12 项')
   })
+
+  it('keeps the time visible on prior-day leaderboard rows', () => {
+    const now = new Date('2026-07-24T12:00:00')
+    expect(formatSupplyDateTime('2026-07-23T16:20:00', now)).toBe('7月23日 16:20')
+    expect(formatSupplyDateTime('2026-07-24T09:05:00', now)).toBe('今天 09:05')
+  })
 })
 
 describe('supply contact and leaderboard UI contract', () => {
@@ -53,17 +59,25 @@ describe('supply contact and leaderboard UI contract', () => {
     expect(contacts).not.toContain('lastUpdaterPhone')
   })
 
-  it('limits activity UI to super administrators and supports leaderboard details and sorts', () => {
+  it('hides activity UI from the user side and limits regular administrators to community coverage', () => {
     const map = source('src/pages/user/map/index.vue')
+    const api = source('src/api/supply-activity.ts')
     expect(map).toContain('getRecentSupplyActivity')
     expect(map).toContain('getSupplyLeaderboard')
-    expect(map).toContain('getSupplyActivityDetails')
+    expect(map).toContain('getSupplyLeaderboardDetails')
     expect(map).toContain('openRecentActivityDetail')
-    expect(map).toContain('showSupplyTicker = computed(() => auth.isSuperAdmin')
-    expect(map).toContain('v-if="auth.isSuperAdmin"')
-    expect(map).not.toContain('auth.canViewSupplyActivity')
+    expect(map).toContain('canViewSupplyLeaderboard = computed(() => auth.isAdmin && isAdminMode.value)')
+    expect(map).toContain('canViewSupplyActivityDetails = computed(() => auth.isSuperAdmin && isAdminMode.value)')
+    expect(map).toContain('v-if="canViewSupplyLeaderboard"')
+    expect(map).toContain('leaderboardSort.value = \'communityCount\'')
+    expect(map).not.toContain('查看维度')
     expect(map).toContain(':z-index="3000"')
-    expect(map).toContain('更新明细')
+    expect(map).toContain('更新数据')
+    expect(map).toContain('操作记录')
+    expect(map).toContain('具体对象')
+    expect(map).not.toContain('item.activityCount }} 次操作 · {{ item.communityCount')
+    expect(api).toContain('/api/slSupplyActivity/leaderboardDetail')
+    expect(api).toContain('activityId')
     expect(map).toContain('chart-bar')
     expect(map).toContain('\'affectedCount\'')
     expect(map).toContain('\'activityCount\'')
