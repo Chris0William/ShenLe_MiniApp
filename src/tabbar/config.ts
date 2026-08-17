@@ -29,6 +29,8 @@ const PROPERTY_TAB: CustomTabBarItem = { text: '房源', pagePath: 'pages/admin/
 const DASHBOARD_TAB: CustomTabBarItem = { text: '工作台', pagePath: 'pages/admin/dashboard/index', iconType: 'unocss', icon: 'i-carbon-dashboard' }
 const SALES_TAB: CustomTabBarItem = { text: '销控', pagePath: 'pages/admin/sales-control/index', iconType: 'unocss', icon: 'i-carbon-table-split' }
 const MINE_TAB: CustomTabBarItem = { text: '我的', pagePath: 'pages/admin/mine/index', iconType: 'unocss', icon: 'i-carbon-user' }
+const ROOM_STATE_TAB: CustomTabBarItem = { text: '房态', pagePath: 'pages/admin/sales-control/index', iconType: 'unocss', icon: 'i-carbon-building-insights-1' }
+const PROMOTION_TAB: CustomTabBarItem = { text: '推广', pagePath: 'pages/admin/dashboard/index', iconType: 'unocss', icon: 'i-carbon-megaphone' }
 
 /** 用户模式 tab：地图 / 房源 / 我的（房源只读、我的展示用户视图） */
 export const userTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, MINE_TAB]
@@ -36,8 +38,8 @@ export const userTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, MINE_T
 /** 管理模式 tab：地图 / 房源 / 工作台 / 销控 / 我的（地图第一，与用户端一致） */
 export const adminTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, DASHBOARD_TAB, SALES_TAB, MINE_TAB]
 
-/** 盘源对接人模式 tab：地图 / 房源 / 我的（与用户端相同入口，盘源对接人身份由后端控制权限） */
-export const landlordTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, MINE_TAB]
+/** 盘源对接人模式 tab：地图 / 房态 / 推广 / 我的 */
+export const landlordTabbarList: CustomTabBarItem[] = [MAP_TAB, ROOM_STATE_TAB, PROMOTION_TAB, MINE_TAB]
 
 // 原生 tabBar.list 取并集（5 项，与现状一致；微信原生 list 最多 5 项，运行时由自定义组件按 mode 裁剪）
 export const customTabbarList: CustomTabBarItem[] = [MAP_TAB, PROPERTY_TAB, DASHBOARD_TAB, SALES_TAB, MINE_TAB]

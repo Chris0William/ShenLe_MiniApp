@@ -5,6 +5,7 @@ import { setMyNickName } from '@/api/auth'
 import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
+import { useSourceContactStore } from '@/store/source-contact'
 import { tabbarStore } from '@/tabbar/store'
 import { requestLogin } from '@/utils/login-flow'
 
@@ -15,6 +16,7 @@ definePage({
 })
 
 const auth = useShenleAuthStore()
+const sourceContact = useSourceContactStore()
 const isAdminView = computed(() => modeStore.mode === 'admin')
 const isLandlordView = computed(() => modeStore.mode === 'landlord')
 const pendingCount = ref(0)
@@ -22,6 +24,12 @@ const nicknameVisible = ref(false)
 const nicknameDraft = ref('')
 const nicknameSaving = ref(false)
 const loginConsentRef = ref<{ open: (options?: Parameters<typeof requestLogin>[0]) => void } | null>(null)
+const sourceStats = computed(() => [
+  { label: '楼盘', value: sourceContact.profile?.communityCount || 0 },
+  { label: '楼栋', value: sourceContact.profile?.buildingCount || 0 },
+  { label: '房源', value: sourceContact.profile?.propertyCount || 0 },
+  { label: '推广', value: sourceContact.profile?.promotedCount || 0 },
+])
 
 const adminMenus = computed(() => {
   const base = [
@@ -82,7 +90,19 @@ function go(url: string) {
   uni.navigateTo({ url })
 }
 
+function callSupport() {
+  const phone = sourceContact.profile?.supportUserPhone
+  if (!phone) {
+    uni.showToast({ title: '维护人暂未设置联系电话', icon: 'none' })
+    return
+  }
+  uni.makePhoneCall({ phoneNumber: phone })
+}
+
 onShow(() => {
+  uni.setNavigationBarTitle({ title: '我的' })
+  if (isLandlordView.value)
+    void sourceContact.load()
   if (isAdminView.value && auth.isSuperAdmin)
     getPendingUsers().then((list) => { pendingCount.value = list.length }).catch(() => {})
 })
@@ -172,45 +192,17 @@ async function signOut() {
         </view>
         <wd-icon name="arrow-right" size="18px" color="#8ea099" />
       </view>
-    </template>
-
-    <!-- 盘源对接人模式视图 -->
-    <template v-else-if="isLandlordView">
-      <view class="sl-section-head">
-        <text class="sl-section-title">盘源对接人中心</text>
+      <view v-if="auth.isLandlord" class="switch-card sl-card" @tap="toLandlord">
+        <view class="switch-card__main">
+          <wd-icon name="home" size="22px" color="#126b4f" />
+          <text>切换到盘源对接人端</text>
+        </view>
+        <wd-icon name="arrow-right" size="18px" color="#8ea099" />
       </view>
-      <view class="menu sl-card user-menu">
-        <view class="menu-row" @tap="go('/pages/landlord/my-communities/index')">
-          <view class="menu-row__left">
-            <view class="menu-icon menu-icon--green">
-              <wd-icon name="home" size="21px" color="#126b4f" />
-            </view>
-            <text>我的楼盘</text>
-          </view>
-          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
-        </view>
-      </view>
-
-      <template v-if="auth.isAdmin">
-        <view class="switch-card sl-card" @tap="toUser">
-          <view class="switch-card__main">
-            <wd-icon name="swap" size="22px" color="#126b4f" />
-            <text>切换到用户端</text>
-          </view>
-          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
-        </view>
-        <view class="switch-card sl-card" style="margin-top: 16rpx;" @tap="toAdmin">
-          <view class="switch-card__main">
-            <wd-icon name="setting" size="22px" color="#126b4f" />
-            <text>切换到管理端</text>
-          </view>
-          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
-        </view>
-      </template>
     </template>
 
     <!-- 用户模式视图 -->
-    <template v-else>
+    <template v-else-if="modeStore.mode === 'user'">
       <view v-if="auth.isAdmin || auth.isLandlord" class="menu sl-card user-menu">
         <view v-if="auth.isAdmin" class="menu-row" @tap="toAdmin">
           <view class="menu-row__left">
@@ -234,6 +226,52 @@ async function signOut() {
 
       <view v-if="!auth.isAdmin && !auth.isLandlord" class="hint">
         {{ auth.isLogin ? '管理员可在此切换到管理端' : '点击上方头像卡片登录或申请使用' }}
+      </view>
+    </template>
+
+    <!-- 盘源对接人模式视图 -->
+    <template v-else>
+      <view class="source-stats sl-card">
+        <view v-for="item in sourceStats" :key="item.label" class="source-stat">
+          <text class="source-stat__value">{{ item.value }}</text>
+          <text class="source-stat__label">{{ item.label }}</text>
+        </view>
+      </view>
+
+      <view class="sl-section-head source-section-head">
+        <text class="sl-section-title">系统维护人</text>
+      </view>
+      <view class="support-card sl-card" @tap="callSupport">
+        <view class="menu-icon menu-icon--green">
+          <wd-icon name="service" size="22px" color="#126b4f" />
+        </view>
+        <view class="support-card__main">
+          <text class="support-card__name">{{ sourceContact.profile?.supportUserName || '暂未分配' }}</text>
+          <text class="support-card__desc">协助维护房态、资料及处理系统问题</text>
+          <text v-if="sourceContact.profile?.supportUserPhone" class="support-card__phone">{{ sourceContact.profile.supportUserPhone }}</text>
+        </view>
+        <wd-icon v-if="sourceContact.profile?.supportUserPhone" name="phone" size="20px" color="#126b4f" />
+      </view>
+
+      <view class="menu sl-card user-menu">
+        <view class="menu-row" @tap="toUser">
+          <view class="menu-row__left">
+            <view class="menu-icon menu-icon--green">
+              <wd-icon name="view" size="21px" color="#126b4f" />
+            </view>
+            <text>切换到用户端</text>
+          </view>
+          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+        </view>
+        <view v-if="auth.isAdmin" class="menu-row" @tap="toAdmin">
+          <view class="menu-row__left">
+            <view class="menu-icon menu-icon--green">
+              <wd-icon name="setting" size="21px" color="#126b4f" />
+            </view>
+            <text>切换到管理端</text>
+          </view>
+          <wd-icon name="arrow-right" size="18px" color="#8ea099" />
+        </view>
       </view>
     </template>
 
@@ -333,6 +371,84 @@ async function signOut() {
   display: block;
   margin-top: 24rpx;
   padding: 4rpx 26rpx;
+}
+
+.source-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 24rpx;
+}
+
+.source-stat {
+  position: relative;
+  display: flex;
+  min-height: 96rpx;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5rpx;
+}
+
+.source-stat + .source-stat::before {
+  position: absolute;
+  top: 22rpx;
+  bottom: 22rpx;
+  left: 0;
+  width: 1rpx;
+  background: var(--sl-line);
+  content: '';
+}
+
+.source-stat__value {
+  color: #126b4f;
+  font-size: 29rpx;
+  font-weight: 850;
+}
+
+.source-stat__label {
+  color: var(--sl-muted);
+  font-size: 21rpx;
+}
+
+.source-section-head {
+  margin-top: 28rpx;
+}
+
+.support-card {
+  display: flex;
+  min-height: 126rpx;
+  align-items: center;
+  padding: 22rpx;
+  gap: 16rpx;
+}
+
+.support-card__main {
+  min-width: 0;
+  flex: 1;
+}
+
+.support-card__name,
+.support-card__desc,
+.support-card__phone {
+  display: block;
+}
+
+.support-card__name {
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
+.support-card__desc {
+  margin-top: 6rpx;
+  color: var(--sl-muted);
+  font-size: 21rpx;
+}
+
+.support-card__phone {
+  margin-top: 6rpx;
+  color: #126b4f;
+  font-size: 21rpx;
+  font-weight: 750;
 }
 
 .menu-row {

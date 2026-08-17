@@ -667,6 +667,7 @@ export interface SlUserOutput {
   avatar?: string | null
   accountType: number
   accountTypeName: string
+  status: number
   isLandlord?: boolean
   createTime?: string | null
 }
@@ -775,6 +776,9 @@ export interface SlLandlordOutput {
   nickName?: string | null
   accountType: number
   communityCount: number
+  supportUserId?: ShenLeId | null
+  supportUserName?: string | null
+  supportUserPhone?: string | null
 }
 
 export interface PageSlLandlordInput extends BasePageInput {
@@ -805,4 +809,139 @@ export interface BatchAssignOwnerInput {
 export interface BatchAssignOwnerOutput {
   assignedCount: number
   unassignedCount: number
+}
+
+export type SlCommissionMode = 1 | 2 | 3
+
+export interface SlSourceContactProfileOutput {
+  userId: ShenLeId
+  nickName?: string | null
+  phone?: string | null
+  supportUserId?: ShenLeId | null
+  supportUserName?: string | null
+  supportUserPhone?: string | null
+  communityCount: number
+  buildingCount: number
+  propertyCount: number
+  availableCount: number
+  rentedCount: number
+  promotedCount: number
+}
+
+export interface SlSourceContactCommunityOutput {
+  id: ShenLeId
+  name: string
+  address?: string | null
+  lng?: number | null
+  lat?: number | null
+  buildingCount: number
+  propertyCount: number
+  availableCount: number
+  rentedCount: number
+  promotedCount: number
+  minRentPrice?: number | null
+  maxRentPrice?: number | null
+  coverImageId?: ShenLeId | null
+  coverImage?: string | null
+  coverFileType?: string | null
+  coverSuffix?: string | null
+  coverPosterFileId?: ShenLeId | null
+  coverPosterUrl?: string | null
+  supplyUpdateTime?: string | null
+}
+
+export interface SlCommunityOperationConfigOutput {
+  communityId: ShenLeId
+  communityName: string
+  managementFee?: number | null
+  networkFee?: number | null
+  waterFee?: number | null
+  electricityFee?: number | null
+  commissionMode?: SlCommissionMode | null
+  commissionValue?: number | null
+  remark?: string | null
+}
+
+export interface SaveSlCommunityOperationConfigInput {
+  communityId: ShenLeId
+  managementFee?: number | null
+  networkFee?: number | null
+  waterFee?: number | null
+  electricityFee?: number | null
+  commissionMode?: SlCommissionMode | null
+  commissionValue?: number | null
+  remark?: string | null
+}
+
+export interface SlPropertyOperationConfigOutput {
+  propertyId: ShenLeId
+  communityId: ShenLeId
+  buildingId: ShenLeId
+  title: string
+  roomNo?: string | null
+  managementFee?: number | null
+  networkFee?: number | null
+  waterFee?: number | null
+  electricityFee?: number | null
+  commissionMode?: SlCommissionMode | null
+  commissionValue?: number | null
+  effectiveManagementFee?: number | null
+  effectiveNetworkFee?: number | null
+  effectiveWaterFee?: number | null
+  effectiveElectricityFee?: number | null
+  effectiveCommissionMode?: SlCommissionMode | null
+  effectiveCommissionValue?: number | null
+  supportsMonthlyRent: boolean
+  supportsShortRent: boolean
+  supportsMonthlyPayment: boolean
+  supportsZeroDeposit: boolean
+  promotionCommissionMode?: SlCommissionMode | null
+  promotionCommissionValue?: number | null
+  isPromoted: boolean
+}
+
+export interface SaveSlPropertyOperationConfigInput {
+  propertyId: ShenLeId
+  managementFee?: number | null
+  networkFee?: number | null
+  waterFee?: number | null
+  electricityFee?: number | null
+  commissionMode?: SlCommissionMode | null
+  commissionValue?: number | null
+}
+
+export interface BatchSaveSlPropertyCommissionInput {
+  propertyIds: ShenLeId[]
+  commissionMode: SlCommissionMode
+  commissionValue: number
+}
+
+export interface PageSlPromotionInput extends BasePageInput {
+  communityId?: ShenLeId
+  buildingId?: ShenLeId
+  keyword?: string
+  promotionOnly?: boolean
+}
+
+export interface SlPromotionPropertyOutput extends SlPropertyOperationConfigOutput {
+  communityName: string
+  buildingName: string
+  rentPrice: number
+  status: number
+  statusName: string
+}
+
+export interface SaveSlPromotionInput {
+  propertyIds: ShenLeId[]
+  supportsMonthlyRent: boolean
+  supportsShortRent: boolean
+  supportsMonthlyPayment: boolean
+  supportsZeroDeposit: boolean
+  promotionCommissionMode?: SlCommissionMode | null
+  promotionCommissionValue?: number | null
+}
+
+export interface SetSlSourceContactSupportInput {
+  sourceContactUserId: ShenLeId
+  supportUserId?: ShenLeId | null
 }

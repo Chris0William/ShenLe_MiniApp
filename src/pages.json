@@ -32,7 +32,7 @@
       "style": {
         "navigationStyle": "custom",
         "navigationBarTitleText": "地图",
-        "enablePullDownRefresh": true
+        "disableScroll": true
       }
     },
     {
@@ -164,6 +164,14 @@
       "style": {
         "navigationBarTitleText": "标签管理",
         "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/landlord/account/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "盘源对接人账户"
       }
     },
     {

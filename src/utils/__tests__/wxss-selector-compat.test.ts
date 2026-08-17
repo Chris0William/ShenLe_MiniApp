@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest'
 const COMPONENTS = [
   'src/components/sl-login-consent/sl-login-consent.vue',
   'src/components/sl-property-batch/sl-property-batch.vue',
+  'src/components/source-contact-map/source-contact-map.vue',
+  'src/components/source-contact-promotion/source-contact-promotion.vue',
+  'src/components/source-contact-room-state/source-contact-room-state.vue',
+  'src/pages/landlord/account/index.vue',
 ]
 
 describe('component wxss selector compatibility', () => {
@@ -13,6 +17,6 @@ describe('component wxss selector compatibility', () => {
     const style = source.slice(source.indexOf('<style'))
 
     expect(style).not.toMatch(/\[[^\]]+\]/)
-    expect(style).not.toMatch(/(?:^|,)\s*[^\r\n{]*?(?:\s|>)\s*(?:input|text|view|image|picker)(?=[\s:.>{,#]|$)/m)
+    expect(style).not.toMatch(/(?:^|[,\s>+~])(?:input|text|view|image|picker)(?=[\s.#[\]:,>+~{]|$)/m)
   })
 })

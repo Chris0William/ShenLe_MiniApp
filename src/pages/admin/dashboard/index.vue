@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import type { SlCommunityOutput, SlPropertyGlobalStatsOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPropertyGlobalStats } from '@/api/property'
 import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { modeStore } from '@/store/mode'
 import { requestLogin } from '@/utils/login-flow'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney } from '@/utils/shenle'
@@ -25,6 +26,8 @@ const communities = ref<SlCommunityOutput[]>([])
 const loading = ref(false)
 const auth = useShenleAuthStore()
 const changeStore = useEntityChangeStore()
+const isLandlordView = computed(() => modeStore.mode === 'landlord')
+const sourceContactPromotionRef = ref<{ refresh: () => Promise<void> } | null>(null)
 function requireLogin() {
   if (auth.isLogin)
     return true
@@ -33,6 +36,8 @@ function requireLogin() {
 }
 
 async function load() {
+  if (isLandlordView.value)
+    return sourceContactPromotionRef.value?.refresh()
   if (!requireLogin())
     return
   loading.value = true
@@ -63,6 +68,11 @@ function go(url: string, tab = false) {
 
 onLoad(load)
 onShow(() => {
+  uni.setNavigationBarTitle({ title: isLandlordView.value ? '推广' : '工作台' })
+  if (isLandlordView.value) {
+    void sourceContactPromotionRef.value?.refresh()
+    return
+  }
   const changes = [
     changeStore.consumePropertyChange('dashboard'),
     changeStore.consumeCommunityChange('dashboard'),
@@ -75,7 +85,8 @@ onPullDownRefresh(load)
 </script>
 
 <template>
-  <view class="sl-page" :style="safeTop">
+  <source-contact-promotion v-if="isLandlordView" ref="sourceContactPromotionRef" />
+  <view v-else class="sl-page" :style="safeTop">
     <view class="sl-hero dashboard-hero">
       <text class="sl-title">今日房源状态</text>
       <text class="sl-subtitle">先把统计、房源列表和销控链路迁入新骨架。</text>

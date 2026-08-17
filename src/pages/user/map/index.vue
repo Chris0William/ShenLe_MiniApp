@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlPublicRegionPreviewOutput, SlSupplyLeaderboardDetailItemOutput, SlSupplyLeaderboardDimension, SlSupplyLeaderboardOutput, SlSupplyRecentOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh, onShow } from '@dcloudio/uni-app'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityPage } from '@/api/community'
 import { getPublicRegionMap } from '@/api/public-preview'
@@ -19,7 +19,7 @@ definePage({
   style: {
     navigationStyle: 'custom',
     navigationBarTitleText: '地图',
-    enablePullDownRefresh: true,
+    disableScroll: true,
   },
 })
 
@@ -27,6 +27,7 @@ const DEFAULT_CENTER = { latitude: 22.5431, longitude: 114.0579 }
 const mapId = 'property-map'
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
+const isLandlordView = computed(() => modeStore.mode === 'landlord')
 const isAdminMode = computed(() => modeStore.mode === 'admin')
 const canManage = computed(() => auth.isAdmin && isAdminMode.value)
 const canViewSupplyLeaderboard = computed(() => auth.isAdmin && isAdminMode.value)
@@ -66,6 +67,7 @@ const activityTargetHasMore = ref(false)
 let mapContext: UniApp.MapContext | null = null
 let referencePointVersion = 0
 let leaderboardRequestVersion = 0
+const sourceContactMapRef = ref<{ refresh: () => Promise<void>, activate: () => Promise<void> } | null>(null)
 
 const leaderboardDayOptions = [1, 3, 7, 30]
 const allLeaderboardSortOptions = [
@@ -681,6 +683,8 @@ function detailMeta(item: SlSupplyLeaderboardDetailItemOutput) {
 }
 
 onLoad(() => {
+  if (isLandlordView.value)
+    return
   // 微信合规：打开即可匿名浏览地图/楼盘，不强制登录；搜索/详情/联系等动作再触发登录
   mapContext = uni.createMapContext(mapId)
   loadCommunities()
@@ -705,13 +709,17 @@ onLoad(() => {
   catch {}
 })
 onShow(() => {
+  if (isLandlordView.value) {
+    void sourceContactMapRef.value?.activate()
+    return
+  }
   void loadSupplyActivity()
 })
-onPullDownRefresh(() => Promise.all([loadCommunities(), loadSupplyActivity()]))
 </script>
 
 <template>
-  <view class="map-page" :style="safeTop">
+  <source-contact-map v-if="isLandlordView" ref="sourceContactMapRef" />
+  <view v-else class="map-page" :style="safeTop">
     <view class="map-head">
       <text class="map-head__title">楼盘地图</text>
     </view>

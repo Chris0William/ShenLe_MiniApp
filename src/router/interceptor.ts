@@ -14,8 +14,6 @@ export const FG_LOG_ENABLE = false
 // 共享页（地图/房源列表 admin/property-list/楼盘房源 community-properties/详情/我的 admin/mine）
 // 用户模式也要可达，因此不在此列——其管理动作由各页 canManage 控制显隐。
 const PROTECTED_PATHS = [
-  '/pages/admin/dashboard/index',
-  '/pages/admin/sales-control/index',
   '/pages/admin/user-manage/index', // 超管页，登录+管理员先过守卫，999 由页面自守卫
   '/pages/common/community-manage/index',
   '/pages/common/region-manage/index',
@@ -25,7 +23,10 @@ const PROTECTED_PATHS = [
 // 盘源对接人端也可访问的管理页：需登录，且须是管理员(888)或盘源对接人(isLandlord)。
 // building-manage 和 property-form 由后端 RequireCommunityOwnerOrAdmin 守卫实际写权限。
 const LANDLORD_OR_ADMIN_PATHS = [
+  '/pages/admin/dashboard/index',
+  '/pages/admin/sales-control/index',
   '/pages/landlord/my-communities/index',
+  '/pages/landlord/account/index',
   '/pages/common/building-manage/index',
   '/pages/common/property-form/index',
 ]

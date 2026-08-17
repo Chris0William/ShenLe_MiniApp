@@ -16,6 +16,7 @@ import { getPropertyList, updatePropertyStatus } from '@/api/property'
 import { getRegionStats, getRegionTree } from '@/api/region'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { modeStore } from '@/store/mode'
 import { sameId } from '@/utils/property-filter'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { formatMoney, getStatusMeta, idToQuery } from '@/utils/shenle'
@@ -30,6 +31,8 @@ definePage({
 
 const safeTop = useSafeTopStyle()
 const changeStore = useEntityChangeStore()
+const isLandlordView = computed(() => modeStore.mode === 'landlord')
+const sourceContactRoomRef = ref<{ refresh: () => Promise<void>, activate: () => Promise<void> } | null>(null)
 
 interface RegionRow {
   id: ShenLeId
@@ -340,8 +343,15 @@ function goCommunityProperties(community: SlCommunityOutput) {
   })
 }
 
-onLoad(initPage)
+onLoad(() => {
+  if (!isLandlordView.value)
+    initPage()
+})
 onShow(() => {
+  if (isLandlordView.value) {
+    void sourceContactRoomRef.value?.activate()
+    return
+  }
   const changes = [
     changeStore.consumePropertyChange('sales-control'),
     changeStore.consumeCommunityChange('sales-control'),
@@ -350,11 +360,16 @@ onShow(() => {
   if (changes.some(Boolean))
     void refreshCurrent()
 })
-onPullDownRefresh(refreshCurrent)
+onPullDownRefresh(() => {
+  if (isLandlordView.value)
+    return sourceContactRoomRef.value?.refresh()
+  return refreshCurrent()
+})
 </script>
 
 <template>
-  <view class="sales-page" :style="safeTop">
+  <source-contact-room-state v-if="isLandlordView" ref="sourceContactRoomRef" />
+  <view v-else class="sales-page" :style="safeTop">
     <view class="sales-hero">
       <view class="sales-hero__top">
         <view v-if="level > 1" class="back-btn" @tap="goBack">
