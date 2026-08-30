@@ -11,7 +11,7 @@ import { useSafeTopStyle } from '@/utils/safe-area'
 definePage({
   style: {
     navigationStyle: 'custom',
-    navigationBarTitleText: '盘源对接人账户',
+    navigationBarTitleText: '房东端账户',
   },
 })
 
@@ -104,7 +104,7 @@ onShow(() => {
         <image class="avatar" :src="auth.user?.avatar || '/static/images/default-avatar.png'" mode="aspectFill" />
         <view class="profile-block__main">
           <text class="profile-block__name">{{ sourceContact.profile?.nickName || auth.displayName }}</text>
-          <text class="profile-block__role">盘源对接人</text>
+          <text class="profile-block__role">房东</text>
           <text v-if="sourceContact.profile?.phone" class="profile-block__phone">{{ sourceContact.profile.phone }}</text>
         </view>
         <wd-button size="small" plain @click="openNicknameEditor">
@@ -120,7 +120,7 @@ onShow(() => {
       </view>
 
       <view class="section-title">
-        系统维护人
+        主维护人
       </view>
       <view class="support-card" @tap="callPhone(sourceContact.profile?.supportUserPhone)">
         <view class="support-card__icon">
@@ -128,7 +128,7 @@ onShow(() => {
         </view>
         <view class="support-card__main">
           <text class="support-card__name">{{ sourceContact.profile?.supportUserName || '暂未分配' }}</text>
-          <text class="support-card__desc">协助维护房态、资料及处理系统问题</text>
+          <text class="support-card__desc">协助维护楼盘信息、资料及处理系统问题</text>
           <text v-if="sourceContact.profile?.supportUserPhone" class="support-card__phone">{{ sourceContact.profile.supportUserPhone }}</text>
         </view>
         <wd-icon v-if="sourceContact.profile?.supportUserPhone" name="phone" size="20px" color="#126b4f" />
@@ -140,10 +140,10 @@ onShow(() => {
       <view class="action-list">
         <view class="action-row" @tap="switchMode('user')">
           <wd-icon name="view" size="20px" color="#126b4f" />
-          <text>切换到用户端</text>
+          <text>切换到业务员端</text>
           <wd-icon name="arrow-right" size="18px" color="#8fa098" />
         </view>
-        <view v-if="auth.isAdmin" class="action-row" @tap="switchMode('admin')">
+        <view v-if="auth.canEnterAdmin" class="action-row" @tap="switchMode('admin')">
           <wd-icon name="setting" size="20px" color="#126b4f" />
           <text>切换到管理端</text>
           <wd-icon name="arrow-right" size="18px" color="#8fa098" />

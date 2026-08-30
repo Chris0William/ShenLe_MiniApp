@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const legacyRoleTerm = '\u623f\u4e1c'
+const deprecatedVisibleTerms = ['用户端', '盘源对接人端', '系统维护人', '二房东']
 
 function source(file: string) {
   return fs.readFileSync(path.resolve(process.cwd(), file), 'utf8')
@@ -23,14 +23,14 @@ function collectFiles(entry: string): string[] {
 }
 
 describe('source contact terminology', () => {
-  it('removes the legacy role term from the active miniapp and website', () => {
+  it('uses the confirmed business-side, landlord, and maintainer terms', () => {
     const files = [
       ...collectFiles('src'),
       ...collectFiles('website'),
     ]
-    const offenders = files
-      .filter(file => source(file).includes(legacyRoleTerm))
-      .map(file => path.relative(process.cwd(), file))
+    const offenders = files.flatMap(file => deprecatedVisibleTerms
+      .filter(term => source(file).includes(term))
+      .map(term => `${path.relative(process.cwd(), file)}: ${term}`))
 
     expect(offenders).toEqual([])
   })

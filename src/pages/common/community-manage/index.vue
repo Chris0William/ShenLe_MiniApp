@@ -6,7 +6,9 @@ import { addCommunity, deleteCommunity, getCommunityDetail, getCommunityPage, up
 import { downloadFile, uploadMediaFile } from '@/api/file'
 import { assignOwner, getLandlordPage, unassignOwner } from '@/api/landlord'
 import { getRegionTree } from '@/api/region'
+import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { modeStore } from '@/store/mode'
 import { isLocalMediaUrl, MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
 import { createMediaLongPressGuard, renameEditableMedia, showMediaEditActionSheet } from '@/utils/media-edit'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
@@ -99,6 +101,9 @@ const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
 const changeStore = useEntityChangeStore()
+const auth = useShenleAuthStore()
+const canCreateSupply = computed(() => auth.canCreateSupply && modeStore.mode === 'admin')
+const canDeleteSupply = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 const CHANGE_CONSUMER = 'community-manage'
 
 function publishCommunityChange(action: 'created' | 'updated' | 'deleted' | 'structural', ids: ShenLeId[]) {
@@ -118,7 +123,7 @@ const mediaLongPressGuard = createMediaLongPressGuard()
 const form = reactive<CommunityForm>({
   id: '',
   name: '',
-  type: 1,
+  type: 2,
   regionId: '',
   address: '',
   lng: '',
@@ -136,6 +141,7 @@ const typeOptions = [
   { value: undefined, label: '全部' },
   { value: 1, label: '小区' },
   { value: 2, label: '公寓' },
+  { value: 3, label: '小产权' },
 ] as const
 
 const statusOptions = [
@@ -333,7 +339,11 @@ function regionName(id?: ShenLeId | null) {
 }
 
 function typeLabel(type?: number) {
-  return type === 2 ? '公寓' : '小区'
+  if (type === 2)
+    return '公寓'
+  if (type === 3)
+    return '小产权'
+  return '小区'
 }
 
 function statusLabel(status?: number) {
@@ -392,7 +402,7 @@ function resetForm(item?: SlCommunityOutput) {
   isEdit.value = !!item
   form.id = item ? String(item.id) : ''
   form.name = item?.name || ''
-  form.type = item?.type || 1
+  form.type = item?.type || 2
   form.regionId = item?.regionId ? String(item.regionId) : ''
   form.address = item?.address || ''
   form.lng = item?.lng === null || item?.lng === undefined ? '' : String(item.lng)
@@ -439,6 +449,10 @@ async function loadFormImages(item: SlCommunityOutput) {
 }
 
 function openAdd() {
+  if (!canCreateSupply.value) {
+    uni.showToast({ title: '当前账号不能新增楼盘', icon: 'none' })
+    return
+  }
   resetForm()
   formVisible.value = true
 }
@@ -826,6 +840,10 @@ async function submitForm() {
 }
 
 function confirmDelete(item: SlCommunityOutput) {
+  if (!canDeleteSupply.value) {
+    uni.showToast({ title: '当前账号不能删除楼盘', icon: 'none' })
+    return
+  }
   const buildingCount = Math.max(0, Number(item.buildingCount) || 0)
   const propertyCount = Math.max(0, Number(item.propertyCount) || 0)
   const hasDescendants = buildingCount > 0 || propertyCount > 0
@@ -950,7 +968,7 @@ onReachBottom(() => loadData())
               <wd-button size="small" type="primary" plain @click="openEdit(item)">
                 编辑
               </wd-button>
-              <wd-button size="small" type="danger" plain @click="confirmDelete(item)">
+              <wd-button v-if="canDeleteSupply" size="small" type="danger" plain @click="confirmDelete(item)">
                 删除
               </wd-button>
             </view>
@@ -966,7 +984,7 @@ onReachBottom(() => loadData())
       已经到底了
     </view>
 
-    <view class="fab" @tap="openAdd">
+    <view v-if="canCreateSupply" class="fab" @tap="openAdd">
       <wd-icon name="add" size="26px" color="#fff" />
     </view>
 
@@ -993,6 +1011,9 @@ onReachBottom(() => loadData())
               </view>
               <view :class="{ active: form.type === 2 }" @tap="form.type = 2">
                 公寓
+              </view>
+              <view :class="{ active: form.type === 3 }" @tap="form.type = 3">
+                小产权
               </view>
             </view>
           </view>

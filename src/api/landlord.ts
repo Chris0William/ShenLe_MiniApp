@@ -1,13 +1,21 @@
 import type {
   BatchAssignOwnerInput,
   BatchAssignOwnerOutput,
+  BatchAssignSlLandlordCommunitiesInput,
   CommunityAssignmentOutput,
-  PagedList,
   PageCommunityAssignmentInput,
+  PagedList,
+  PageSlLandlordCandidateInput,
+  PageSlLandlordCommunityAssignmentInput,
   PageSlLandlordInput,
+  PageSlLandlordProfileInput,
+  SetSlLandlordMaintainersInput,
   ShenLeId,
   SlLandlordApplyOutput,
+  SlLandlordCandidateOutput,
+  SlLandlordCommunityAssignmentOutput,
   SlLandlordOutput,
+  SlLandlordProfileOutput,
 } from '@/types/shenle'
 import { get, post } from './request'
 
@@ -49,4 +57,36 @@ export function approveLandlord(userId: ShenLeId) {
 
 export function rejectLandlord(userId: ShenLeId) {
   return post<void>('/api/slLandlord/rejectLandlord', { userId })
+}
+
+export function getLandlordProfilePage(input: PageSlLandlordProfileInput) {
+  return get<PagedList<SlLandlordProfileOutput>>('/api/slLandlordManage/page', input as unknown as Record<string, unknown>)
+}
+
+export function getLandlordCandidatePage(input: PageSlLandlordCandidateInput) {
+  return get<PagedList<SlLandlordCandidateOutput>>('/api/slLandlordManage/candidatePage', input as unknown as Record<string, unknown>)
+}
+
+export function setLandlordProfile(userId: ShenLeId, isLandlord: boolean) {
+  return post<void>('/api/slLandlordManage/setLandlord', { userId, isLandlord })
+}
+
+export function batchSetLandlordProfiles(userIds: ShenLeId[], isLandlord = true) {
+  return post<number>('/api/slLandlordManage/batchSetLandlord', { userIds, isLandlord })
+}
+
+export function setLandlordMaintainers(input: SetSlLandlordMaintainersInput) {
+  return post<void>('/api/slLandlordManage/setMaintainers', input as unknown as Record<string, unknown>)
+}
+
+export function setLandlordContactDisplay(landlordUserId: ShenLeId, contactDisplayMode: 1 | 2) {
+  return post<void>('/api/slLandlordManage/setContactDisplay', { landlordUserId, contactDisplayMode })
+}
+
+export function getLandlordCommunityAssignmentPage(input: PageSlLandlordCommunityAssignmentInput) {
+  return get<PagedList<SlLandlordCommunityAssignmentOutput>>('/api/slLandlordManage/communityAssignmentPage', input as unknown as Record<string, unknown>)
+}
+
+export function batchAssignLandlordCommunities(input: BatchAssignSlLandlordCommunitiesInput) {
+  return post<BatchAssignOwnerOutput>('/api/slLandlordManage/batchAssignCommunities', input as unknown as Record<string, unknown>)
 }

@@ -1,4 +1,4 @@
-import type { PageSlCommunityInput, PageSlPropertyInput, PropertyFilterState, ShenLeId, SlCommunityOutput } from '@/types/shenle'
+import type { PageSlCommunityInput, PageSlPropertyInput, PropertyFilterState, ShenLeId } from '@/types/shenle'
 import {
   AREA_SEGMENTS,
   BEDROOM_OPTIONS,
@@ -11,7 +11,12 @@ import {
 } from '@/constants/shenle'
 
 export function clonePropertyFilters(filters?: PropertyFilterState): PropertyFilterState {
-  return { ...(filters || {}) }
+  return {
+    ...(filters || {}),
+    communityTypes: filters?.communityTypes ? [...filters.communityTypes] : undefined,
+    realtimeModes: filters?.realtimeModes ? [...filters.realtimeModes] : undefined,
+    specialModes: filters?.specialModes ? [...filters.specialModes] : undefined,
+  }
 }
 
 export function countPropertyFilters(filters: PropertyFilterState) {
@@ -54,6 +59,14 @@ export function countCommunityFilters(filters: PropertyFilterState) {
   if (filters.onlyManagedByMe)
     count += 1
   if (filters.onlyUpdatedByMe)
+    count += 1
+  if (filters.communityTypes?.length)
+    count += 1
+  if (filters.realtimeModes?.length)
+    count += 1
+  if (filters.specialModes?.length)
+    count += 1
+  if (filters.onlyContactedByMe || filters.onlyMaintainedByMe)
     count += 1
   if (filters.sortBy === 'distance')
     count += 1
@@ -105,6 +118,11 @@ export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<Pa
     updaterUserId: filters.updaterUserId,
     onlyManagedByMe: filters.onlyManagedByMe,
     onlyUpdatedByMe: filters.onlyUpdatedByMe,
+    types: filters.communityTypes,
+    realtimeModes: filters.realtimeModes,
+    specialModes: filters.specialModes,
+    onlyContactedByMe: filters.onlyContactedByMe,
+    onlyMaintainedByMe: filters.onlyMaintainedByMe,
     sortBy: filters.sortBy || 'latest',
   }
 }
@@ -194,6 +212,22 @@ export function getCommunityFilterLabels(filters: PropertyFilterState, maps: {
     labels.push('仅看我管理')
   if (filters.onlyUpdatedByMe)
     labels.push('仅看我更新')
+  if (filters.communityTypes?.length) {
+    const typeMap: Record<number, string> = { 1: '小区', 2: '公寓', 3: '小产权' }
+    labels.push(filters.communityTypes.map(type => typeMap[type] || `类型${type}`).join('、'))
+  }
+  if (filters.realtimeModes?.length) {
+    const modeMap = { realtime: '实时更新', hot: '热门盘源' } as const
+    labels.push(filters.realtimeModes.map(mode => modeMap[mode]).join('、'))
+  }
+  if (filters.specialModes?.length) {
+    const modeMap = { monthlyPayment: '可押一付一', shortRent: '可短租', dailyRent: '可日租' } as const
+    labels.push(filters.specialModes.map(mode => modeMap[mode]).join('、'))
+  }
+  if (filters.onlyContactedByMe)
+    labels.push('仅看我对接')
+  if (filters.onlyMaintainedByMe)
+    labels.push('仅看我维护')
   if (filters.sortBy === 'distance')
     labels.push('距离最近优先')
   return labels

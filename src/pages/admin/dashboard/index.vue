@@ -28,6 +28,20 @@ const auth = useShenleAuthStore()
 const changeStore = useEntityChangeStore()
 const isLandlordView = computed(() => modeStore.mode === 'landlord')
 const sourceContactPromotionRef = ref<{ refresh: () => Promise<void> } | null>(null)
+const dashboardActions = computed(() => {
+  const actions = [
+    { label: '销控表', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index' },
+    { label: '楼盘管理', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index' },
+  ]
+  if (auth.isAdmin) {
+    actions.push(
+      { label: '区域管理', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index' },
+      { label: '标签管理', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index' },
+    )
+  }
+  return actions
+})
+
 function requireLogin() {
   if (auth.isLogin)
     return true
@@ -100,29 +114,11 @@ onPullDownRefresh(load)
     </view>
 
     <view class="actions sl-card">
-      <view class="action-item" @tap="go('/pages/admin/sales-control/index')">
-        <view class="action-icon action-icon--gold">
-          <wd-icon name="chart" size="25px" color="#b46d08" />
+      <view v-for="item in dashboardActions" :key="item.url" class="action-item" @tap="go(item.url)">
+        <view class="action-icon" :class="`action-icon--${item.tone}`">
+          <wd-icon :name="item.icon" size="25px" :color="item.tone === 'gold' ? '#b46d08' : '#126b4f'" />
         </view>
-        <text>销控表</text>
-      </view>
-      <view class="action-item" @tap="go('/pages/common/community-manage/index')">
-        <view class="action-icon action-icon--green">
-          <wd-icon name="home" size="25px" color="#126b4f" />
-        </view>
-        <text>楼盘管理</text>
-      </view>
-      <view class="action-item" @tap="go('/pages/common/region-manage/index')">
-        <view class="action-icon action-icon--gold">
-          <wd-icon name="location" size="25px" color="#b46d08" />
-        </view>
-        <text>区域管理</text>
-      </view>
-      <view class="action-item" @tap="go('/pages/common/tag-manage/index')">
-        <view class="action-icon action-icon--green">
-          <wd-icon name="discount" size="25px" color="#126b4f" />
-        </view>
-        <text>标签管理</text>
+        <text>{{ item.label }}</text>
       </view>
     </view>
 
@@ -157,7 +153,7 @@ onPullDownRefresh(load)
 
 .actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8rpx;
   margin-top: 24rpx;
   padding: 24rpx 10rpx;

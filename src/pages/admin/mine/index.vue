@@ -24,6 +24,7 @@ const nicknameVisible = ref(false)
 const nicknameDraft = ref('')
 const nicknameSaving = ref(false)
 const loginConsentRef = ref<{ open: (options?: Parameters<typeof requestLogin>[0]) => void } | null>(null)
+const landlordShareCodeRef = ref<{ open: () => Promise<void> } | null>(null)
 const sourceStats = computed(() => [
   { label: '楼盘', value: sourceContact.profile?.communityCount || 0 },
   { label: '楼栋', value: sourceContact.profile?.buildingCount || 0 },
@@ -35,15 +36,17 @@ const adminMenus = computed(() => {
   const base = [
     { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index', badge: 0 },
     { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index', badge: 0 },
-    { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index', badge: 0 },
-    { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 },
     { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index', badge: 0 },
   ]
-  // 盘源对接人管理与用户管理仅超级管理员(999)可见
-  if (auth.isSuperAdmin) {
-    base.push({ title: '盘源对接人管理', desc: '设置盘源对接人、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 })
-    base.push({ title: '用户管理', desc: '审批申请、设置用户角色', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index', badge: pendingCount.value })
+  if (auth.isAdmin) {
+    base.splice(2, 0, { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index', badge: 0 }, { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 })
   }
+  if (auth.user?.canManageSourceContacts)
+    base.push({ title: '盘源对接人管理', desc: '设置盘源对接人、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 })
+  if (auth.canManageLandlords)
+    base.push({ title: '房东端管理', desc: '房东、维护人、联系电话与楼盘归属', icon: 'usergroup', tone: 'green', url: '/pages/admin/landlord-profile-manage/index', badge: 0 })
+  if (auth.user?.canManageUsers)
+    base.push({ title: '用户管理', desc: '审批申请、设置用户角色', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index', badge: pendingCount.value })
   return base
 })
 
@@ -103,17 +106,17 @@ onShow(() => {
   uni.setNavigationBarTitle({ title: '我的' })
   if (isLandlordView.value)
     void sourceContact.load()
-  if (isAdminView.value && auth.isSuperAdmin)
+  if (isAdminView.value && auth.user?.canManageUsers)
     getPendingUsers().then((list) => { pendingCount.value = list.length }).catch(() => {})
 })
 
 function toLandlord() {
   if (!auth.isLogin) {
-    requestLogin({ reason: '登录账号后可切换盘源对接人端', redirect: '/pages/user/map/index' })
+    requestLogin({ reason: '登录账号后可切换房东端', redirect: '/pages/user/map/index' })
     return
   }
-  if (!auth.isLandlord) {
-    uni.showToast({ title: '仅盘源对接人可使用盘源对接人端', icon: 'none' })
+  if (!auth.canEnterLandlordPortal) {
+    uni.showToast({ title: '当前账号未开通房东端', icon: 'none' })
     return
   }
   modeStore.setMode('landlord')
@@ -121,14 +124,14 @@ function toLandlord() {
   uni.reLaunch({ url: '/pages/user/map/index' })
 }
 
-// 切到管理端：未登录先授权；已登录且 888 才进
+// 管理员与房东维护人可进入管理端，具体数据范围由后端统一控制。
 function toAdmin() {
   if (!auth.isLogin) {
     requestLogin({ reason: '登录管理员账号后可切换管理端', redirect: '/pages/user/map/index' })
     return
   }
-  if (!auth.isAdmin) {
-    uni.showToast({ title: '仅管理员可使用管理端', icon: 'none' })
+  if (!auth.canEnterAdmin) {
+    uni.showToast({ title: '当前账号未开通管理端', icon: 'none' })
     return
   }
   modeStore.setMode('admin')
@@ -156,10 +159,13 @@ async function signOut() {
       <view class="profile-info">
         <text class="name">{{ auth.isLogin ? auth.displayName : '未登录' }}</text>
         <text class="meta">
-          {{ isAdminView ? '管理端' : isLandlordView ? '盘源对接人端' : '用户端' }} ·
-          {{ auth.isLogin ? (auth.isSuperAdmin ? '超级管理员' : auth.isAdmin ? '管理人员' : '业务员') : '登录后可进入管理端' }}
+          {{ isAdminView ? '管理端' : isLandlordView ? '房东端' : '业务员端' }} ·
+          {{ auth.isLogin ? (auth.isSuperAdmin ? '超级管理员' : auth.isAdmin ? '管理人员' : auth.isMaintainer ? '房东维护人' : auth.isLandlord ? '房东' : '业务员') : '登录后可使用完整服务' }}
         </text>
         <text v-if="auth.isLogin" class="nickname-edit" @tap="openNicknameEditor">修改昵称</text>
+      </view>
+      <view v-if="isLandlordView && auth.user?.isLandlord" class="share-code-trigger" role="button" aria-label="打开楼盘分享二维码" @tap.stop="landlordShareCodeRef?.open()">
+        <view class="i-carbon-qr-code share-code-icon" />
       </view>
     </view>
 
@@ -188,14 +194,14 @@ async function signOut() {
       <view class="switch-card sl-card" @tap="toUser">
         <view class="switch-card__main">
           <wd-icon name="swap" size="22px" color="#126b4f" />
-          <text>切换到用户端</text>
+          <text>切换到业务员端</text>
         </view>
         <wd-icon name="arrow-right" size="18px" color="#8ea099" />
       </view>
-      <view v-if="auth.isLandlord" class="switch-card sl-card" @tap="toLandlord">
+      <view v-if="auth.canEnterLandlordPortal" class="switch-card sl-card" @tap="toLandlord">
         <view class="switch-card__main">
           <wd-icon name="home" size="22px" color="#126b4f" />
-          <text>切换到盘源对接人端</text>
+          <text>切换到房东端</text>
         </view>
         <wd-icon name="arrow-right" size="18px" color="#8ea099" />
       </view>
@@ -203,8 +209,8 @@ async function signOut() {
 
     <!-- 用户模式视图 -->
     <template v-else-if="modeStore.mode === 'user'">
-      <view v-if="auth.isAdmin || auth.isLandlord" class="menu sl-card user-menu">
-        <view v-if="auth.isAdmin" class="menu-row" @tap="toAdmin">
+      <view v-if="auth.canEnterAdmin || auth.canEnterLandlordPortal" class="menu sl-card user-menu">
+        <view v-if="auth.canEnterAdmin" class="menu-row" @tap="toAdmin">
           <view class="menu-row__left">
             <view class="menu-icon menu-icon--green">
               <wd-icon name="setting" size="21px" color="#126b4f" />
@@ -213,23 +219,23 @@ async function signOut() {
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
-        <view v-if="auth.isLandlord" class="menu-row" @tap="toLandlord">
+        <view v-if="auth.canEnterLandlordPortal" class="menu-row" @tap="toLandlord">
           <view class="menu-row__left">
             <view class="menu-icon menu-icon--green">
               <wd-icon name="home" size="21px" color="#126b4f" />
             </view>
-            <text>切换到盘源对接人端</text>
+            <text>切换到房东端</text>
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
       </view>
 
-      <view v-if="!auth.isAdmin && !auth.isLandlord" class="hint">
+      <view v-if="!auth.canEnterAdmin && !auth.canEnterLandlordPortal" class="hint">
         {{ auth.isLogin ? '管理员可在此切换到管理端' : '点击上方头像卡片登录或申请使用' }}
       </view>
     </template>
 
-    <!-- 盘源对接人模式视图 -->
+    <!-- 房东模式视图 -->
     <template v-else>
       <view class="source-stats sl-card">
         <view v-for="item in sourceStats" :key="item.label" class="source-stat">
@@ -239,7 +245,7 @@ async function signOut() {
       </view>
 
       <view class="sl-section-head source-section-head">
-        <text class="sl-section-title">系统维护人</text>
+        <text class="sl-section-title">主维护人</text>
       </view>
       <view class="support-card sl-card" @tap="callSupport">
         <view class="menu-icon menu-icon--green">
@@ -247,7 +253,7 @@ async function signOut() {
         </view>
         <view class="support-card__main">
           <text class="support-card__name">{{ sourceContact.profile?.supportUserName || '暂未分配' }}</text>
-          <text class="support-card__desc">协助维护房态、资料及处理系统问题</text>
+          <text class="support-card__desc">协助维护楼盘信息、资料及处理系统问题</text>
           <text v-if="sourceContact.profile?.supportUserPhone" class="support-card__phone">{{ sourceContact.profile.supportUserPhone }}</text>
         </view>
         <wd-icon v-if="sourceContact.profile?.supportUserPhone" name="phone" size="20px" color="#126b4f" />
@@ -259,11 +265,11 @@ async function signOut() {
             <view class="menu-icon menu-icon--green">
               <wd-icon name="view" size="21px" color="#126b4f" />
             </view>
-            <text>切换到用户端</text>
+            <text>切换到业务员端</text>
           </view>
           <wd-icon name="arrow-right" size="18px" color="#8ea099" />
         </view>
-        <view v-if="auth.isAdmin" class="menu-row" @tap="toAdmin">
+        <view v-if="auth.canEnterAdmin" class="menu-row" @tap="toAdmin">
           <view class="menu-row__left">
             <view class="menu-icon menu-icon--green">
               <wd-icon name="setting" size="21px" color="#126b4f" />
@@ -294,6 +300,7 @@ async function signOut() {
       退出登录
     </wd-button>
     <sl-login-consent ref="loginConsentRef" />
+    <sl-landlord-share-code ref="landlordShareCodeRef" />
   </view>
 </template>
 
@@ -323,6 +330,24 @@ async function signOut() {
   color: #126b4f;
   font-size: 23rpx;
   font-weight: 800;
+}
+
+.share-code-trigger {
+  display: flex;
+  width: 62rpx;
+  height: 62rpx;
+  flex: 0 0 62rpx;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid rgb(18 107 79 / 16%);
+  border-radius: 999rpx;
+  background: #edf7ef;
+}
+
+.share-code-icon {
+  width: 22px;
+  height: 22px;
+  color: #126b4f;
 }
 
 .avatar {

@@ -14,15 +14,16 @@ const manifest = { }
 const pages = {
   pages: [
     {
-      path: 'pages/index/index',
+      path: 'pages/user/map/index',
       type: 'home',
       style: {
         navigationStyle: 'custom',
-        navigationBarTitleText: '首页',
+        navigationBarTitleText: '地图',
+        disableScroll: true,
       },
     },
     {
-      path: 'pages/me/me',
+      path: 'pages/admin/mine/index',
       type: 'page',
       style: {
         navigationBarTitleText: '我的',

@@ -20,12 +20,16 @@ import {
   saveCommunityOperationConfig,
   savePropertyOperationConfig,
 } from '@/api/source-contact-portal'
+import SlCommissionSettings from '@/components/sl-commission-settings/sl-commission-settings.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useSourceContactStore } from '@/store/source-contact'
+import { COMMISSION_PERCENT_MAX, formatCommissionRange, normalizeCommissionPercent } from '@/utils/commission'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
 
 type Screen = 'communities' | 'buildings' | 'rooms' | 'property-action' | 'community-config' | 'property-config' | 'batch-commission'
+
+const COMMUNITY_RENDER_BATCH = 20
 
 interface RoomRow extends SlPropertyListOutput {
   operation?: SlPropertyOperationConfigOutput
@@ -34,10 +38,13 @@ interface RoomRow extends SlPropertyListOutput {
 interface OperationDraft {
   managementFee: string
   networkFee: string
+  networkFeeMode: 1 | 2 | null
   waterFee: string
   electricityFee: string
   commissionMode: SlCommissionMode | null
   commissionValue: string
+  managementPackageMode: 1 | 2 | null
+  networkPackageMode: 1 | 2 | 3 | 4 | null
   remark: string
 }
 
@@ -54,25 +61,25 @@ const loading = ref(false)
 const saving = ref(false)
 const selecting = ref(false)
 const selectedRoomIds = ref<ShenLeId[]>([])
+const communityPage = ref(1)
+const communityScrollTop = ref(0)
+const communityConfigReturnScreen = ref<'communities' | 'buildings'>('communities')
 const draft = reactive<OperationDraft>({
   managementFee: '',
   networkFee: '',
+  networkFeeMode: null,
   waterFee: '',
   electricityFee: '',
   commissionMode: null,
   commissionValue: '',
+  managementPackageMode: null,
+  networkPackageMode: null,
   remark: '',
 })
 
-const commissionModes: Array<{ value: SlCommissionMode, label: string, unit: string }> = [
-  { value: 1, label: '固定金额', unit: '元' },
-  { value: 2, label: '租金比例', unit: '%' },
-  { value: 3, label: '月租倍数', unit: '倍' },
-]
-
 const title = computed(() => {
   if (screen.value === 'communities')
-    return '房态管理'
+    return '楼盘信息'
   if (screen.value === 'buildings' || screen.value === 'community-config')
     return selectedCommunity.value?.name || '楼栋'
   if (screen.value === 'rooms' || screen.value === 'batch-commission')
@@ -82,7 +89,7 @@ const title = computed(() => {
 
 const subtitle = computed(() => {
   if (screen.value === 'communities')
-    return '按楼盘、楼栋逐层查看实时房态'
+    return ''
   if (screen.value === 'buildings')
     return `${selectedCommunity.value?.propertyCount || 0} 套房源`
   if (screen.value === 'rooms')
@@ -92,7 +99,7 @@ const subtitle = computed(() => {
   if (screen.value === 'property-config')
     return '留空则继承楼盘默认值'
   if (screen.value === 'batch-commission')
-    return `统一设置 ${selectedRoomIds.value.length} 套房源佣金`
+    return `统一设置 ${selectedRoomIds.value.length} 套房源经营参数`
   return selectedCommunity.value?.name || ''
 })
 
@@ -114,7 +121,30 @@ const floorGroups = computed(() => {
 })
 
 const selectedAll = computed(() => rooms.value.length > 0 && selectedRoomIds.value.length === rooms.value.length)
-const commissionUnit = computed(() => commissionModes.find(item => item.value === draft.commissionMode)?.unit || '')
+const propertyCommissionRange = ref<number[]>([0, 0])
+const batchCommissionRange = ref<number[]>([0, 0])
+const batchHalfYearEnabled = ref(false)
+const batchOneYearEnabled = ref(false)
+const batchManagementEnabled = ref(false)
+const batchNetworkEnabled = ref(false)
+const batchManagementMode = ref<1 | 2 | null>(null)
+const batchNetworkMode = ref<1 | 2 | 3 | 4 | null>(null)
+const batchHasChanges = computed(() => batchHalfYearEnabled.value || batchOneYearEnabled.value || batchManagementEnabled.value || batchNetworkEnabled.value)
+const communityPageCount = computed(() => Math.max(1, Math.ceil(sourceContact.communities.length / COMMUNITY_RENDER_BATCH)))
+const visibleCommunities = computed(() => {
+  const start = (communityPage.value - 1) * COMMUNITY_RENDER_BATCH
+  return sourceContact.communities.slice(start, start + COMMUNITY_RENDER_BATCH)
+})
+
+async function changeCommunityPage(nextPage: number) {
+  const normalizedPage = Math.min(Math.max(1, nextPage), communityPageCount.value)
+  if (normalizedPage === communityPage.value)
+    return
+  communityPage.value = normalizedPage
+  communityScrollTop.value = 1
+  await nextTick()
+  communityScrollTop.value = 0
+}
 
 function moneyRange(item: SlSourceContactCommunityOutput) {
   const min = Number(item.minRentPrice || 0)
@@ -126,6 +156,44 @@ function moneyRange(item: SlSourceContactCommunityOutput) {
   return '租金待完善'
 }
 
+function moneyText(value?: number | null, unit = '元') {
+  return value === null || value === undefined ? '未设置' : `${value}${unit}`
+}
+
+function percentText(value?: number | null) {
+  return value === null || value === undefined ? '未设置' : `${value}%`
+}
+
+function networkFeeText(item: SlSourceContactCommunityOutput) {
+  if (item.networkFeeMode === 2)
+    return '自理'
+  return moneyText(item.networkFee, '元/月')
+}
+
+function callCommunityContact(item: SlSourceContactCommunityOutput) {
+  if (!item.contactPhone) {
+    uni.showToast({ title: '该楼盘未设置联系电话', icon: 'none' })
+    return
+  }
+  uni.makePhoneCall({ phoneNumber: item.contactPhone })
+}
+
+function navigateToCommunity(item: SlSourceContactCommunityOutput) {
+  const latitude = Number(item.lat)
+  const longitude = Number(item.lng)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || (latitude === 0 && longitude === 0)) {
+    uni.showToast({ title: '该楼盘未设置有效位置', icon: 'none' })
+    return
+  }
+  uni.openLocation({
+    latitude,
+    longitude,
+    name: item.name,
+    address: item.address || item.name,
+    scale: 16,
+  })
+}
+
 function statusClass(status: number) {
   return `room--status-${status}`
 }
@@ -134,14 +202,24 @@ function statusLabel(status: number) {
   return PROPERTY_STATUS_OPTIONS.find(item => item.value === status)?.label || '未知'
 }
 
-function commissionText(mode?: SlCommissionMode | null, value?: number | null) {
-  if (!mode || !value)
-    return '未设置'
-  if (mode === 1)
-    return `${value} 元`
-  if (mode === 2)
-    return `${value}% 租金`
-  return `${value} 倍月租`
+function managementPackageText(value?: number | null) {
+  if (value === 1)
+    return '可包'
+  if (value === 2)
+    return '不可包'
+  return '未设置'
+}
+
+function networkPackageText(value?: number | null) {
+  if (value === 1)
+    return '可包'
+  if (value === 2)
+    return '不可包'
+  if (value === 3)
+    return '自理'
+  if (value === 4)
+    return '必开'
+  return '未设置'
 }
 
 async function openCommunity(item: SlSourceContactCommunityOutput) {
@@ -152,12 +230,8 @@ async function openCommunity(item: SlSourceContactCommunityOutput) {
   screen.value = 'buildings'
   loading.value = true
   try {
-    const [nextBuildings, nextConfig] = await Promise.all([
-      getBuildingStats(item.id),
-      getCommunityOperationConfig(item.id),
-    ])
+    const nextBuildings = await getBuildingStats(item.id)
     buildings.value = nextBuildings
-    communityConfig.value = nextConfig
   }
   finally {
     loading.value = false
@@ -165,11 +239,12 @@ async function openCommunity(item: SlSourceContactCommunityOutput) {
 }
 
 async function openBuilding(item: SlBuildingStatsOutput) {
+  if (!selectedCommunity.value)
+    return
   selectedBuilding.value = item
-  screen.value = 'rooms'
-  selecting.value = false
-  selectedRoomIds.value = []
-  await loadRooms()
+  uni.navigateTo({
+    url: `/pages/common/community-properties/index?communityId=${idToQuery(selectedCommunity.value.id)}&communityName=${encodeURIComponent(selectedCommunity.value.name)}&buildingId=${idToQuery(item.id)}&buildingName=${encodeURIComponent(item.name)}&buildingTotalFloors=${encodeURIComponent(String(item.totalFloors ?? ''))}`,
+  })
 }
 
 async function loadRooms() {
@@ -229,7 +304,7 @@ async function changeStatus(status: number) {
       room.statusName = statusLabel(status)
     }
     sourceContact.invalidate()
-    uni.showToast({ title: '房态已更新', icon: 'success' })
+    uni.showToast({ title: '房源状态已更新', icon: 'success' })
   }
   finally {
     saving.value = false
@@ -239,16 +314,46 @@ async function changeStatus(status: number) {
 function resetDraft(config?: SlCommunityOperationConfigOutput | SlPropertyOperationConfigOutput | null) {
   draft.managementFee = config?.managementFee?.toString() || ''
   draft.networkFee = config?.networkFee?.toString() || ''
+  const networkFeeMode = 'networkFeeMode' in (config || {})
+    ? (config as SlCommunityOperationConfigOutput).networkFeeMode
+    : undefined
+  draft.networkFeeMode = networkFeeMode || (config?.networkFee !== null && config?.networkFee !== undefined ? 1 : null)
   draft.waterFee = config?.waterFee?.toString() || ''
   draft.electricityFee = config?.electricityFee?.toString() || ''
   draft.commissionMode = config?.commissionMode || null
   draft.commissionValue = config?.commissionValue?.toString() || ''
+  const propertyConfig = config && 'propertyId' in config ? config as SlPropertyOperationConfigOutput : null
+  const communityConfigValue = config && !propertyConfig ? config as SlCommunityOperationConfigOutput : null
+  propertyCommissionRange.value = [
+    normalizeCommissionPercent(propertyConfig?.effectiveHalfYearCommissionPercent ?? propertyConfig?.halfYearCommissionPercent ?? communityConfigValue?.halfYearCommissionPercent),
+    normalizeCommissionPercent(propertyConfig?.effectiveOneYearCommissionPercent ?? propertyConfig?.oneYearCommissionPercent ?? communityConfigValue?.oneYearCommissionPercent),
+  ]
+  draft.managementPackageMode = propertyConfig?.effectiveManagementPackageMode ?? propertyConfig?.managementPackageMode ?? communityConfigValue?.managementPackageMode ?? null
+  draft.networkPackageMode = propertyConfig?.effectiveNetworkPackageMode ?? propertyConfig?.networkPackageMode ?? communityConfigValue?.networkPackageMode ?? null
   draft.remark = 'remark' in (config || {}) ? (config as SlCommunityOperationConfigOutput).remark || '' : ''
 }
 
-function openCommunityConfig() {
-  resetDraft(communityConfig.value)
-  screen.value = 'community-config'
+async function openCommunityConfig(item?: SlSourceContactCommunityOutput) {
+  const target = item || selectedCommunity.value
+  if (!target)
+    return
+  selectedCommunity.value = target
+  sourceContact.selectCommunity(target.id)
+  selectedBuilding.value = null
+  communityConfigReturnScreen.value = item ? 'communities' : 'buildings'
+  loading.value = true
+  try {
+    communityConfig.value = await getCommunityOperationConfig(target.id)
+    resetDraft(communityConfig.value)
+    screen.value = 'community-config'
+  }
+  catch (error) {
+    screen.value = communityConfigReturnScreen.value
+    uni.showToast({ title: error instanceof Error ? error.message : '楼盘费用加载失败', icon: 'none' })
+  }
+  finally {
+    loading.value = false
+  }
 }
 
 function openPropertyConfig() {
@@ -262,6 +367,13 @@ function openBatchCommission() {
     return
   }
   resetDraft(null)
+  batchCommissionRange.value = [0, 0]
+  batchHalfYearEnabled.value = false
+  batchOneYearEnabled.value = false
+  batchManagementEnabled.value = false
+  batchNetworkEnabled.value = false
+  batchManagementMode.value = null
+  batchNetworkMode.value = null
   screen.value = 'batch-commission'
 }
 
@@ -279,31 +391,62 @@ function buildOperationInput() {
   const commissionValue = optionalNumber(draft.commissionValue, '佣金')
   if ((draft.commissionMode && !commissionValue) || (!draft.commissionMode && commissionValue !== null))
     throw new Error('请完整填写佣金方式和数值')
-  return {
+  const networkFee = screen.value === 'community-config' && draft.networkFeeMode === 2
+    ? null
+    : optionalNumber(draft.networkFee, '网络费')
+  const input = {
     managementFee: optionalNumber(draft.managementFee, '管理费'),
-    networkFee: optionalNumber(draft.networkFee, '网络费'),
+    networkFee,
     waterFee: optionalNumber(draft.waterFee, '水费'),
     electricityFee: optionalNumber(draft.electricityFee, '电费'),
     commissionMode: draft.commissionMode,
     commissionValue,
   }
+  const commissionFields = {
+    halfYearCommissionPercent: boundedPercent(propertyCommissionRange.value[0], '半年佣金'),
+    oneYearCommissionPercent: boundedPercent(propertyCommissionRange.value[1], '一年佣金'),
+    managementPackageMode: draft.managementPackageMode,
+    networkPackageMode: draft.networkPackageMode,
+  }
+  if (screen.value === 'property-config') {
+    return {
+      ...input,
+      ...commissionFields,
+    }
+  }
+  return { ...input, ...commissionFields, networkFeeMode: draft.networkFeeMode }
+}
+
+function confirmCommunitySync(): Promise<boolean> {
+  return new Promise((resolve) => {
+    uni.showModal({
+      title: '同步房源经营参数',
+      content: '是否将管理情况、网络情况和佣金同步到该楼盘的全部房源？',
+      confirmText: '同步',
+      cancelText: '仅保存楼盘',
+      success: result => resolve(result.confirm),
+      fail: () => resolve(false),
+    })
+  })
 }
 
 async function saveCommunityConfig() {
   if (!selectedCommunity.value || saving.value)
     return
+  saving.value = true
   try {
     const values = buildOperationInput()
-    saving.value = true
     const input: SaveSlCommunityOperationConfigInput = {
       communityId: selectedCommunity.value.id,
       ...values,
+      applyToProperties: await confirmCommunitySync(),
       remark: draft.remark.trim() || null,
     }
     await saveCommunityOperationConfig(input)
     communityConfig.value = await getCommunityOperationConfig(selectedCommunity.value.id)
     sourceContact.invalidate()
-    screen.value = 'buildings'
+    await sourceContact.load(true)
+    screen.value = communityConfigReturnScreen.value
     uni.showToast({ title: '楼盘经营设置已保存', icon: 'success' })
   }
   catch (error) {
@@ -340,21 +483,37 @@ async function saveBatchCommission() {
   if (!selectedRoomIds.value.length || saving.value)
     return
   try {
-    const commissionValue = optionalNumber(draft.commissionValue, '佣金')
-    if (!draft.commissionMode || !commissionValue)
-      throw new Error('请选择佣金方式并填写大于 0 的数值')
+    if (!batchHasChanges.value)
+      throw new Error('请至少启用一项经营参数')
+    if (batchManagementEnabled.value && batchManagementMode.value === null)
+      throw new Error('请选择管理情况')
+    if (batchNetworkEnabled.value && batchNetworkMode.value === null)
+      throw new Error('请选择网络情况')
     saving.value = true
-    await batchSavePropertyCommission({
+    const input: {
+      propertyIds: ShenLeId[]
+      halfYearCommissionPercent?: number
+      oneYearCommissionPercent?: number
+      managementPackageMode?: 1 | 2
+      networkPackageMode?: 1 | 2 | 3 | 4
+    } = {
       propertyIds: selectedRoomIds.value,
-      commissionMode: draft.commissionMode,
-      commissionValue,
-    })
+    }
+    if (batchHalfYearEnabled.value)
+      input.halfYearCommissionPercent = boundedPercent(batchCommissionRange.value[0], '半年佣金')
+    if (batchOneYearEnabled.value)
+      input.oneYearCommissionPercent = boundedPercent(batchCommissionRange.value[1], '一年佣金')
+    if (batchManagementEnabled.value)
+      input.managementPackageMode = batchManagementMode.value!
+    if (batchNetworkEnabled.value)
+      input.networkPackageMode = batchNetworkMode.value!
+    await batchSavePropertyCommission(input)
     await loadRooms()
     sourceContact.invalidate()
     selecting.value = false
     selectedRoomIds.value = []
     screen.value = 'rooms'
-    uni.showToast({ title: '批量佣金已保存', icon: 'success' })
+    uni.showToast({ title: '批量经营参数已保存', icon: 'success' })
   }
   catch (error) {
     uni.showToast({ title: error instanceof Error ? error.message : '保存失败', icon: 'none' })
@@ -362,6 +521,13 @@ async function saveBatchCommission() {
   finally {
     saving.value = false
   }
+}
+
+function boundedPercent(value: unknown, label: string) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || number > COMMISSION_PERCENT_MAX)
+    throw new Error(`${label}必须在0到${COMMISSION_PERCENT_MAX}之间`)
+  return number
 }
 
 function goDetail() {
@@ -390,7 +556,7 @@ function goBack() {
     return
   }
   if (screen.value === 'community-config') {
-    screen.value = 'buildings'
+    screen.value = communityConfigReturnScreen.value
     return
   }
   if (screen.value === 'batch-commission') {
@@ -408,12 +574,16 @@ function goBack() {
 }
 
 async function refresh() {
-  if (screen.value === 'communities')
+  if (screen.value === 'communities') {
+    communityPage.value = 1
     await sourceContact.load(true)
-  else if (screen.value === 'buildings' && selectedCommunity.value)
+  }
+  else if (screen.value === 'buildings' && selectedCommunity.value) {
     await openCommunity(selectedCommunity.value)
-  else if (selectedBuilding.value)
+  }
+  else if (selectedBuilding.value) {
     await loadRooms()
+  }
   uni.stopPullDownRefresh()
 }
 
@@ -443,7 +613,7 @@ defineExpose({ refresh, activate })
     <sl-source-contact-header :title="title" :subtitle="subtitle" :back="screen !== 'communities'" @back="goBack" />
 
     <view v-if="screen === 'communities'" class="content-area">
-      <scroll-view scroll-y class="content-scroll">
+      <scroll-view :scroll-top="communityScrollTop" scroll-y class="content-scroll" @scrolltolower="changeCommunityPage(communityPage + 1)">
         <view v-if="sourceContact.loading && !sourceContact.communities.length" class="empty-state">
           <wd-loading color="#126b4f" />
           <text>正在加载盘源</text>
@@ -453,7 +623,7 @@ defineExpose({ refresh, activate })
           <text>暂未分配楼盘</text>
         </view>
         <view v-else class="community-list">
-          <view v-for="item in sourceContact.communities" :key="String(item.id)" class="community-row" @tap="openCommunity(item)">
+          <view v-for="item in visibleCommunities" :key="String(item.id)" class="community-row" @tap="openCommunity(item)">
             <view class="community-row__main">
               <view class="community-row__title-line">
                 <text class="community-row__name">{{ item.name }}</text>
@@ -465,23 +635,57 @@ defineExpose({ refresh, activate })
                 <text class="stat stat--rented">已租 {{ item.rentedCount }}</text>
                 <text v-if="item.promotedCount" class="stat stat--promotion">推广 {{ item.promotedCount }}</text>
               </view>
+              <view class="community-row__fees">
+                <view class="community-row__fee">
+                  <text>水费</text><text class="community-row__fee-value">{{ moneyText(item.waterFee, '元/吨') }}</text>
+                </view>
+                <view class="community-row__fee">
+                  <text>电费</text><text class="community-row__fee-value">{{ moneyText(item.electricityFee, '元/度') }}</text>
+                </view>
+                <view class="community-row__fee">
+                  <text>管理费</text><text class="community-row__fee-value">{{ moneyText(item.managementFee, '元/月') }}</text>
+                </view>
+                <view class="community-row__fee">
+                  <text>网络费</text><text class="community-row__fee-value">{{ networkFeeText(item) }}</text>
+                </view>
+                <view class="community-row__fee community-row__fee--wide">
+                  <text>佣金条件</text>
+                  <text class="community-row__fee-value community-row__fee-value--commission">
+                    半年 {{ formatCommissionRange(item.lowestHalfYearCommissionPercent, item.highestHalfYearCommissionPercent) }} · 一年 {{ formatCommissionRange(item.lowestOneYearCommissionPercent, item.highestOneYearCommissionPercent) }}
+                  </text>
+                </view>
+              </view>
+              <view class="community-row__foot" @tap.stop>
+                <view v-if="item.contactName || item.contactPhone" class="community-row__contact" @tap="callCommunityContact(item)">
+                  <wd-icon name="call" size="15px" color="#126b4f" />
+                  <text>{{ item.contactName || '联系人' }}</text>
+                  <text v-if="item.contactPhone">{{ item.contactPhone }}</text>
+                </view>
+                <view class="community-row__nav" @tap="navigateToCommunity(item)">
+                  <wd-icon name="location" size="16px" color="#126b4f" />
+                  <text>导航</text>
+                </view>
+                <wd-button size="small" plain icon="setting" @click.stop="openCommunityConfig(item)">
+                  设置费用
+                </wd-button>
+              </view>
             </view>
             <wd-icon name="arrow-right" size="19px" color="#8fa098" />
+          </view>
+          <view class="community-pager">
+            <view class="community-pager__action" :class="{ 'community-pager__action--disabled': communityPage <= 1 }" @tap="changeCommunityPage(communityPage - 1)">
+              上一页
+            </view>
+            <text>{{ communityPage }} / {{ communityPageCount }}</text>
+            <view class="community-pager__action" :class="{ 'community-pager__action--disabled': communityPage >= communityPageCount }" @tap="changeCommunityPage(communityPage + 1)">
+              下一页
+            </view>
           </view>
         </view>
       </scroll-view>
     </view>
 
     <view v-else-if="screen === 'buildings'" class="content-area">
-      <view class="context-toolbar">
-        <view>
-          <text class="context-toolbar__label">楼盘经营默认值</text>
-          <text class="context-toolbar__value">佣金 {{ commissionText(communityConfig?.commissionMode, communityConfig?.commissionValue) }}</text>
-        </view>
-        <wd-button size="small" plain @click="openCommunityConfig">
-          费用与佣金
-        </wd-button>
-      </view>
       <scroll-view scroll-y class="content-scroll">
         <view v-if="loading" class="empty-state">
           <wd-loading color="#126b4f" />
@@ -520,13 +724,13 @@ defineExpose({ refresh, activate })
         </view>
         <text v-else class="room-toolbar__summary">点击房间可修改状态和经营参数</text>
         <wd-button size="small" :plain="!selecting" @click="toggleSelectMode">
-          {{ selecting ? '取消选择' : '批量佣金' }}
+          {{ selecting ? '取消选择' : '批量经营参数' }}
         </wd-button>
       </view>
       <scroll-view scroll-y class="content-scroll">
         <view v-if="loading" class="empty-state">
           <wd-loading color="#126b4f" />
-          <text>正在加载房态</text>
+          <text>正在加载楼盘信息</text>
         </view>
         <view v-else-if="!rooms.length" class="empty-state">
           <wd-icon name="view-module" size="34px" color="#8fa098" />
@@ -559,7 +763,7 @@ defineExpose({ refresh, activate })
       <view v-if="selecting" class="selection-footer">
         <text>已选择 {{ selectedRoomIds.length }} 套</text>
         <wd-button type="primary" size="small" :disabled="!selectedRoomIds.length" @click="openBatchCommission">
-          设置佣金
+          设置经营参数
         </wd-button>
       </view>
     </view>
@@ -574,7 +778,7 @@ defineExpose({ refresh, activate })
       </view>
 
       <view class="section-title">
-        房态
+        房源状态
       </view>
       <view class="status-grid">
         <view
@@ -605,15 +809,24 @@ defineExpose({ refresh, activate })
         <view class="effective-item">
           <text class="effective-item__label">电费</text><text class="effective-item__value">{{ activeRoom.operation?.effectiveElectricityFee ?? '-' }} 元/度</text>
         </view>
-        <view class="effective-item effective-item--wide">
-          <text class="effective-item__label">标准佣金</text><text class="effective-item__value">{{ commissionText(activeRoom.operation?.effectiveCommissionMode, activeRoom.operation?.effectiveCommissionValue) }}</text>
+        <view class="effective-item">
+          <text class="effective-item__label">半年佣金</text><text class="effective-item__value">{{ percentText(activeRoom.operation?.effectiveHalfYearCommissionPercent ?? activeRoom.operation?.halfYearCommissionPercent) }}</text>
+        </view>
+        <view class="effective-item">
+          <text class="effective-item__label">一年佣金</text><text class="effective-item__value">{{ percentText(activeRoom.operation?.effectiveOneYearCommissionPercent ?? activeRoom.operation?.oneYearCommissionPercent) }}</text>
+        </view>
+        <view class="effective-item">
+          <text class="effective-item__label">管理情况</text><text class="effective-item__value">{{ managementPackageText(activeRoom.operation?.effectiveManagementPackageMode ?? activeRoom.operation?.managementPackageMode) }}</text>
+        </view>
+        <view class="effective-item">
+          <text class="effective-item__label">网络情况</text><text class="effective-item__value">{{ networkPackageText(activeRoom.operation?.effectiveNetworkPackageMode ?? activeRoom.operation?.networkPackageMode) }}</text>
         </view>
       </view>
 
       <view class="action-list">
         <view class="action-row" @tap="openPropertyConfig">
           <wd-icon name="setting" size="20px" color="#126b4f" />
-          <text>设置本套费用与佣金</text>
+          <text>设置本套经营参数</text>
           <wd-icon name="arrow-right" size="18px" color="#8fa098" />
         </view>
         <view class="action-row" @tap="goEdit">
@@ -633,26 +846,99 @@ defineExpose({ refresh, activate })
       <scroll-view scroll-y class="editor-scroll">
         <view class="form-section">
           <text class="form-section__title">费用设置</text>
-          <text class="form-section__hint">{{ screen === 'property-config' ? '单套留空时继承楼盘默认值' : '作为名下房源的默认经营费用' }}</text>
+          <text class="form-section__hint">{{ screen === 'property-config' ? '费用留空时继承楼盘默认值' : '作为名下房源的默认经营费用' }}</text>
           <view class="field-grid">
             <label class="field"><text>管理费</text><view class="field__input"><input v-model="draft.managementFee" class="field__control" type="digit" placeholder="未设置"><text>元/月</text></view></label>
-            <label class="field"><text>网络费</text><view class="field__input"><input v-model="draft.networkFee" class="field__control" type="digit" placeholder="未设置"><text>元/月</text></view></label>
+            <view v-if="screen === 'community-config'" class="field field--network">
+              <text>网络费</text>
+              <view class="mode-grid mode-grid--two field__modes">
+                <view
+                  class="mode-option"
+                  :class="{ 'mode-option--active': draft.networkFeeMode === 1 }"
+                  @tap="draft.networkFeeMode = draft.networkFeeMode === 1 ? null : 1"
+                >
+                  固定金额
+                </view>
+                <view
+                  class="mode-option"
+                  :class="{ 'mode-option--active': draft.networkFeeMode === 2 }"
+                  @tap="draft.networkFeeMode = draft.networkFeeMode === 2 ? null : 2"
+                >
+                  自理
+                </view>
+              </view>
+              <view v-if="draft.networkFeeMode !== 2" class="field__input">
+                <input v-model="draft.networkFee" class="field__control" type="digit" placeholder="未设置">
+                <text>元/月</text>
+              </view>
+              <view v-else class="field__readonly">
+                租客自理
+              </view>
+            </view>
+            <label v-else class="field"><text>网络费</text><view class="field__input"><input v-model="draft.networkFee" class="field__control" type="digit" placeholder="未设置"><text>元/月</text></view></label>
             <label class="field"><text>水费</text><view class="field__input"><input v-model="draft.waterFee" class="field__control" type="digit" placeholder="未设置"><text>元/吨</text></view></label>
             <label class="field"><text>电费</text><view class="field__input"><input v-model="draft.electricityFee" class="field__control" type="digit" placeholder="未设置"><text>元/度</text></view></label>
           </view>
         </view>
 
         <view class="form-section">
-          <text class="form-section__title">标准佣金</text>
-          <view class="mode-grid">
-            <view v-for="item in commissionModes" :key="item.value" class="mode-option" :class="{ 'mode-option--active': draft.commissionMode === item.value }" @tap="draft.commissionMode = draft.commissionMode === item.value ? null : item.value">
-              {{ item.label }}
+          <text class="form-section__title">佣金设置</text>
+          <sl-commission-settings v-model="propertyCommissionRange" />
+        </view>
+
+        <view class="form-section">
+          <view class="setting-group">
+            <text class="form-section__title">管理情况</text>
+            <view class="mode-grid">
+              <view
+                class="mode-option"
+                :class="{ 'mode-option--active': draft.managementPackageMode === 1 }"
+                @tap="draft.managementPackageMode = draft.managementPackageMode === 1 ? null : 1"
+              >
+                可包
+              </view>
+              <view
+                class="mode-option"
+                :class="{ 'mode-option--active': draft.managementPackageMode === 2 }"
+                @tap="draft.managementPackageMode = draft.managementPackageMode === 2 ? null : 2"
+              >
+                不可包
+              </view>
             </view>
           </view>
-          <label class="field field--full">
-            <text>佣金数值</text>
-            <view class="field__input"><input v-model="draft.commissionValue" class="field__control" type="digit" placeholder="未设置"><text>{{ commissionUnit }}</text></view>
-          </label>
+          <view class="setting-group">
+            <text class="form-section__title">网络情况</text>
+            <view class="mode-grid mode-grid--four">
+              <view
+                class="mode-option"
+                :class="{ 'mode-option--active': draft.networkPackageMode === 1 }"
+                @tap="draft.networkPackageMode = draft.networkPackageMode === 1 ? null : 1"
+              >
+                可包
+              </view>
+              <view
+                class="mode-option"
+                :class="{ 'mode-option--active': draft.networkPackageMode === 2 }"
+                @tap="draft.networkPackageMode = draft.networkPackageMode === 2 ? null : 2"
+              >
+                不可包
+              </view>
+              <view
+                class="mode-option"
+                :class="{ 'mode-option--active': draft.networkPackageMode === 3 }"
+                @tap="draft.networkPackageMode = draft.networkPackageMode === 3 ? null : 3"
+              >
+                自理
+              </view>
+              <view
+                class="mode-option"
+                :class="{ 'mode-option--active': draft.networkPackageMode === 4 }"
+                @tap="draft.networkPackageMode = draft.networkPackageMode === 4 ? null : 4"
+              >
+                必开
+              </view>
+            </view>
+          </view>
         </view>
 
         <view v-if="screen === 'community-config'" class="form-section">
@@ -670,19 +956,74 @@ defineExpose({ refresh, activate })
     <view v-else-if="screen === 'batch-commission'" class="editor-page">
       <scroll-view scroll-y class="editor-scroll">
         <view class="batch-notice">
-          本次将覆盖已选择 {{ selectedRoomIds.length }} 套房源的标准佣金，不修改其他费用和房源资料。
+          本次将覆盖已选择 {{ selectedRoomIds.length }} 套房源中已启用的经营参数，不修改其他费用和房源资料。
         </view>
         <view class="form-section">
-          <text class="form-section__title">佣金方式</text>
-          <view class="mode-grid">
-            <view v-for="item in commissionModes" :key="item.value" class="mode-option" :class="{ 'mode-option--active': draft.commissionMode === item.value }" @tap="draft.commissionMode = item.value">
-              {{ item.label }}
+          <text class="form-section__title">佣金设置</text>
+          <sl-commission-settings
+            v-model="batchCommissionRange"
+            v-model:half-year-enabled="batchHalfYearEnabled"
+            v-model:one-year-enabled="batchOneYearEnabled"
+            :show-switch="true"
+          />
+        </view>
+        <view class="form-section">
+          <view class="batch-field-head">
+            <text class="form-section__title">管理情况</text>
+            <wd-switch v-model="batchManagementEnabled" size="22px" />
+          </view>
+          <view v-if="batchManagementEnabled" class="mode-grid">
+            <view
+              class="mode-option"
+              :class="{ 'mode-option--active': batchManagementMode === 1 }"
+              @tap="batchManagementMode = 1"
+            >
+              可包
+            </view>
+            <view
+              class="mode-option"
+              :class="{ 'mode-option--active': batchManagementMode === 2 }"
+              @tap="batchManagementMode = 2"
+            >
+              不可包
             </view>
           </view>
-          <label class="field field--full">
-            <text>佣金数值</text>
-            <view class="field__input"><input v-model="draft.commissionValue" type="digit" placeholder="请输入"><text>{{ commissionUnit }}</text></view>
-          </label>
+        </view>
+        <view class="form-section">
+          <view class="batch-field-head">
+            <text class="form-section__title">网络情况</text>
+            <wd-switch v-model="batchNetworkEnabled" size="22px" />
+          </view>
+          <view v-if="batchNetworkEnabled" class="mode-grid mode-grid--four">
+            <view
+              class="mode-option"
+              :class="{ 'mode-option--active': batchNetworkMode === 1 }"
+              @tap="batchNetworkMode = 1"
+            >
+              可包
+            </view>
+            <view
+              class="mode-option"
+              :class="{ 'mode-option--active': batchNetworkMode === 2 }"
+              @tap="batchNetworkMode = 2"
+            >
+              不可包
+            </view>
+            <view
+              class="mode-option"
+              :class="{ 'mode-option--active': batchNetworkMode === 3 }"
+              @tap="batchNetworkMode = 3"
+            >
+              自理
+            </view>
+            <view
+              class="mode-option"
+              :class="{ 'mode-option--active': batchNetworkMode === 4 }"
+              @tap="batchNetworkMode = 4"
+            >
+              必开
+            </view>
+          </view>
         </view>
       </scroll-view>
       <view class="editor-footer">
@@ -728,10 +1069,37 @@ defineExpose({ refresh, activate })
   padding: 16rpx 0 24rpx;
 }
 
+.community-pager {
+  display: flex;
+  min-height: 82rpx;
+  align-items: center;
+  justify-content: center;
+  color: #8a9791;
+  font-size: 21rpx;
+  gap: 22rpx;
+}
+
+.community-pager__action {
+  display: flex;
+  min-width: 112rpx;
+  min-height: 52rpx;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid #dce5df;
+  border-radius: 7rpx;
+  background: #fff;
+  color: #126b4f;
+  font-weight: 700;
+}
+
+.community-pager__action--disabled {
+  color: #a9b2ad;
+  background: #f4f6f4;
+}
+
 .community-row,
 .building-row,
 .action-row,
-.context-toolbar,
 .room-toolbar,
 .room-summary,
 .form-section,
@@ -797,8 +1165,94 @@ defineExpose({ refresh, activate })
 
 .community-row__stats {
   display: flex;
+  flex-wrap: wrap;
   margin-top: 13rpx;
   gap: 10rpx;
+}
+
+.community-row__fees {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10rpx;
+  margin-top: 16rpx;
+}
+
+.community-row__fee {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+  padding: 12rpx 14rpx;
+  border-radius: 7rpx;
+  background: #f3f7f1;
+  color: #65736c;
+  font-size: 21rpx;
+}
+
+.community-row__fee--wide {
+  grid-column: 1 / -1;
+}
+
+.community-row__fee-value {
+  min-width: 0;
+  overflow: hidden;
+  color: #26362f;
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-row__fee-value--commission {
+  flex: 1;
+  line-height: 1.45;
+  text-align: right;
+  white-space: normal;
+}
+
+.community-row__foot {
+  display: flex;
+  flex-wrap: wrap;
+  min-height: 56rpx;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  margin-top: 16rpx;
+  padding-top: 14rpx;
+  border-top: 1rpx solid #edf1ee;
+}
+
+.community-row__foot :deep(.wd-button) {
+  min-width: 132rpx;
+  margin: 0;
+}
+
+.community-row__contact,
+.community-row__nav {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7rpx;
+  color: #126b4f;
+  font-size: 22rpx;
+  font-weight: 760;
+}
+
+.community-row__contact {
+  overflow: hidden;
+  flex: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.community-row__nav {
+  min-width: 96rpx;
+  min-height: 48rpx;
+  flex: 0 0 auto;
+  justify-content: center;
+  border: 1rpx solid rgb(18 107 79 / 18%);
+  border-radius: 7rpx;
+  background: #f4f8f5;
 }
 
 .stat {
@@ -820,7 +1274,6 @@ defineExpose({ refresh, activate })
   background: #fff2d8;
 }
 
-.context-toolbar,
 .room-toolbar {
   display: flex;
   flex: none;
@@ -832,17 +1285,6 @@ defineExpose({ refresh, activate })
   gap: 16rpx;
 }
 
-.context-toolbar__label,
-.context-toolbar__value {
-  display: block;
-}
-
-.context-toolbar__label {
-  font-size: 23rpx;
-  font-weight: 700;
-}
-
-.context-toolbar__value,
 .room-toolbar__summary {
   margin-top: 4rpx;
   color: #72817b;
@@ -1113,6 +1555,42 @@ defineExpose({ refresh, activate })
   font-weight: 800;
 }
 
+.mode-grid--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mode-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field__modes {
+  margin-top: 8rpx;
+}
+
+.field__readonly {
+  display: flex;
+  height: 72rpx;
+  align-items: center;
+  margin-top: 8rpx;
+  padding: 0 14rpx;
+  border: 1rpx solid #dce5df;
+  border-radius: 7rpx;
+  background: #f1f5f2;
+  color: #66756e;
+  box-sizing: border-box;
+  font-size: 22rpx;
+}
+
+.setting-group {
+  margin-top: 22rpx;
+  padding-top: 18rpx;
+  border-top: 1rpx solid #edf1ee;
+}
+
+.setting-group + .setting-group {
+  margin-top: 26rpx;
+}
+
 .form-section__hint {
   margin-top: 6rpx;
   color: #7a8780;
@@ -1130,8 +1608,8 @@ defineExpose({ refresh, activate })
   font-size: 22rpx;
 }
 
-.field--full {
-  margin-top: 18rpx;
+.field--network {
+  grid-column: 1 / -1;
 }
 
 .field__input {

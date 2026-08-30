@@ -7,6 +7,7 @@ import { getCommunityDetail } from '@/api/community'
 import { downloadFile, uploadMediaFile } from '@/api/file'
 import { addProperty, getPropertyDetail, updateProperty } from '@/api/property'
 import { getTagList } from '@/api/tag'
+import SlCommissionSettings from '@/components/sl-commission-settings/sl-commission-settings.vue'
 import SlMediaSourceSheet from '@/components/sl-media-source-sheet/sl-media-source-sheet.vue'
 import SlSupplyContacts from '@/components/sl-supply-contacts/sl-supply-contacts.vue'
 import {
@@ -16,7 +17,10 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
+import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { modeStore } from '@/store/mode'
+import { normalizeCommissionPercent } from '@/utils/commission'
 import { isLocalMediaUrl, MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
 import { createMediaLongPressGuard, renameEditableMedia, showMediaEditActionSheet } from '@/utils/media-edit'
 import { resolvePropertyMediaSource, toOptionalNumber } from '@/utils/property-management'
@@ -120,7 +124,11 @@ const contextCommunityName = ref('')
 const contextBuildingName = ref('')
 const communityDetail = ref<SlCommunityOutput | null>(null)
 const changeStore = useEntityChangeStore()
+const auth = useShenleAuthStore()
 const mediaLongPressGuard = createMediaLongPressGuard()
+const commissionRange = ref<number[]>([0, 0])
+const managementPackageMode = ref<1 | 2 | null>(null)
+const networkPackageMode = ref<1 | 2 | 3 | 4 | null>(null)
 
 const form = reactive<FormState>({
   communityId: '',
@@ -594,6 +602,12 @@ function buildSubmitData(): AddSlPropertyInput {
       const media = form.media.find(item => idEquals(item.id, id))
       return { fileId: id, fileType: media?.fileType || media?.kind || 'image' }
     }),
+    operationConfig: {
+      halfYearCommissionPercent: Number(commissionRange.value[0] || 0),
+      oneYearCommissionPercent: Number(commissionRange.value[1] || 0),
+      managementPackageMode: managementPackageMode.value,
+      networkPackageMode: networkPackageMode.value,
+    },
   }
 }
 
@@ -655,6 +669,12 @@ async function fillDetail(detail: SlPropertyOutput) {
   form.status = detail.status ?? 0
   form.tagIds = detail.tags?.map(item => item.id) || []
   form.facilityIds = detail.facilities?.map(item => item.id) || []
+  commissionRange.value = [
+    normalizeCommissionPercent(detail.operationConfig?.effectiveHalfYearCommissionPercent ?? detail.operationConfig?.halfYearCommissionPercent),
+    normalizeCommissionPercent(detail.operationConfig?.effectiveOneYearCommissionPercent ?? detail.operationConfig?.oneYearCommissionPercent),
+  ]
+  managementPackageMode.value = detail.operationConfig?.effectiveManagementPackageMode ?? detail.operationConfig?.managementPackageMode ?? null
+  networkPackageMode.value = detail.operationConfig?.effectiveNetworkPackageMode ?? detail.operationConfig?.networkPackageMode ?? null
   form.media = await Promise.all((detail.images || []).map(async (image) => {
     const kind = mediaKind(image)
     if (kind === 'image') {
@@ -713,6 +733,13 @@ onLoad(async (query) => {
       return
     }
 
+    if (!auth.canCreateSupply || modeStore.mode !== 'admin') {
+      invalidEntry.value = true
+      uni.showToast({ title: '当前账号不能新增房源', icon: 'none' })
+      setTimeout(leaveInvalidEntry, 700)
+      return
+    }
+
     form.buildingId = String(query.buildingId)
     contextCommunityName.value = decodeURIComponent(String(query.communityName || '当前楼盘'))
     try {
@@ -765,7 +792,7 @@ onLoad(async (query) => {
             <text class="ownership-value">{{ contextTotalFloorsLabel }}</text>
           </view>
         </view>
-        <view v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)" class="ownership-contacts">
+        <view v-if="communityDetail" class="ownership-contacts">
           <sl-supply-contacts :community="communityDetail" />
         </view>
         <view class="form-item">
@@ -775,6 +802,40 @@ onLoad(async (query) => {
         <view class="form-item">
           <text class="form-label">房间号</text>
           <input v-model="form.roomNo" class="form-input" placeholder="如 605 / A302">
+        </view>
+      </view>
+
+      <view class="form-card sl-card">
+        <text class="form-card__title">经营设置</text>
+        <sl-commission-settings v-model="commissionRange" />
+
+        <view class="form-item">
+          <text class="form-label">管理情况</text>
+          <view class="option-segment">
+            <view :class="{ active: managementPackageMode === 1 }" @tap="managementPackageMode = 1">
+              可包
+            </view>
+            <view :class="{ active: managementPackageMode === 2 }" @tap="managementPackageMode = 2">
+              不可包
+            </view>
+          </view>
+        </view>
+        <view class="form-item">
+          <text class="form-label">网络情况</text>
+          <view class="option-segment option-segment--four">
+            <view :class="{ active: networkPackageMode === 1 }" @tap="networkPackageMode = 1">
+              可包
+            </view>
+            <view :class="{ active: networkPackageMode === 2 }" @tap="networkPackageMode = 2">
+              不可包
+            </view>
+            <view :class="{ active: networkPackageMode === 3 }" @tap="networkPackageMode = 3">
+              自理
+            </view>
+            <view :class="{ active: networkPackageMode === 4 }" @tap="networkPackageMode = 4">
+              必开
+            </view>
+          </view>
         </view>
       </view>
 
@@ -1035,6 +1096,33 @@ onLoad(async (query) => {
 
 .form-item {
   margin-top: 20rpx;
+}
+
+.option-segment {
+  display: grid;
+  overflow: hidden;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1rpx solid #dce5df;
+  border-radius: 8rpx;
+}
+
+.option-segment--four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.option-segment view {
+  min-width: 0;
+  padding: 17rpx 8rpx;
+  background: #f8faf8;
+  color: #66756e;
+  font-size: 23rpx;
+  text-align: center;
+}
+
+.option-segment view.active {
+  background: #126b4f;
+  color: #fff;
+  font-weight: 800;
 }
 
 .form-label {

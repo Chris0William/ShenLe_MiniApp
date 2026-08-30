@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vitest'
 const COMPONENTS = [
   'src/components/sl-login-consent/sl-login-consent.vue',
   'src/components/sl-property-batch/sl-property-batch.vue',
-  'src/components/source-contact-map/source-contact-map.vue',
   'src/components/source-contact-promotion/source-contact-promotion.vue',
   'src/components/source-contact-room-state/source-contact-room-state.vue',
   'src/pages/landlord/account/index.vue',

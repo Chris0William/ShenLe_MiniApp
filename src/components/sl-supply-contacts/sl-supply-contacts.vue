@@ -10,15 +10,15 @@ const props = withDefaults(defineProps<{
 })
 
 const updaterName = computed(() => String(props.community?.lastUpdaterName || '').trim())
-const ownerName = computed(() => String(props.community?.ownerName || '').trim())
-const ownerPhone = computed(() => String(props.community?.ownerPhone || '').trim())
+const contactName = computed(() => String(props.community?.supplyContactName || props.community?.ownerName || '').trim())
+const contactPhone = computed(() => String(props.community?.supplyContactPhone || props.community?.ownerPhone || '').trim())
 const updateTime = computed(() => formatSupplyTime(props.community?.supplyUpdateTime))
-const hasContent = computed(() => !!(updaterName.value || ownerName.value || ownerPhone.value))
+const hasContent = computed(() => !!(updaterName.value || contactName.value || contactPhone.value))
 
-function callOwnerPhone() {
-  if (!ownerPhone.value)
+function callContactPhone() {
+  if (!contactPhone.value)
     return
-  uni.makePhoneCall({ phoneNumber: ownerPhone.value })
+  uni.makePhoneCall({ phoneNumber: contactPhone.value })
 }
 </script>
 
@@ -30,15 +30,15 @@ function callOwnerPhone() {
         <text class="supply-contacts__label">更新人</text>
         {{ updaterName }}<text v-if="updateTime" class="supply-contacts__time"> · {{ updateTime }}</text>
       </text>
-      <text v-if="updaterName && (ownerName || ownerPhone)" class="supply-contacts__divider">|</text>
-      <text v-if="ownerName || ownerPhone" class="supply-contacts__item">
-        <text class="supply-contacts__label">对接人</text>
-        {{ ownerName || '未填写' }}
+      <text v-if="updaterName && (contactName || contactPhone)" class="supply-contacts__divider">|</text>
+      <text v-if="contactName || contactPhone" class="supply-contacts__item">
+        <text class="supply-contacts__label">联系人</text>
+        {{ contactName || '未填写' }}
       </text>
     </view>
-    <view v-if="ownerPhone" class="supply-contacts__call" @tap.stop="callOwnerPhone">
+    <view v-if="contactPhone" class="supply-contacts__call" @tap.stop="callContactPhone">
       <wd-icon name="call" size="14px" color="#126b4f" />
-      <text>{{ ownerPhone }}</text>
+      <text>{{ contactPhone }}</text>
     </view>
   </view>
 </template>

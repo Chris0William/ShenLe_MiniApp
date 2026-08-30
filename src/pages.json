@@ -36,10 +36,26 @@
       }
     },
     {
+      "path": "pages/index/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "disableScroll": true
+      }
+    },
+    {
       "path": "pages/scan-login/confirm",
       "type": "page",
       "style": {
         "navigationBarTitleText": "确认登录"
+      }
+    },
+    {
+      "path": "pages/admin/application-detail/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "申请详情"
       }
     },
     {
@@ -57,6 +73,15 @@
       "style": {
         "navigationStyle": "custom",
         "navigationBarTitleText": "盘源对接人管理",
+        "enablePullDownRefresh": true
+      }
+    },
+    {
+      "path": "pages/admin/landlord-profile-manage/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "房东端管理",
         "enablePullDownRefresh": true
       }
     },
@@ -171,7 +196,7 @@
       "type": "page",
       "style": {
         "navigationStyle": "custom",
-        "navigationBarTitleText": "盘源对接人账户"
+        "navigationBarTitleText": "房东端账户"
       }
     },
     {

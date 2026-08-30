@@ -5,18 +5,21 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
 import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
-import { deleteProperty, getPropertyBatchList, getPropertyDetail, getPropertyPage, updatePropertyStatus } from '@/api/property'
+import { deleteProperty, getPropertyBatchList, getPropertyDetail, getPropertyList, getPropertyPage, updatePropertyStatus } from '@/api/property'
+import SlBuildingSalesBoard from '@/components/sl-building-sales-board/sl-building-sales-board.vue'
 import SlPropertyBatch from '@/components/sl-property-batch/sl-property-batch.vue'
 import SlSupplyContacts from '@/components/sl-supply-contacts/sl-supply-contacts.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { useLandlordShareStore } from '@/store/landlord-share'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { mediaKindOf } from '@/utils/media'
+import { createMediaLongPressGuard, renameEditableMedia, showMediaRenameActionSheet } from '@/utils/media-edit'
 import { filterPropertyRows } from '@/utils/property-batch'
 import { canManagePropertyWrites } from '@/utils/property-management'
-import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
+import { formatMoney, getStatusMeta, idToQuery, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
 definePage({
@@ -59,11 +62,19 @@ const hasLoaded = ref(false)
 const refresherTriggered = ref(false)
 const batchOverlayVisible = ref(false)
 const auth = useShenleAuthStore()
+const landlordShare = useLandlordShareStore()
 const changeStore = useEntityChangeStore()
+const mediaLongPressGuard = createMediaLongPressGuard()
 const selectionMode = ref(false)
 const selectedIds = ref<ShenLeId[]>([])
 const selectingAll = ref(false)
 const allFilteredSelected = ref(false)
+const viewMode = ref<'list' | 'sales'>('list')
+const salesProperties = ref<SlPropertyListOutput[]>([])
+const salesLoading = ref(false)
+const salesLoaded = ref(false)
+const activeSalesProperty = ref<SlPropertyListOutput | null>(null)
+const salesActionVisible = ref(false)
 const batchRef = ref<{
   openAdd: () => void
   openEdit: () => void
@@ -73,10 +84,13 @@ const finished = computed(() => total.value > 0 && items.value.length >= total.v
 const canManage = computed(() => canManagePropertyWrites({
   isAdmin: auth.isAdmin,
   isLandlord: auth.isLandlord,
+  isMaintainer: auth.isMaintainer,
   mode: modeStore.mode,
 }))
 const canManageBuildingScope = computed(() => canManage.value && !!buildingId.value)
-const canBatchManage = computed(() => auth.isAdmin && modeStore.mode === 'admin' && !!buildingId.value)
+const canBatchManage = computed(() => canManageBuildingScope.value && auth.canBatchWriteSupply)
+const canCreateSupply = computed(() => canManageBuildingScope.value && auth.canCreateSupply && modeStore.mode === 'admin')
+const canDeleteSupply = computed(() => canManageBuildingScope.value && auth.isAdmin && modeStore.mode === 'admin')
 const CHANGE_CONSUMER = 'community-properties'
 const floorFilterLabel = computed(() => {
   if (minFloor.value == null && maxFloor.value == null)
@@ -112,6 +126,7 @@ function buildQuery(): PageSlPropertyInput {
     bedrooms: bedrooms.value,
     livingRooms: livingRooms.value,
     bathrooms: bathrooms.value,
+    landlordShareToken: landlordShare.active.value ? landlordShare.shareToken.value : undefined,
   }
 }
 
@@ -257,6 +272,35 @@ async function loadAvailableForUser() {
   }
 }
 
+async function loadSalesBoard(force = false) {
+  if (!buildingId.value || salesLoading.value || (salesLoaded.value && !force))
+    return
+  salesLoading.value = true
+  try {
+    salesProperties.value = await getPropertyList({
+      buildingId: buildingId.value,
+      landlordShareToken: landlordShare.active.value ? landlordShare.shareToken.value : undefined,
+    })
+    salesLoaded.value = true
+  }
+  finally {
+    salesLoading.value = false
+  }
+}
+
+function switchView(mode: 'list' | 'sales') {
+  if (viewMode.value === mode)
+    return
+  if (mode === 'sales' && !canManageBuildingScope.value)
+    return
+  if (selectionMode.value)
+    exitBatchManager()
+  activeFilter.value = null
+  viewMode.value = mode
+  if (mode === 'sales')
+    void loadSalesBoard()
+}
+
 async function reloadLoadedRangePreservingScroll() {
   if (!communityId.value || loading.value)
     return
@@ -304,6 +348,8 @@ function onSearch() {
 interface CommunityMediaItem {
   id: ShenLeId
   name: string
+  fileName?: string | null
+  suffix?: string | null
   kind: MediaKind
   url: string
   posterFileId?: ShenLeId | null
@@ -319,14 +365,17 @@ const videoPreviewVisible = computed({
       previewVideoMedia.value = null
   },
 })
-const refreshEnabled = computed(() => !batchOverlayVisible.value && !videoPreviewVisible.value)
+const refreshEnabled = computed(() => !batchOverlayVisible.value && !videoPreviewVisible.value && !salesActionVisible.value)
 
 async function handleRefresh() {
   if (!refreshEnabled.value || refresherTriggered.value)
     return
   refresherTriggered.value = true
   try {
-    await Promise.all([load(true), loadMedia()])
+    await Promise.all([
+      viewMode.value === 'sales' ? loadSalesBoard(true) : load(true),
+      loadMedia(),
+    ])
   }
   catch {
     uni.showToast({ title: '刷新失败，请重试', icon: 'none' })
@@ -338,7 +387,7 @@ async function handleRefresh() {
 
 function handleScrollToLower() {
   // 用户模式一次性全量加载，不分页。
-  if (!canManage.value || loading.value || finished.value)
+  if (viewMode.value !== 'list' || !canManage.value || loading.value || finished.value)
     return
   page.value += 1
   void load()
@@ -359,6 +408,8 @@ async function loadMedia() {
     const list: CommunityMediaItem[] = (detail.images || []).map(media => ({
       id: media.id,
       name: media.fileName || `文件${media.id}`,
+      fileName: media.fileName,
+      suffix: media.suffix,
       kind: mediaKindOf(media.fileType, media.suffix || media.url),
       url: resolveAssetUrl(media.url),
       posterFileId: media.posterFileId,
@@ -369,6 +420,8 @@ async function loadMedia() {
       list.push({
         id: detail.coverImageId,
         name: detail.name || '封面',
+        fileName: detail.name || '封面',
+        suffix: detail.coverSuffix,
         kind: mediaKindOf(detail.coverFileType, detail.coverSuffix || detail.coverImage),
         url: resolveAssetUrl(detail.coverImage),
         posterFileId: detail.coverPosterFileId,
@@ -407,6 +460,30 @@ function openMedia(media: CommunityMediaItem) {
   })
 }
 
+function handleMediaTap(media: CommunityMediaItem) {
+  if (mediaLongPressGuard.consumeTap())
+    return
+  openMedia(media)
+}
+
+async function openMediaActionMenu(media: CommunityMediaItem) {
+  if (!canManageBuildingScope.value)
+    return
+
+  mediaLongPressGuard.mark()
+  if (!await showMediaRenameActionSheet())
+    return
+  await renameEditableMedia({
+    id: media.id,
+    fileName: media.fileName,
+    suffix: media.suffix,
+    onRenamed: (fileName) => {
+      media.fileName = fileName
+      media.name = fileName
+    },
+  })
+}
+
 function savePreviewVideo() {
   if (!previewVideoMedia.value)
     return
@@ -424,6 +501,40 @@ function openDetail(item: SlPropertyListOutput) {
   if (!canManage.value && !ensureCanUse('登录后即可查看房源详情'))
     return
   uni.navigateTo({ url: `/pages/common/property-detail/index?id=${idToQuery(item.id)}` })
+}
+
+function openSalesProperty(item: SlPropertyListOutput) {
+  activeSalesProperty.value = item
+  salesActionVisible.value = true
+}
+
+function salesStatusTone(value: number) {
+  return getStatusMeta(value).tone as any
+}
+
+function salesStatusLabel(value: number) {
+  return getStatusMeta(value).label
+}
+
+async function changeSalesStatus(nextStatus: number) {
+  if (!activeSalesProperty.value)
+    return
+  await changeStatus(activeSalesProperty.value, nextStatus)
+  salesActionVisible.value = false
+}
+
+function openSalesDetail() {
+  if (!activeSalesProperty.value)
+    return
+  salesActionVisible.value = false
+  openDetail(activeSalesProperty.value)
+}
+
+function openSalesEdit() {
+  if (!activeSalesProperty.value)
+    return
+  salesActionVisible.value = false
+  openForm(activeSalesProperty.value)
 }
 
 function isSelected(id: ShenLeId) {
@@ -478,6 +589,10 @@ function openForm(item?: SlPropertyListOutput) {
     uni.navigateTo({ url: `/pages/common/property-form/index?id=${idToQuery(item.id)}` })
     return
   }
+  if (!canCreateSupply.value) {
+    uni.showToast({ title: '当前账号不能新增房源', icon: 'none' })
+    return
+  }
   if (!canManageBuildingScope.value) {
     uni.showToast({ title: '请先进入具体楼栋', icon: 'none' })
     return
@@ -509,7 +624,7 @@ function exitBatchManager() {
 }
 
 function openBatchAdd() {
-  if (!canBatchManage.value)
+  if (!canCreateSupply.value)
     return
   batchRef.value?.openAdd()
 }
@@ -521,9 +636,16 @@ function openBatchEdit() {
 }
 
 function openBatchDelete() {
-  if (!selectedIds.value.length)
+  if (!canDeleteSupply.value || !selectedIds.value.length)
     return
   batchRef.value?.requestDelete()
+}
+
+async function initializePage() {
+  if (landlordShare.hasContext.value)
+    await landlordShare.resolvePending()
+  await load(true)
+  await loadMedia()
 }
 
 interface BatchCompletedEvent {
@@ -556,6 +678,9 @@ async function handleBatchCompleted(event: BatchCompletedEvent) {
   else {
     await reloadLoadedRangePreservingScroll()
   }
+  salesLoaded.value = false
+  if (viewMode.value === 'sales')
+    await loadSalesBoard(true)
   exitBatchManager()
 }
 
@@ -563,7 +688,16 @@ async function changeStatus(item: SlPropertyListOutput, nextStatus: number) {
   if (item.status === nextStatus)
     return
   await updatePropertyStatus({ id: item.id, status: nextStatus })
+  const statusMeta = getStatusMeta(nextStatus)
   item.status = nextStatus
+  item.statusName = statusMeta.label
+  for (const collection of [items.value, salesProperties.value]) {
+    const target = collection.find(current => String(current.id) === String(item.id))
+    if (target) {
+      target.status = nextStatus
+      target.statusName = statusMeta.label
+    }
+  }
   changeStore.publishPropertyChange({
     action: 'status-changed',
     ids: [item.id],
@@ -575,6 +709,10 @@ async function changeStatus(item: SlPropertyListOutput, nextStatus: number) {
 }
 
 function removeItem(item: SlPropertyListOutput) {
+  if (!canDeleteSupply.value) {
+    uni.showToast({ title: '当前端不能删除房源', icon: 'none' })
+    return
+  }
   uni.showModal({
     title: '删除房源',
     content: `确定删除「${item.title}」？`,
@@ -584,6 +722,7 @@ function removeItem(item: SlPropertyListOutput) {
         return
       await deleteProperty({ id: item.id })
       items.value = items.value.filter(current => String(current.id) !== String(item.id))
+      salesProperties.value = salesProperties.value.filter(current => String(current.id) !== String(item.id))
       total.value = Math.max(0, total.value - 1)
       changeStore.publishPropertyChange({
         action: 'deleted',
@@ -619,8 +758,7 @@ onLoad((query) => {
   buildingTotalFloors.value = Number.isFinite(totalFloors) && totalFloors > 0 ? totalFloors : null
   if (communityName.value || buildingName.value)
     uni.setNavigationBarTitle({ title: buildingName.value || communityName.value })
-  load(true)
-  loadMedia()
+  void initializePage()
 })
 onShow(async () => {
   const change = changeStore.consumePropertyChange(CHANGE_CONSUMER)
@@ -635,6 +773,8 @@ onShow(async () => {
       await patchBatchUpdatedItems(change.payload.ids)
     else
       await reloadLoadedRangePreservingScroll()
+    if (salesLoaded.value || viewMode.value === 'sales')
+      await loadSalesBoard(true)
     await loadMedia()
   }
   catch {
@@ -658,7 +798,13 @@ onShow(async () => {
       <view class="sl-page community-page">
         <scroll-view v-if="mediaList.length" scroll-x class="media-strip">
           <view class="media-strip__inner">
-            <view v-for="media in mediaList" :key="String(media.id)" class="media-item" @tap="openMedia(media)">
+            <view
+              v-for="media in mediaList"
+              :key="String(media.id)"
+              class="media-item"
+              @tap="handleMediaTap(media)"
+              @longpress.stop="openMediaActionMenu(media)"
+            >
               <image v-if="media.kind === 'image'" class="media-item__thumb" :src="media.url" mode="aspectFill" />
               <view v-else class="media-item__thumb media-item__thumb--video">
                 <image v-if="media.posterUrl" class="media-item__poster" :src="media.posterUrl" mode="aspectFill" />
@@ -675,7 +821,7 @@ onShow(async () => {
           <sl-supply-contacts :community="communityDetail" />
         </view>
 
-        <view class="search sl-card">
+        <view v-if="viewMode === 'list'" class="search sl-card">
           <wd-icon name="search" size="20px" color="#7a8780" />
           <input v-model="keyword" class="search__input" placeholder="搜索房源 / 房号" confirm-type="search" @confirm="onSearch">
           <wd-button size="small" type="primary" @click="onSearch">
@@ -683,7 +829,7 @@ onShow(async () => {
           </wd-button>
         </view>
 
-        <view v-if="canManageBuildingScope" class="property-filters sl-card">
+        <view v-if="viewMode === 'list' && canManageBuildingScope" class="property-filters sl-card">
           <view class="property-filters__tabs">
             <view class="filter-trigger" :class="{ active: activeFilter === 'floor' || minFloor != null || maxFloor != null }" @tap="toggleFilter('floor')">
               <text>{{ floorFilterLabel }}</text>
@@ -759,7 +905,16 @@ onShow(async () => {
           </view>
         </view>
 
-        <scroll-view v-if="canManageBuildingScope" scroll-x class="chips">
+        <view v-if="canManageBuildingScope" class="property-view-tabs sl-card">
+          <view class="property-view-tab" :class="{ active: viewMode === 'list' }" @tap="switchView('list')">
+            列表
+          </view>
+          <view class="property-view-tab" :class="{ active: viewMode === 'sales' }" @tap="switchView('sales')">
+            销控
+          </view>
+        </view>
+
+        <scroll-view v-if="viewMode === 'list' && canManageBuildingScope" scroll-x class="chips">
           <view class="chips__inner">
             <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
               全部
@@ -776,74 +931,87 @@ onShow(async () => {
           </view>
         </scroll-view>
 
-        <view class="result-head">
-          <text class="result-head__title">{{ total }} 套{{ canManage ? '房源' : '可租房源' }}</text>
-          <text class="result-head__desc">{{ canBatchManage ? `${buildingName} · 支持编辑与批量管理` : (canManageBuildingScope ? `${buildingName} · 支持编辑和状态管理` : '点击房源查看详情。') }}</text>
-        </view>
-
-        <view v-if="canManageBuildingScope" class="scope-actions">
-          <wd-button v-if="canBatchManage" plain type="default" icon="add" @click="openBatchAdd">
-            批量新增
-          </wd-button>
-          <wd-button v-if="canBatchManage" plain type="default" @click="openBatchManager">
-            批量管理
-          </wd-button>
-          <wd-button type="primary" icon="add" @click="openForm()">
-            新增房源
-          </wd-button>
-        </view>
-
-        <view v-if="selectionMode" class="select-all-control batch-select-all-row" @tap="toggleSelectAllFiltered">
-          <view class="selection-checkbox selection-checkbox--all" :class="{ selected: allFilteredSelected }">
-            <wd-icon v-if="allFilteredSelected" name="check" size="14px" color="#fff" />
+        <template v-if="viewMode === 'list'">
+          <view class="result-head">
+            <text class="result-head__title">{{ total }} 套{{ canManage ? '房源' : '可租房源' }}</text>
+            <text class="result-head__desc">{{ canBatchManage ? `${buildingName} · 支持编辑与批量管理` : (canManageBuildingScope ? `${buildingName} · 支持编辑和状态管理` : '点击房源查看详情。') }}</text>
           </view>
-          <text>{{ selectingAll ? '处理中...' : (allFilteredSelected ? '已全选筛选结果' : '全选筛选结果') }}</text>
-        </view>
 
-        <view class="list">
-          <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card" :class="{ 'property-wrap--selected': isSelected(item.id) }">
-            <view class="property-select-row">
-              <view v-if="selectionMode" class="selection-checkbox" :class="{ selected: isSelected(item.id) }" @tap.stop="toggleSelected(item)">
-                <wd-icon v-if="isSelected(item.id)" name="check" size="14px" color="#fff" />
+          <view v-if="canManageBuildingScope" class="scope-actions">
+            <wd-button v-if="canCreateSupply" plain type="default" icon="add" @click="openBatchAdd">
+              批量新增
+            </wd-button>
+            <wd-button v-if="canBatchManage" plain type="default" @click="openBatchManager">
+              批量管理
+            </wd-button>
+            <wd-button v-if="canCreateSupply" type="primary" icon="add" @click="openForm()">
+              新增房源
+            </wd-button>
+          </view>
+
+          <view v-if="selectionMode" class="select-all-control batch-select-all-row" @tap="toggleSelectAllFiltered">
+            <view class="selection-checkbox selection-checkbox--all" :class="{ selected: allFilteredSelected }">
+              <wd-icon v-if="allFilteredSelected" name="check" size="14px" color="#fff" />
+            </view>
+            <text>{{ selectingAll ? '处理中...' : (allFilteredSelected ? '已全选筛选结果' : '全选筛选结果') }}</text>
+          </view>
+
+          <view class="list">
+            <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card" :class="{ 'property-wrap--selected': isSelected(item.id) }">
+              <view class="property-select-row">
+                <view v-if="selectionMode" class="selection-checkbox" :class="{ selected: isSelected(item.id) }" @tap.stop="toggleSelected(item)">
+                  <wd-icon v-if="isSelected(item.id)" name="check" size="14px" color="#fff" />
+                </view>
+                <view class="property-card-main">
+                  <sl-property-card :item="item" compact @select="handlePropertySelect" />
+                </view>
               </view>
-              <view class="property-card-main">
-                <sl-property-card :item="item" compact @select="handlePropertySelect" />
+              <view v-if="canManageBuildingScope && !selectionMode" class="row-actions">
+                <wd-button size="small" type="default" plain @click="openForm(item)">
+                  编辑
+                </wd-button>
+                <wd-button
+                  v-for="option in PROPERTY_STATUS_OPTIONS"
+                  :key="option.value"
+                  size="small"
+                  :type="item.status === option.value ? 'primary' : 'default'"
+                  plain
+                  @click="changeStatus(item, option.value)"
+                >
+                  {{ option.label }}
+                </wd-button>
+                <wd-button v-if="canDeleteSupply" size="small" type="danger" plain @click="removeItem(item)">
+                  删除
+                </wd-button>
               </view>
             </view>
-            <view v-if="canManageBuildingScope && !selectionMode" class="row-actions">
-              <wd-button size="small" type="default" plain @click="openForm(item)">
-                编辑
-              </wd-button>
-              <wd-button
-                v-for="option in PROPERTY_STATUS_OPTIONS"
-                :key="option.value"
-                size="small"
-                :type="item.status === option.value ? 'primary' : 'default'"
-                plain
-                @click="changeStatus(item, option.value)"
-              >
-                {{ option.label }}
-              </wd-button>
-              <wd-button size="small" type="danger" plain @click="removeItem(item)">
-                删除
-              </wd-button>
-            </view>
           </view>
-        </view>
 
-        <view v-if="loading" class="loading">
-          加载中...
-        </view>
-        <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
-          <wd-icon name="home" size="42px" color="#8ea099" />
-          <text class="empty__title">暂无房源数据</text>
-          <text class="empty__desc">{{ canBatchManage ? '这个楼栋还没有房源，可以新增或批量创建。' : (canManageBuildingScope ? '这个楼栋还没有房源，可以新增一套。' : '这个楼盘暂时没有可展示房源。') }}</text>
-          <wd-button v-if="!canManage" size="small" plain @click="backToMap">
-            返回地图
-          </wd-button>
-        </view>
-        <view v-else-if="finished" class="loading">
-          已经到底了
+          <view v-if="loading" class="loading">
+            加载中...
+          </view>
+          <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
+            <wd-icon name="home" size="42px" color="#8ea099" />
+            <text class="empty__title">暂无房源数据</text>
+            <text class="empty__desc">{{ canCreateSupply ? '这个楼栋还没有房源，可以新增或批量创建。' : (canBatchManage ? '这个楼栋还没有房源，房东端可在已有房源后进行批量维护。' : (canManageBuildingScope ? '这个楼栋还没有房源，可以新增一套。' : '这个楼盘暂时没有可展示房源。')) }}</text>
+            <wd-button v-if="!canManage" size="small" plain @click="backToMap">
+              返回地图
+            </wd-button>
+          </view>
+          <view v-else-if="finished" class="loading">
+            已经到底了
+          </view>
+        </template>
+
+        <view v-else-if="canManageBuildingScope" class="sales-view">
+          <sl-building-sales-board
+            :community-name="communityName"
+            :building-name="buildingName"
+            :total-floors="buildingTotalFloors"
+            :properties="salesProperties"
+            :loading="salesLoading"
+            @select="openSalesProperty"
+          />
         </view>
       </view>
     </scroll-view>
@@ -863,8 +1031,44 @@ onShow(async () => {
       </view>
     </wd-popup>
 
+    <wd-popup v-model="salesActionVisible" position="bottom" custom-style="border-radius: 24rpx 24rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
+      <view class="sales-action-sheet" @touchmove.stop.prevent>
+        <view class="sales-action-sheet__head">
+          <view>
+            <text class="sales-action-sheet__title">{{ activeSalesProperty?.title || '房源' }}</text>
+            <text class="sales-action-sheet__desc">{{ activeSalesProperty?.houseType }} · ¥{{ formatMoney(activeSalesProperty?.rentPrice) }}/月</text>
+          </view>
+          <wd-tag v-if="activeSalesProperty" :type="salesStatusTone(activeSalesProperty.status)">
+            {{ activeSalesProperty.statusName || salesStatusLabel(activeSalesProperty.status) }}
+          </wd-tag>
+        </view>
+
+        <text class="sales-action-sheet__label">快捷操作</text>
+        <view class="sales-action-status">
+          <wd-button
+            v-for="option in PROPERTY_STATUS_OPTIONS"
+            :key="option.value"
+            :type="activeSalesProperty?.status === option.value ? 'primary' : 'default'"
+            plain
+            @click="changeSalesStatus(option.value)"
+          >
+            {{ option.label }}
+          </wd-button>
+        </view>
+
+        <view class="sales-action-buttons">
+          <wd-button plain block type="default" @click="openSalesDetail">
+            查看详情
+          </wd-button>
+          <wd-button block type="primary" @click="openSalesEdit">
+            编辑房源
+          </wd-button>
+        </view>
+      </view>
+    </wd-popup>
+
     <sl-property-batch
-      v-if="canBatchManage"
+      v-if="canBatchManage || canCreateSupply"
       ref="batchRef"
       :community-id="communityId"
       :community-name="communityName"
@@ -872,18 +1076,20 @@ onShow(async () => {
       :building-name="buildingName"
       :building-total-floors="buildingTotalFloors"
       :selected-ids="selectedIds"
+      :allow-add="canCreateSupply"
+      :allow-delete="canDeleteSupply"
       @completed="handleBatchCompleted"
       @visibility-change="handleBatchVisibilityChange"
     />
 
-    <view v-if="canBatchManage && selectionMode" class="batch-toolbar sl-safe-bottom">
+    <view v-if="viewMode === 'list' && canBatchManage && selectionMode" class="batch-toolbar sl-safe-bottom">
       <view class="batch-toolbar__count">
         <text>已选 {{ selectedIds.length }} 套</text>
       </view>
       <wd-button size="small" type="primary" :disabled="!selectedIds.length" @click="openBatchEdit">
         修改
       </wd-button>
-      <wd-button size="small" type="danger" :disabled="!selectedIds.length" @click="openBatchDelete">
+      <wd-button v-if="canDeleteSupply" size="small" type="danger" :disabled="!selectedIds.length" @click="openBatchDelete">
         删除
       </wd-button>
       <wd-button size="small" plain @click="exitBatchManager">
@@ -1133,6 +1339,36 @@ onShow(async () => {
   white-space: nowrap;
 }
 
+.property-view-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6rpx;
+  margin-top: 18rpx;
+  padding: 6rpx;
+  background: #edf2ee;
+}
+
+.property-view-tab {
+  display: flex;
+  min-height: 60rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6rpx;
+  color: #5b6a62;
+  font-size: 25rpx;
+  font-weight: 780;
+}
+
+.property-view-tab.active {
+  background: #126b4f;
+  box-shadow: 0 6rpx 16rpx rgb(18 107 79 / 18%);
+  color: #fff;
+}
+
+.sales-view {
+  margin-top: 18rpx;
+}
+
 .chips__inner {
   display: inline-flex;
   gap: 14rpx;
@@ -1337,6 +1573,54 @@ onShow(async () => {
   width: 680rpx;
   height: 420rpx;
   background: #10261f;
+}
+
+.sales-action-sheet {
+  padding: 28rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  background: #fff;
+}
+
+.sales-action-sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.sales-action-sheet__title,
+.sales-action-sheet__desc,
+.sales-action-sheet__label {
+  display: block;
+}
+
+.sales-action-sheet__title {
+  font-size: 32rpx;
+  font-weight: 850;
+}
+
+.sales-action-sheet__desc {
+  margin-top: 8rpx;
+  color: var(--sl-muted);
+  font-size: 24rpx;
+}
+
+.sales-action-sheet__label {
+  margin: 28rpx 0 14rpx;
+  font-size: 26rpx;
+  font-weight: 850;
+}
+
+.sales-action-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.sales-action-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16rpx;
+  margin-top: 26rpx;
 }
 
 .batch-toolbar {

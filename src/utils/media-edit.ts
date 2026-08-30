@@ -2,6 +2,7 @@ import type { ShenLeId } from '@/types/shenle'
 import { renameMedia } from '@/api/file'
 
 export const MEDIA_EDIT_ACTIONS = ['查看', '编辑媒体名称', '设置为封面'] as const
+export const MEDIA_RENAME_ACTIONS = ['编辑媒体名称'] as const
 
 export type MediaEditAction = 'view' | 'rename' | 'cover'
 
@@ -56,6 +57,16 @@ export function showMediaEditActionSheet(): Promise<MediaEditAction | null> {
       itemList: [...MEDIA_EDIT_ACTIONS],
       success: result => resolve(ACTION_BY_INDEX[result.tapIndex] || null),
       fail: () => resolve(null),
+    })
+  })
+}
+
+export function showMediaRenameActionSheet(): Promise<boolean> {
+  return new Promise((resolve) => {
+    uni.showActionSheet({
+      itemList: [...MEDIA_RENAME_ACTIONS],
+      success: result => resolve(result.tapIndex === 0),
+      fail: () => resolve(false),
     })
   })
 }

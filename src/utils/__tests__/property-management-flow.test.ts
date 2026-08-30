@@ -11,11 +11,13 @@ describe('management property entry flow', () => {
   const propertyList = source('src/pages/admin/property-list/index.vue')
   const buildingManage = source('src/pages/common/building-manage/index.vue')
   const communityProperties = source('src/pages/common/community-properties/index.vue')
+  const salesControl = source('src/pages/admin/sales-control/index.vue')
+  const salesBoard = source('src/components/sl-building-sales-board/sl-building-sales-board.vue')
 
   it('removes dashboard property-management and publish shortcuts', () => {
     expect(dashboard).not.toContain('<text>房源管理</text>')
     expect(dashboard).not.toContain('<text>发布房源</text>')
-    expect(dashboard).not.toContain("go('/pages/common/property-form/index')")
+    expect(dashboard).not.toContain('go(\'/pages/common/property-form/index\')')
   })
 
   it('keeps the property tab browse-only and routes administrators through buildings', () => {
@@ -27,8 +29,8 @@ describe('management property entry flow', () => {
   })
 
   it('passes complete building context from building management to the scoped property page', () => {
-    expect(buildingManage).toContain('buildingId=${idToQuery(item.id)}')
-    expect(buildingManage).toContain('buildingName=${encodeURIComponent(item.name)}')
+    expect(buildingManage).toContain(['buildingId=$', '{idToQuery(item.id)}'].join(''))
+    expect(buildingManage).toContain(['buildingName=$', '{encodeURIComponent(item.name)}'].join(''))
     expect(buildingManage).toContain('buildingTotalFloors=${')
   })
 
@@ -37,8 +39,22 @@ describe('management property entry flow', () => {
     expect(communityProperties).toContain('canManagePropertyWrites({')
     expect(communityProperties).toContain('isLandlord: auth.isLandlord')
     expect(communityProperties).toContain('canManageBuildingScope')
+    expect(communityProperties).toContain('auth.canCreateSupply && modeStore.mode === \'admin\'')
+    expect(communityProperties).toContain('auth.isAdmin && modeStore.mode === \'admin\'')
     expect(communityProperties).toContain('新增房源')
     expect(communityProperties).toContain('批量管理')
+  })
+
+  it('shares the building sales board between sales control and scoped property management', () => {
+    expect(communityProperties).toContain('viewMode = ref<\'list\' | \'sales\'>(\'list\')')
+    expect(communityProperties).toContain('列表')
+    expect(communityProperties).toContain('销控')
+    expect(communityProperties).toContain('<sl-building-sales-board')
+    expect(communityProperties).toContain('loadSalesBoard')
+    expect(salesControl).toContain('<sl-building-sales-board')
+    expect(salesBoard).toContain('building-summary__stats')
+    expect(salesBoard).toContain('floorGrid')
+    expect(salesBoard).toContain('emit(\'select\', room)')
   })
 })
 
@@ -53,6 +69,7 @@ describe('property form ownership and media entry', () => {
     expect(form).toContain('getPropertyDetail(editId.value)')
     expect(form).toContain('getBuildingDetail(detail.buildingId)')
     expect(form).toContain('getBuildingDetail(form.buildingId)')
+    expect(form).toContain('!auth.canCreateSupply || modeStore.mode !== \'admin\'')
     expect(form).toContain('totalFloors: toOptionalNumber(form.totalFloors)')
   })
 

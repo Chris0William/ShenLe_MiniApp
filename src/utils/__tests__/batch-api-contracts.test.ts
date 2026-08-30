@@ -13,6 +13,8 @@ import type {
   SlPropertyBatchError,
   SlPropertyBatchRowOutput,
   SlPropertyImageOutput,
+  SlPropertyOperationConfigEditInput,
+  SlPropertyOperationConfigOutput,
   UpdateSlPropertyInput,
 } from '@/types/shenle'
 import fs from 'node:fs'
@@ -52,6 +54,7 @@ interface ExpectedAddSlPropertyInput {
   landlordPhone?: string | null
   remark?: string | null
   images?: AddSlPropertyImageInput[] | null
+  operationConfig?: SlPropertyOperationConfigEditInput | null
 }
 
 interface ExpectedUpdateSlPropertyInput extends ExpectedAddSlPropertyInput {
@@ -150,6 +153,7 @@ interface ExpectedSlPropertyBatchRowOutput {
   createTime: string
   updateTime?: string | null
   images: SlPropertyImageOutput[]
+  operationConfig?: SlPropertyOperationConfigOutput | null
 }
 
 const nullableWriteSnapshot: UpdateSlPropertyInput = {
@@ -283,6 +287,7 @@ describe('property batch API contract', () => {
       'landlordPhone?: string | null',
       'remark?: string | null',
       'images?: AddSlPropertyImageInput[] | null',
+      'operationConfig?: SlPropertyOperationConfigEditInput | null',
     ]) {
       expect(input).toContain(field)
     }

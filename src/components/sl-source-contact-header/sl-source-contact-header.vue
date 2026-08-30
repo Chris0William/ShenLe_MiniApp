@@ -21,8 +21,8 @@ const sourceContact = useSourceContactStore()
 const supportText = computed(() => {
   const profile = sourceContact.profile
   if (!profile?.supportUserName)
-    return '系统维护人暂未分配'
-  return `系统维护人：${profile.supportUserName}`
+    return '主维护人暂未分配'
+  return `主维护人：${profile.supportUserName}`
 })
 
 function callSupport() {

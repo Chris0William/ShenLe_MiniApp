@@ -79,10 +79,14 @@ export default defineConfig({
     'i-carbon-location',
     'i-carbon-dashboard',
     'i-carbon-building',
+    'i-carbon-building-insights-1',
+    'i-carbon-bullhorn',
     'i-carbon-user',
     'i-carbon-table-split',
     'i-carbon-ibm-watson-language-translator',
     'i-carbon-menu',
+    'i-carbon-qr-code',
+    'i-carbon-link',
   ],
   rules: [
     [

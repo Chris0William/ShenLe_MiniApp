@@ -7,7 +7,7 @@ import type {
   UpdateSlPropertyInput,
 } from '@/types/shenle'
 import type { MediaKind } from '@/utils/media'
-import type { GeneratedPropertyDraft, MediaMergeMode } from '@/utils/property-batch'
+import type { BatchEditableField, BatchOperationField, BatchUpdateValues, GeneratedPropertyDraft, MediaMergeMode } from '@/utils/property-batch'
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { getBuildingDetail, updateBuilding } from '@/api/building'
 import { getCommunityDetail } from '@/api/community'
@@ -24,6 +24,7 @@ import {
   getPropertyBatchList,
 } from '@/api/property'
 import { getTagList } from '@/api/tag'
+import SlCommissionSettings from '@/components/sl-commission-settings/sl-commission-settings.vue'
 import SlMediaSourceSheet from '@/components/sl-media-source-sheet/sl-media-source-sheet.vue'
 import {
   DECORATION_OPTIONS,
@@ -32,6 +33,7 @@ import {
   PROPERTY_STATUS_OPTIONS,
   RENTAL_TYPE_OPTIONS,
 } from '@/constants/shenle'
+import { COMMISSION_PERCENT_MAX, normalizeCommissionPercent } from '@/utils/commission'
 import { isLocalMediaUrl, mediaKindOf } from '@/utils/media'
 import {
   buildBatchAddInputs,
@@ -46,7 +48,6 @@ import {
 import { resolveAssetUrl } from '@/utils/shenle'
 
 type BatchAction = 'added' | 'updated' | 'deleted'
-type BatchEditableField = Exclude<keyof UpdateSlPropertyInput, 'id' | 'title' | 'communityId' | 'buildingId' | 'unit' | 'roomNo' | 'floor' | 'totalFloors' | 'coverImageId'>
 type AddRuleMode = '固定房号' | '每层多房'
 
 interface BatchCompletedEvent {
@@ -104,6 +105,8 @@ const props = defineProps<{
   buildingName: string
   buildingTotalFloors?: number | null
   selectedIds: ShenLeId[]
+  allowAdd?: boolean
+  allowDelete?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -188,6 +191,28 @@ const editValues = reactive({
   tagIds: [] as ShenLeId[],
   facilityIds: [] as ShenLeId[],
 })
+const operationEnabled = reactive<Record<BatchOperationField, boolean>>({
+  halfYearCommissionPercent: false,
+  oneYearCommissionPercent: false,
+  managementPackageMode: false,
+  networkPackageMode: false,
+})
+const operationValues = reactive<BatchUpdateValues>({
+  halfYearCommissionPercent: 0,
+  oneYearCommissionPercent: 0,
+  managementPackageMode: null,
+  networkPackageMode: null,
+})
+const operationCommissionRange = computed<number[]>({
+  get: () => [
+    Number(operationValues.halfYearCommissionPercent || 0),
+    Number(operationValues.oneYearCommissionPercent || 0),
+  ],
+  set: (value) => {
+    operationValues.halfYearCommissionPercent = Number(value[0] || 0)
+    operationValues.oneYearCommissionPercent = Number(value[1] || 0)
+  },
+})
 
 const selectedSnapshots = ref<SlPropertyBatchRowOutput[]>([])
 const houseTags = ref<SlTagOutput[]>([])
@@ -257,11 +282,14 @@ const batchPrimaryLabel = computed(() => {
   return '保存批量修改'
 })
 const batchPrimaryLoading = computed(() => !(activeSheet.value === 'add' && addStep.value === 'rules') && submitting.value)
+const hasOperationChanges = computed(() => Object.values(operationEnabled).some(Boolean))
 const batchPrimaryDisabled = computed(() => {
   if (activeSheet.value === 'add' && addStep.value === 'rules')
     return !!addValidationMessage.value
   if (activeSheet.value === 'add')
     return uploading.value || addRulesChanged.value || !addRows.value.length
+  if (activeSheet.value === 'edit')
+    return uploading.value || (!enabledFields().length && !hasOperationChanges.value && !coverEnabled.value)
   return uploading.value
 })
 
@@ -298,6 +326,14 @@ function resetEnabledFields() {
   commonPropertyMedia.value = []
   coverEnabled.value = false
   batchCoverChoice.value = null
+  operationEnabled.halfYearCommissionPercent = false
+  operationEnabled.oneYearCommissionPercent = false
+  operationEnabled.managementPackageMode = false
+  operationEnabled.networkPackageMode = false
+  operationValues.halfYearCommissionPercent = 0
+  operationValues.oneYearCommissionPercent = 0
+  operationValues.managementPackageMode = null
+  operationValues.networkPackageMode = null
 }
 
 function resetAddDraft() {
@@ -388,6 +424,10 @@ function setEditDefaults(snapshot: SlPropertyBatchRowOutput) {
   editValues.remark = snapshot.remark || ''
   editValues.tagIds = [...snapshot.tagIds]
   editValues.facilityIds = [...snapshot.facilityIds]
+  operationValues.halfYearCommissionPercent = normalizeCommissionPercent(snapshot.operationConfig?.effectiveHalfYearCommissionPercent ?? snapshot.operationConfig?.halfYearCommissionPercent)
+  operationValues.oneYearCommissionPercent = normalizeCommissionPercent(snapshot.operationConfig?.effectiveOneYearCommissionPercent ?? snapshot.operationConfig?.oneYearCommissionPercent)
+  operationValues.managementPackageMode = snapshot.operationConfig?.effectiveManagementPackageMode ?? snapshot.operationConfig?.managementPackageMode ?? null
+  operationValues.networkPackageMode = snapshot.operationConfig?.effectiveNetworkPackageMode ?? snapshot.operationConfig?.networkPackageMode ?? null
 }
 
 async function fetchAllSnapshots() {
@@ -488,6 +528,10 @@ async function loadCommonPropertyMedia(snapshots: SlPropertyBatchRowOutput[]) {
 }
 
 async function openAdd() {
+  if (!props.allowAdd) {
+    uni.showToast({ title: '当前账号不能新增房源', icon: 'none' })
+    return
+  }
   if (!props.buildingId)
     return
   resetAddDraft()
@@ -710,6 +754,34 @@ function buildEditValues(): Partial<UpdateSlPropertyInput> {
   return values
 }
 
+function buildOperationValues(): BatchUpdateValues {
+  const values: BatchUpdateValues = {}
+  if (operationEnabled.halfYearCommissionPercent || operationEnabled.oneYearCommissionPercent) {
+    if (operationEnabled.halfYearCommissionPercent)
+      values.halfYearCommissionPercent = boundedNumber(operationValues.halfYearCommissionPercent, '半年佣金', COMMISSION_PERCENT_MAX)
+    if (operationEnabled.oneYearCommissionPercent)
+      values.oneYearCommissionPercent = boundedNumber(operationValues.oneYearCommissionPercent, '一年佣金', COMMISSION_PERCENT_MAX)
+  }
+  if (operationEnabled.managementPackageMode) {
+    if (operationValues.managementPackageMode === null)
+      throw new Error('请选择管理情况')
+    values.managementPackageMode = operationValues.managementPackageMode
+  }
+  if (operationEnabled.networkPackageMode) {
+    if (operationValues.networkPackageMode === null)
+      throw new Error('请选择网络情况')
+    values.networkPackageMode = operationValues.networkPackageMode
+  }
+  return values
+}
+
+function boundedNumber(value: unknown, label: string, max: number) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number < 0 || number > max)
+    throw new Error(`${label}必须在0到${max}之间`)
+  return number
+}
+
 async function submitBatchEdit() {
   if (submitting.value)
     return
@@ -718,7 +790,7 @@ async function submitBatchEdit() {
     return
   }
   const fields = enabledFields()
-  if (!fields.length && !coverEnabled.value) {
+  if (!fields.length && !hasOperationChanges.value && !coverEnabled.value) {
     uni.showToast({ title: '请至少启用一个修改项', icon: 'none' })
     return
   }
@@ -733,6 +805,7 @@ async function submitBatchEdit() {
 
   submitting.value = true
   try {
+    const operationValuesPatch = buildOperationValues()
     const snapshots = await fetchAllSnapshots()
     const current = snapshots.filter(row => props.selectedIds.some(id => sameId(id, row.id)))
     if (current.length !== props.selectedIds.length)
@@ -742,8 +815,8 @@ async function submitBatchEdit() {
       throw new Error('所选房源媒体已变化，请重新选择封面')
     }
     const input = buildBatchUpdateInputs(current, {
-      enabledFields: fields,
-      values: buildEditValues(),
+      enabledFields: [...fields, ...Object.keys(operationValuesPatch) as BatchOperationField[]],
+      values: { ...buildEditValues(), ...operationValuesPatch },
       mediaMode: enabled.images ? mediaMode.value : 'unchanged',
       media: selectedMedia.value.map(media => ({ fileId: media.fileId, fileType: media.fileType })),
       coverSelection: coverEnabled.value && batchCoverChoice.value
@@ -773,6 +846,10 @@ async function submitBatchEdit() {
 }
 
 async function requestDelete() {
+  if (!props.allowDelete) {
+    uni.showToast({ title: '当前账号不能删除房源', icon: 'none' })
+    return
+  }
   if (!props.selectedIds.length || submitting.value)
     return
   try {
@@ -1200,6 +1277,36 @@ defineExpose({ openAdd, openEdit, requestDelete })
           </view>
 
           <view class="batch-section">
+            <text class="batch-section__title">佣金设置</text>
+            <sl-commission-settings
+              v-model="operationCommissionRange"
+              v-model:half-year-enabled="operationEnabled.halfYearCommissionPercent"
+              v-model:one-year-enabled="operationEnabled.oneYearCommissionPercent"
+              :show-switch="true"
+            />
+            <view class="edit-row">
+              <view class="edit-row__head">
+                <text>管理情况</text><wd-switch v-model="operationEnabled.managementPackageMode" size="22px" />
+              </view>
+              <view v-if="operationEnabled.managementPackageMode" class="option-chips">
+                <text class="option-chip" :class="{ active: operationValues.managementPackageMode === 1 }" @tap="operationValues.managementPackageMode = 1">可包</text>
+                <text class="option-chip" :class="{ active: operationValues.managementPackageMode === 2 }" @tap="operationValues.managementPackageMode = 2">不可包</text>
+              </view>
+            </view>
+            <view class="edit-row">
+              <view class="edit-row__head">
+                <text>网络情况</text><wd-switch v-model="operationEnabled.networkPackageMode" size="22px" />
+              </view>
+              <view v-if="operationEnabled.networkPackageMode" class="option-chips">
+                <text class="option-chip" :class="{ active: operationValues.networkPackageMode === 1 }" @tap="operationValues.networkPackageMode = 1">可包</text>
+                <text class="option-chip" :class="{ active: operationValues.networkPackageMode === 2 }" @tap="operationValues.networkPackageMode = 2">不可包</text>
+                <text class="option-chip" :class="{ active: operationValues.networkPackageMode === 3 }" @tap="operationValues.networkPackageMode = 3">自理</text>
+                <text class="option-chip" :class="{ active: operationValues.networkPackageMode === 4 }" @tap="operationValues.networkPackageMode = 4">必开</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="batch-section">
             <view class="edit-row">
               <view class="edit-row__head">
                 <text>租金</text><wd-switch v-model="enabled.rentPrice" size="22px" />
@@ -1551,6 +1658,14 @@ defineExpose({ openAdd, openEdit, requestDelete })
   font-weight: 800;
 }
 
+.batch-section__title {
+  display: block;
+  margin-bottom: 18rpx;
+  color: var(--sl-ink, #1e2b26);
+  font-size: 27rpx;
+  font-weight: 800;
+}
+
 .section-row {
   display: flex;
   align-items: center;
@@ -1629,6 +1744,19 @@ defineExpose({ openAdd, openEdit, requestDelete })
 .edit-input {
   height: 70rpx;
   padding: 0 18rpx;
+}
+
+.edit-input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 16rpx;
+  color: var(--sl-muted, #72817b);
+  font-size: 24rpx;
+}
+
+.edit-input-with-unit .edit-input {
+  flex: 1;
 }
 
 .preview-section {

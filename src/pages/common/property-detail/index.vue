@@ -6,7 +6,11 @@ import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
 import { getPropertyDetail } from '@/api/property'
 import SlSupplyContacts from '@/components/sl-supply-contacts/sl-supply-contacts.vue'
+import { useShenleAuthStore } from '@/store/auth'
+import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
+import { createMediaLongPressGuard, renameEditableMedia } from '@/utils/media-edit'
+import { canManagePropertyWrites } from '@/utils/property-management'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
@@ -23,6 +27,33 @@ const loading = ref(true)
 const gallery = ref<PropertyDetailMedia[]>([])
 const previewVideo = ref<PropertyDetailMedia | null>(null)
 const status = computed(() => getStatusMeta(detail.value?.status))
+const operationConfig = computed(() => detail.value?.operationConfig)
+const promotionDescriptions = computed(() => {
+  const config = operationConfig.value
+  if (!config)
+    return []
+  const result: string[] = []
+  if (config.supportsShortRent) {
+    const months = config.minimumShortRentMonths ? `最低${config.minimumShortRentMonths}个月` : '最低月份未设置'
+    result.push(`可短租 · ${months}${config.shortRentCanMarkup ? ' · 可加价' : ''}`)
+  }
+  if (config.supportsDailyRent) {
+    const price = config.dailyRentPrice ? `${config.dailyRentPrice}元/天` : '单价未设置'
+    result.push(`可日租 · ${price}`)
+  }
+  if (config.supportsMonthlyPayment) {
+    result.push(`可押一付一 · 半年${config.monthlyPaymentHalfYearCommissionPercent ?? 0}% · 一年${config.monthlyPaymentOneYearCommissionPercent ?? 0}%`)
+  }
+  return result
+})
+const auth = useShenleAuthStore()
+const canRenameMedia = computed(() => canManagePropertyWrites({
+  isAdmin: auth.isAdmin,
+  isLandlord: auth.isLandlord,
+  isMaintainer: auth.isMaintainer,
+  mode: modeStore.mode,
+}))
+const mediaLongPressGuard = createMediaLongPressGuard()
 const videoPreviewVisible = computed({
   get: () => !!previewVideo.value,
   set: (visible: boolean) => {
@@ -132,6 +163,8 @@ async function loadGallery(nextDetail: SlPropertyOutput) {
 }
 
 function previewGalleryMedia(media: PropertyDetailMedia) {
+  if (mediaLongPressGuard.consumeTap())
+    return
   if (media.kind === 'video') {
     previewVideo.value = media
     return
@@ -144,6 +177,28 @@ function previewGalleryMedia(media: PropertyDetailMedia) {
   uni.previewImage({ current: media.url, urls })
 }
 
+function showGalleryMediaMenu(media: PropertyDetailMedia) {
+  if (!canRenameMedia.value || media.id === null || media.id === undefined)
+    return
+  mediaLongPressGuard.mark()
+  uni.showActionSheet({
+    itemList: ['查看', '编辑媒体名称'],
+    success: async ({ tapIndex }) => {
+      if (tapIndex === 0) {
+        mediaLongPressGuard.consumeTap()
+        previewGalleryMedia(media)
+        return
+      }
+      await renameEditableMedia({
+        id: media.id!,
+        fileName: media.fileName,
+        suffix: media.suffix,
+        onRenamed: fileName => media.fileName = fileName,
+      })
+    },
+  })
+}
+
 function savePreviewVideo() {
   if (!previewVideo.value)
     return
@@ -154,6 +209,30 @@ function openSavePreviewMenu() {
   if (!previewVideo.value)
     return
   void showVideoSaveActionSheet({ fileId: previewVideo.value.id, url: previewVideo.value.url })
+}
+
+function commissionPercent(value?: number | null) {
+  return value === null || value === undefined ? '未设置' : `${value}%`
+}
+
+function managementPackageText(value?: number | null) {
+  if (value === 1)
+    return '可包'
+  if (value === 2)
+    return '不可包'
+  return '未设置'
+}
+
+function networkPackageText(value?: number | null) {
+  if (value === 1)
+    return '可包'
+  if (value === 2)
+    return '不可包'
+  if (value === 3)
+    return '自理'
+  if (value === 4)
+    return '必开'
+  return '未设置'
 }
 
 async function loadDetail() {
@@ -198,15 +277,16 @@ onLoad((query) => {
             :src="media.url"
             mode="aspectFill"
             @tap="previewGalleryMedia(media)"
+            @longpress.stop="showGalleryMediaMenu(media)"
           />
-          <view v-else-if="media.kind === 'video'" class="gallery__video" @tap="previewGalleryMedia(media)">
+          <view v-else-if="media.kind === 'video'" class="gallery__video" @tap="previewGalleryMedia(media)" @longpress.stop="showGalleryMediaMenu(media)">
             <image v-if="media.posterUrl" class="gallery__poster" :src="media.posterUrl" mode="aspectFill" />
             <view class="gallery__video-overlay">
               <wd-icon name="play-circle" size="46px" color="#fff" />
               <text>{{ media.fileName || '视频预览' }}</text>
             </view>
           </view>
-          <view v-else class="gallery__file">
+          <view v-else class="gallery__file" @longpress.stop="showGalleryMediaMenu(media)">
             <wd-icon name="file" size="34px" color="#7d8e86" />
             <text>{{ media.fileName || '附件' }}</text>
           </view>
@@ -232,8 +312,27 @@ onLoad((query) => {
         </view>
       </view>
 
-      <view v-if="communityDetail && (communityDetail.lastUpdaterName || communityDetail.ownerName)" class="section sl-card">
+      <view v-if="communityDetail" class="section sl-card">
         <sl-supply-contacts :community="communityDetail" />
+      </view>
+
+      <view v-if="operationConfig" class="section sl-card">
+        <text class="section__title">经营信息</text>
+        <view class="info-row">
+          <text>半年佣金</text><text>{{ commissionPercent(operationConfig.effectiveHalfYearCommissionPercent ?? operationConfig.halfYearCommissionPercent) }}</text>
+        </view>
+        <view class="info-row">
+          <text>一年佣金</text><text>{{ commissionPercent(operationConfig.effectiveOneYearCommissionPercent ?? operationConfig.oneYearCommissionPercent) }}</text>
+        </view>
+        <view class="info-row">
+          <text>管理情况</text><text>{{ managementPackageText(operationConfig.effectiveManagementPackageMode ?? operationConfig.managementPackageMode) }}</text>
+        </view>
+        <view class="info-row">
+          <text>网络情况</text><text>{{ networkPackageText(operationConfig.effectiveNetworkPackageMode ?? operationConfig.networkPackageMode) }}</text>
+        </view>
+        <view v-if="promotionDescriptions.length" class="promotion-info">
+          <text v-for="item in promotionDescriptions" :key="item" class="promotion-info__item">{{ item }}</text>
+        </view>
       </view>
 
       <view class="section sl-card">
@@ -444,6 +543,22 @@ onLoad((query) => {
 
 .info-row text:last-child {
   color: var(--sl-ink);
+}
+
+.promotion-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  margin-top: 18rpx;
+}
+
+.promotion-info__item {
+  padding: 12rpx 14rpx;
+  border-radius: 7rpx;
+  background: #edf6ef;
+  color: #126b4f;
+  font-size: 22rpx;
+  line-height: 1.5;
 }
 
 .tag-list {

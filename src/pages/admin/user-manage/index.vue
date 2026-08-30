@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { SlPendingUserOutput, SlUserOutput } from '@/types/shenle'
-import { onLoad, onPullDownRefresh, onReachBottom } from '@dcloudio/uni-app'
+import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
-import { approveUser, deleteUser, getPendingUsers, getUserPage, rejectUser, setUserNickName, setUserRole } from '@/api/user-manage'
+import { deleteUser, getPendingUsers, getUserPage, setUserNickName, setUserRole } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -72,40 +72,8 @@ async function loadPending() {
   pending.value = await getPendingUsers().catch(() => [])
 }
 
-async function approve(item: SlPendingUserOutput) {
-  uni.showModal({
-    title: '通过申请',
-    content: `通过「${item.nickName || '该用户'}」的申请？将升级为普通用户，对方刷新或重登后即可使用。`,
-    success: async (res) => {
-      if (!res.confirm)
-        return
-      try {
-        await approveUser(item.userId)
-        pending.value = pending.value.filter(p => String(p.userId) !== String(item.userId))
-        uni.showToast({ title: '已通过', icon: 'success' })
-        load(true)
-      }
-      catch {}
-    },
-  })
-}
-
-async function reject(item: SlPendingUserOutput) {
-  uni.showModal({
-    title: '拒绝申请',
-    content: `拒绝「${item.nickName || '该用户'}」的申请？对方仍是游客，可重新申请。`,
-    confirmColor: '#c94832',
-    success: async (res) => {
-      if (!res.confirm)
-        return
-      try {
-        await rejectUser(item.userId)
-        pending.value = pending.value.filter(p => String(p.userId) !== String(item.userId))
-        uni.showToast({ title: '已拒绝', icon: 'none' })
-      }
-      catch {}
-    },
-  })
+function openApplicationDetail(item: SlPendingUserOutput) {
+  uni.navigateTo({ url: `/pages/admin/application-detail/index?applicationId=${encodeURIComponent(String(item.applicationId))}` })
 }
 
 async function load(reset = false) {
@@ -201,6 +169,10 @@ onLoad(() => {
   load(true)
   loadPending()
 })
+onShow(() => {
+  if (auth.isSuperAdmin && modeStore.mode === 'admin')
+    void loadPending()
+})
 onPullDownRefresh(() => load(true))
 onReachBottom(() => {
   if (!finished.value) {
@@ -232,14 +204,12 @@ onReachBottom(() => {
       </view>
       <view v-for="item in pending" :key="String(item.userId)" class="pending-row">
         <image class="avatar avatar--sm" :src="resolveAssetUrl(item.avatar) || '/static/images/default-avatar.png'" mode="aspectFill" />
-        <text class="pending-name">{{ item.nickName || '微信用户' }}</text>
-        <view class="pending-actions">
-          <view class="mini-btn mini-btn--reject" @tap="reject(item)">
-            拒绝
-          </view>
-          <view class="mini-btn mini-btn--approve" @tap="approve(item)">
-            通过
-          </view>
+        <view class="pending-info">
+          <text class="pending-name">{{ item.nickName || '微信用户' }}</text>
+          <text class="pending-time">{{ item.enterpriseName || '未填写企业名称' }}</text>
+        </view>
+        <view class="pending-detail" @tap="openApplicationDetail(item)">
+          详情
         </view>
       </view>
     </view>
@@ -515,9 +485,17 @@ onReachBottom(() => {
   flex: 0 0 64rpx;
 }
 
-.pending-name {
+.pending-info {
   min-width: 0;
   flex: 1;
+}
+
+.pending-name,
+.pending-time {
+  display: block;
+}
+
+.pending-name {
   overflow: hidden;
   font-size: 27rpx;
   font-weight: 700;
@@ -525,27 +503,23 @@ onReachBottom(() => {
   white-space: nowrap;
 }
 
-.pending-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 12rpx;
+.pending-time {
+  margin-top: 5rpx;
+  overflow: hidden;
+  color: var(--sl-muted);
+  font-size: 20rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.mini-btn {
-  padding: 10rpx 24rpx;
+.pending-detail {
+  flex: none;
+  padding: 10rpx 18rpx;
+  border: 1rpx solid rgb(18 107 79 / 24%);
   border-radius: 999rpx;
-  font-size: 23rpx;
+  color: var(--sl-brand);
+  font-size: 22rpx;
   font-weight: 800;
-}
-
-.mini-btn--approve {
-  background: linear-gradient(135deg, var(--sl-brand, #126b4f), #24815f);
-  color: #fff;
-}
-
-.mini-btn--reject {
-  border: 1rpx solid rgb(201 72 50 / 40%);
-  color: #c94832;
 }
 
 .role-btn.active {

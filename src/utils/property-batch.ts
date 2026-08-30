@@ -86,6 +86,21 @@ export interface ComparableMedia {
 
 export type MediaMergeMode = 'append' | 'replace' | 'clear' | 'unchanged'
 
+export type BatchOperationField
+  = | 'halfYearCommissionPercent'
+    | 'oneYearCommissionPercent'
+    | 'managementPackageMode'
+    | 'networkPackageMode'
+
+export type BatchEditableField = Exclude<keyof UpdateSlPropertyInput, 'id' | 'title' | 'communityId' | 'buildingId' | 'unit' | 'roomNo' | 'floor' | 'totalFloors' | 'coverImageId'> | BatchOperationField
+
+export type BatchUpdateValues = Partial<UpdateSlPropertyInput> & {
+  halfYearCommissionPercent?: number | null
+  oneYearCommissionPercent?: number | null
+  managementPackageMode?: 1 | 2 | null
+  networkPackageMode?: 1 | 2 | 3 | 4 | null
+}
+
 export interface BatchMediaItem {
   fileId: number | string
 }
@@ -98,8 +113,8 @@ export interface BatchAddContext {
 }
 
 export interface BatchUpdateOptions {
-  enabledFields: readonly (keyof UpdateSlPropertyInput)[]
-  values: Partial<UpdateSlPropertyInput>
+  enabledFields: readonly BatchEditableField[]
+  values: BatchUpdateValues
   mediaMode: MediaMergeMode
   media: readonly AddSlPropertyImageInput[]
   coverSelection?: {
@@ -108,7 +123,7 @@ export interface BatchUpdateOptions {
   } | null
 }
 
-const BATCH_EDITABLE_FIELDS = new Set<keyof UpdateSlPropertyInput>([
+const BATCH_EDITABLE_FIELDS = new Set<BatchEditableField>([
   'rentPrice',
   'area',
   'bedrooms',
@@ -126,6 +141,17 @@ const BATCH_EDITABLE_FIELDS = new Set<keyof UpdateSlPropertyInput>([
   'tagIds',
   'facilityIds',
   'images',
+  'halfYearCommissionPercent',
+  'oneYearCommissionPercent',
+  'managementPackageMode',
+  'networkPackageMode',
+])
+
+const BATCH_OPERATION_FIELDS = new Set<BatchOperationField>([
+  'halfYearCommissionPercent',
+  'oneYearCommissionPercent',
+  'managementPackageMode',
+  'networkPackageMode',
 ])
 
 export function generateRoomNumbers(input: GenerateRoomNumbersInput): GeneratedRoomNumber[] {
@@ -416,6 +442,20 @@ function snapshotToUpdateInput(snapshot: SlPropertyBatchRowOutput): UpdateSlProp
     description: snapshot.description ?? null,
     remark: snapshot.remark ?? null,
     images: snapshot.images.map(media => ({ fileId: media.id, fileType: media.fileType ?? null })),
+    operationConfig: snapshot.operationConfig
+      ? {
+          managementFee: snapshot.operationConfig.managementFee ?? null,
+          networkFee: snapshot.operationConfig.networkFee ?? null,
+          waterFee: snapshot.operationConfig.waterFee ?? null,
+          electricityFee: snapshot.operationConfig.electricityFee ?? null,
+          commissionMode: snapshot.operationConfig.commissionMode ?? null,
+          commissionValue: snapshot.operationConfig.commissionValue ?? null,
+          halfYearCommissionPercent: snapshot.operationConfig.halfYearCommissionPercent ?? null,
+          oneYearCommissionPercent: snapshot.operationConfig.oneYearCommissionPercent ?? null,
+          managementPackageMode: snapshot.operationConfig.managementPackageMode ?? null,
+          networkPackageMode: snapshot.operationConfig.networkPackageMode ?? null,
+        }
+      : null,
   }
 }
 
@@ -424,10 +464,19 @@ export function buildBatchUpdateInputs(
   options: BatchUpdateOptions,
 ): UpdateSlPropertyInput[] {
   const enabledFields = options.enabledFields.filter(field => BATCH_EDITABLE_FIELDS.has(field))
+  const propertyFields = enabledFields.filter(field => !BATCH_OPERATION_FIELDS.has(field as BatchOperationField)) as Array<keyof UpdateSlPropertyInput>
+  const operationFields = enabledFields.filter(field => BATCH_OPERATION_FIELDS.has(field as BatchOperationField)) as BatchOperationField[]
 
   return snapshots.map((snapshot) => {
     const current = snapshotToUpdateInput(snapshot)
-    const updated = mergeEnabledSnapshotFields(current, options.values, enabledFields)
+    const updated = mergeEnabledSnapshotFields(current, options.values, propertyFields)
+    if (operationFields.length) {
+      const currentConfig = current.operationConfig || {}
+      updated.operationConfig = {
+        ...currentConfig,
+        ...Object.fromEntries(operationFields.map(field => [field, options.values[field]])),
+      }
+    }
     const images = enabledFields.includes('images')
       ? mergeMediaByMode(current.images || [], options.media, options.mediaMode)
       : (current.images || [])

@@ -3,7 +3,6 @@ import type { CommunityAssignmentOutput, ShenLeId, SlLandlordApplyOutput, SlLand
 import { onLoad, onPullDownRefresh, onReachBottom, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { approveLandlord, batchAssignOwner, batchSetLandlords, getCommunityAssignmentPage, getLandlordPage, getLandlordPending, rejectLandlord, setLandlord } from '@/api/landlord'
-import { setSourceContactSupportUser } from '@/api/source-contact-portal'
 import { getUserPage } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
@@ -354,51 +353,6 @@ function onCommunityListReachBottom() {
     loadCommunities()
 }
 
-// ── 分配系统维护人 ───────────────────────────────────────────────────────────
-const supportVisible = ref(false)
-const supportTarget = ref<SlLandlordOutput | null>(null)
-const supportUsers = ref<SlUserOutput[]>([])
-const supportUserId = ref<ShenLeId | null>(null)
-const supportLoading = ref(false)
-const supportSubmitting = ref(false)
-
-async function openSupport(item: SlLandlordOutput) {
-  supportTarget.value = item
-  supportUserId.value = item.supportUserId || null
-  supportVisible.value = true
-  supportLoading.value = true
-  try {
-    const result = await getUserPage({ page: 1, pageSize: 100 })
-    supportUsers.value = result.items.filter(user => user.accountType >= 888 && user.status === 1)
-  }
-  finally {
-    supportLoading.value = false
-  }
-}
-
-function selectSupport(userId: ShenLeId | null) {
-  if (!supportSubmitting.value)
-    supportUserId.value = userId
-}
-
-async function saveSupport() {
-  if (!supportTarget.value || supportSubmitting.value)
-    return
-  supportSubmitting.value = true
-  try {
-    await setSourceContactSupportUser({
-      sourceContactUserId: supportTarget.value.userId,
-      supportUserId: supportUserId.value,
-    })
-    supportVisible.value = false
-    await load(true)
-    uni.showToast({ title: supportUserId.value ? '维护人已更新' : '已取消维护人', icon: 'success' })
-  }
-  finally {
-    supportSubmitting.value = false
-  }
-}
-
 // ── 角色标签颜色 ─────────────────────────────────────────────────────────────
 function roleTone(accountType: number) {
   if (accountType >= 999)
@@ -517,12 +471,8 @@ onReachBottom(() => {
             </view>
           </view>
           <text class="landlord__count">名下 {{ item.communityCount }} 个楼盘</text>
-          <text class="landlord__support">系统维护人：{{ item.supportUserName || '未分配' }}</text>
         </view>
         <view class="landlord__actions">
-          <view class="action-btn action-btn--support" @tap="openSupport(item)">
-            分配维护人
-          </view>
           <view class="action-btn action-btn--assign" @tap="openAssign(item)">
             分配楼盘
           </view>
@@ -669,55 +619,6 @@ onReachBottom(() => {
             :loading="communitySubmitting"
             @click="saveCommunityAssignments"
           >
-            保存
-          </wd-button>
-        </view>
-      </view>
-    </wd-popup>
-
-    <!-- ── 分配系统维护人 弹窗 ── -->
-    <wd-popup v-model="supportVisible" position="bottom" :z-index="2200" :close-on-click-modal="!supportSubmitting" custom-style="border-radius: 28rpx 28rpx 0 0; overflow: hidden; max-height: 78vh;" @touchmove.stop.prevent>
-      <view class="picker-popup" @touchmove.stop.prevent>
-        <view class="picker-popup__head">
-          <text class="picker-popup__title">为「{{ supportTarget?.nickName || '盘源对接人' }}」分配系统维护人</text>
-          <view class="picker-popup__close" @tap="supportVisible = false">
-            <wd-icon name="close" size="22px" color="#6b7770" />
-          </view>
-        </view>
-        <scroll-view class="picker-scroll" scroll-y>
-          <view class="picker-row" @tap="selectSupport(null)">
-            <view class="picker-row__info">
-              <text class="picker-row__name">暂不分配</text>
-              <text class="picker-row__sub">后续可随时重新设置</text>
-            </view>
-            <view class="selection-box" :class="{ 'selection-box--checked': !supportUserId }">
-              <wd-icon v-if="!supportUserId" name="check" size="16px" color="#fff" />
-            </view>
-          </view>
-          <view v-for="user in supportUsers" :key="String(user.userId)" class="picker-row" @tap="selectSupport(user.userId)">
-            <view class="picker-row__info">
-              <view class="picker-row__title-line">
-                <text class="picker-row__name">{{ user.nickName || '未设置昵称' }}</text>
-                <view class="assignment-tag assignment-tag--assigned">
-                  {{ user.accountType >= 999 ? '超级管理员' : '管理员' }}
-                </view>
-              </view>
-              <text class="picker-row__sub">负责协助维护盘源和处理系统问题</text>
-            </view>
-            <view class="selection-box" :class="{ 'selection-box--checked': String(supportUserId) === String(user.userId) }">
-              <wd-icon v-if="String(supportUserId) === String(user.userId)" name="check" size="16px" color="#fff" />
-            </view>
-          </view>
-          <view v-if="supportLoading" class="picker-tip">
-            加载中...
-          </view>
-          <view v-else-if="!supportUsers.length" class="picker-tip">
-            暂无可分配管理员
-          </view>
-        </scroll-view>
-        <view class="picker-footer sl-safe-bottom">
-          <text class="picker-footer__summary">{{ supportUserId ? '已选择维护人' : '暂不分配维护人' }}</text>
-          <wd-button type="primary" size="small" :loading="supportSubmitting" @click="saveSupport">
             保存
           </wd-button>
         </view>

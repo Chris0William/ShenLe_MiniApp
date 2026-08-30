@@ -14,6 +14,7 @@ import { getBuildingStats } from '@/api/building'
 import { getCommunityPage } from '@/api/community'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
 import { getRegionStats, getRegionTree } from '@/api/region'
+import SlBuildingSalesBoard from '@/components/sl-building-sales-board/sl-building-sales-board.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useEntityChangeStore } from '@/store/entity-change'
 import { modeStore } from '@/store/mode'
@@ -38,12 +39,6 @@ interface RegionRow {
   id: ShenLeId
   name: string
   stats: SlRegionStatsOutput | null
-}
-
-interface FloorRow {
-  floor: number | null
-  label: string
-  rooms: SlPropertyListOutput[]
 }
 
 const COMMUNITY_PAGE_SIZE = 20
@@ -88,30 +83,6 @@ const overviewStats = computed(() => {
     acc.available += item.stats?.availableCount || 0
     return acc
   }, { community: 0, building: 0, property: 0, rented: 0, available: 0 })
-})
-
-const floorGrid = computed<FloorRow[]>(() => {
-  const floors = new Map<number | null, SlPropertyListOutput[]>()
-  for (const item of properties.value) {
-    const floor = getFloor(item)
-    const key = floor || null
-    floors.set(key, [...(floors.get(key) || []), item])
-  }
-
-  const totalFloors = selectedBuilding.value?.totalFloors || Math.max(0, ...properties.value.map(item => getFloor(item) || 0))
-  const rows: FloorRow[] = []
-  for (let floor = totalFloors; floor >= 1; floor -= 1) {
-    rows.push({
-      floor,
-      label: `${floor}F`,
-      rooms: (floors.get(floor) || []).sort(sortRooms),
-    })
-  }
-
-  const unknown = floors.get(null)
-  if (unknown?.length)
-    rows.push({ floor: null, label: '未知楼层', rooms: unknown.sort(sortRooms) })
-  return rows
 })
 
 function flattenRegions(nodes: SlRegionTreeOutput[]) {
@@ -273,21 +244,6 @@ function refreshCurrent() {
   return Promise.resolve()
 }
 
-function getFloor(item: SlPropertyListOutput) {
-  if (item.floor !== null && item.floor !== undefined)
-    return Number(item.floor)
-  const matched = item.floorInfo?.match(/(\d+)/)
-  return matched ? Number(matched[1]) : 0
-}
-
-function roomLabel(item: SlPropertyListOutput) {
-  return item.roomNo || item.title || '房间'
-}
-
-function sortRooms(left: SlPropertyListOutput, right: SlPropertyListOutput) {
-  return roomLabel(left).localeCompare(roomLabel(right), 'zh-CN', { numeric: true })
-}
-
 function statusTone(status: number) {
   return getStatusMeta(status).tone as any
 }
@@ -387,7 +343,7 @@ onPullDownRefresh(() => {
       </view>
     </view>
 
-    <view class="legend sl-card">
+    <view v-if="level !== 3" class="legend sl-card">
       <view v-for="item in PROPERTY_STATUS_OPTIONS" :key="item.value" class="legend__item">
         <view class="legend__dot" :class="`legend__dot--${item.value}`" />
         <text>{{ item.label }}</text>
@@ -506,53 +462,14 @@ onPullDownRefresh(() => {
       </view>
 
       <view v-if="level === 3" class="content-inner">
-        <view class="building-summary sl-card">
-          <view class="building-summary__head">
-            <text class="building-summary__name">{{ selectedBuilding?.name }}</text>
-            <text class="building-summary__desc">{{ selectedCommunity?.name }} · {{ selectedBuilding?.totalFloors || '-' }} 层</text>
-          </view>
-          <view class="region-card__stats region-card__stats--4">
-            <view><text>{{ selectedBuilding?.propertyCount || 0 }}</text><text>房源</text></view>
-            <view><text>{{ selectedBuilding?.rentedCount || 0 }}</text><text>已租</text></view>
-            <view><text>{{ selectedBuilding?.availableCount || 0 }}</text><text>空置</text></view>
-            <view><text>{{ rate(selectedBuilding?.rentedCount, selectedBuilding?.propertyCount) }}%</text><text>出租率</text></view>
-          </view>
-        </view>
-
-        <view v-if="propertyLoading" class="loading sl-card">
-          房间加载中...
-        </view>
-        <view v-else-if="!properties.length" class="empty sl-card">
-          <wd-icon name="home" size="36px" color="#8ea099" />
-          <text>暂无房源数据</text>
-        </view>
-        <view v-else class="floor-list">
-          <view v-for="row in floorGrid" :key="row.label" class="floor-row">
-            <view class="floor-label">
-              {{ row.label }}
-            </view>
-            <scroll-view scroll-x class="room-scroll">
-              <view class="room-list">
-                <view v-if="!row.rooms.length" class="room-empty">
-                  暂无房间
-                </view>
-                <view
-                  v-for="room in row.rooms"
-                  :key="String(room.id)"
-                  class="room-cell"
-                  :class="`room-cell--${room.status}`"
-                  @tap="openProperty(room)"
-                >
-                  <text class="room-cell__no">{{ roomLabel(room) }}</text>
-                  <wd-tag :type="statusTone(room.status)" custom-class="room-cell__tag">
-                    {{ room.statusName || statusLabel(room.status) }}
-                  </wd-tag>
-                  <text class="room-cell__price">¥{{ formatMoney(room.rentPrice) }}</text>
-                </view>
-              </view>
-            </scroll-view>
-          </view>
-        </view>
+        <sl-building-sales-board
+          :community-name="selectedCommunity?.name"
+          :building-name="selectedBuilding?.name"
+          :total-floors="selectedBuilding?.totalFloors"
+          :properties="properties"
+          :loading="propertyLoading"
+          @select="openProperty"
+        />
       </view>
     </scroll-view>
 
@@ -737,8 +654,7 @@ onPullDownRefresh(() => {
 }
 
 .region-list,
-.community-list,
-.floor-list {
+.community-list {
   display: flex;
   flex-direction: column;
   gap: 18rpx;
@@ -747,7 +663,6 @@ onPullDownRefresh(() => {
 
 .region-card,
 .community-card,
-.building-summary,
 .loading,
 .empty {
   padding: 24rpx;
@@ -762,8 +677,7 @@ onPullDownRefresh(() => {
 }
 
 .region-card__name,
-.community-card__name,
-.building-summary__name {
+.community-card__name {
   display: block;
   overflow: hidden;
   font-size: 31rpx;
@@ -772,8 +686,7 @@ onPullDownRefresh(() => {
   white-space: nowrap;
 }
 
-.community-card__desc,
-.building-summary__desc {
+.community-card__desc {
   display: block;
   margin-top: 7rpx;
   color: var(--sl-muted);
@@ -906,108 +819,6 @@ onPullDownRefresh(() => {
   gap: 10rpx;
   color: var(--sl-muted);
   font-size: 23rpx;
-}
-
-.building-summary {
-  margin-bottom: 18rpx;
-}
-
-.building-summary__head {
-  margin-bottom: 4rpx;
-}
-
-.building-summary__stats text:first-child {
-  display: block;
-  color: var(--sl-brand);
-  font-size: 34rpx;
-  font-weight: 900;
-}
-
-.building-summary__stats text:last-child {
-  display: block;
-  margin-top: 6rpx;
-  color: var(--sl-muted);
-  font-size: 22rpx;
-}
-
-.floor-row {
-  display: flex;
-  gap: 14rpx;
-  align-items: stretch;
-}
-
-.floor-label {
-  display: flex;
-  width: 74rpx;
-  flex: 0 0 74rpx;
-  align-items: center;
-  justify-content: center;
-  border-radius: 18rpx;
-  background: #eaf2e8;
-  color: var(--sl-brand);
-  font-size: 24rpx;
-  font-weight: 900;
-}
-
-.room-scroll {
-  min-width: 0;
-  flex: 1;
-  white-space: nowrap;
-}
-
-.room-list {
-  display: inline-flex;
-  gap: 12rpx;
-  min-height: 144rpx;
-}
-
-.room-cell,
-.room-empty {
-  display: inline-flex;
-  width: 176rpx;
-  min-height: 144rpx;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  padding: 12rpx;
-  border: 2rpx solid transparent;
-  border-radius: 20rpx;
-  background: #edf6ef;
-  text-align: center;
-}
-
-.room-cell--1 {
-  background: #fff6df;
-  border-color: rgb(228 161 27 / 22%);
-}
-.room-cell--2 {
-  background: #eef2f0;
-  border-color: rgb(125 139 133 / 18%);
-}
-.room-cell--3 {
-  background: #fff0ed;
-  border-color: rgb(201 72 50 / 18%);
-}
-
-.room-cell__no {
-  overflow: hidden;
-  max-width: 148rpx;
-  font-size: 25rpx;
-  font-weight: 850;
-  text-overflow: ellipsis;
-}
-
-.room-cell__price {
-  margin-top: 8rpx;
-  color: #c26916;
-  font-size: 23rpx;
-  font-weight: 850;
-}
-
-.room-empty {
-  color: var(--sl-muted);
-  font-size: 22rpx;
 }
 
 .loading,

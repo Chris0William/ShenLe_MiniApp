@@ -2,7 +2,7 @@
 import type { AddSlRegionInput, ShenLeId, SlRegionTreeOutput } from '@/types/shenle'
 import { onLoad, onPullDownRefresh } from '@dcloudio/uni-app'
 import { computed, reactive, ref } from 'vue'
-import { addRegion, deleteRegion, getRegionDetail, getRegionTree, updateRegion } from '@/api/region'
+import { addRegion, deleteRegion, getRegionDetail, getRegionTree, saveRegionBoundary, updateRegion } from '@/api/region'
 
 definePage({
   style: {
@@ -48,8 +48,12 @@ const formVisible = ref(false)
 const isEdit = ref(false)
 const submitting = ref(false)
 const locatedId = ref<string>('')
+const editingRegion = ref<FlatRegion | null>(null)
+const editPoints = ref<Array<{ longitude: number, latitude: number }>>([])
+const boundarySaving = ref(false)
 const mapCenter = reactive({ ...DEFAULT_CENTER })
 const mapScale = ref(13)
+const LABEL_MARKER_BASE = 1000
 
 const form = reactive<RegionForm>({
   id: '',
@@ -99,14 +103,15 @@ const parentOptions = computed<ParentOption[]>(() => [
 ])
 const parentNames = computed(() => parentOptions.value.map(item => item.name))
 const parentIndex = computed(() => Math.max(0, parentOptions.value.findIndex(item => String(item.id) === String(form.pid))))
-const markers = computed(() => flatRegions.value
-  .map((item, index) => {
+const markers = computed(() => {
+  const result: any[] = []
+  flatRegions.value.forEach((item, index) => {
     const center = getCenter(item)
     if (!center)
-      return null
+      return
     const active = String(item.id) === locatedId.value
-    return {
-      id: index + 1,
+    result.push({
+      id: LABEL_MARKER_BASE + index,
       latitude: center.lat,
       longitude: center.lng,
       iconPath: '/static/images/dot-red.png',
@@ -121,23 +126,54 @@ const markers = computed(() => flatRegions.value
         bgColor: active ? '#e4a11b' : '#126b4f',
         color: '#ffffff',
       },
-    }
+    })
   })
-  .filter(Boolean) as any[])
-const polygons = computed(() => flatRegions.value
-  .map((item) => {
+
+  if (editingRegion.value) {
+    editPoints.value.forEach((point, index) => {
+      result.push({
+        id: index + 1,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        iconPath: '/static/images/dot-red.png',
+        width: 20,
+        height: 20,
+        anchor: { x: 0.5, y: 0.5 },
+        callout: index === 0
+          ? { content: '起点', display: 'ALWAYS', fontSize: 10, padding: 4, borderRadius: 4, bgColor: '#c94832', color: '#fff' }
+          : undefined,
+      })
+    })
+  }
+  return result
+})
+const polygons = computed(() => {
+  const result: any[] = []
+  flatRegions.value.forEach((item) => {
     const points = parseBoundary(item.boundary)
     if (points.length < 3)
-      return null
+      return
+    if (editingRegion.value && sameId(editingRegion.value.id, item.id))
+      return
     const active = String(item.id) === locatedId.value
-    return {
+    result.push({
       points,
       fillColor: active ? '#e4a11b33' : '#126b4f22',
       strokeColor: active ? '#e4a11b' : '#126b4f',
       strokeWidth: active ? 3 : 2,
-    }
+    })
   })
-  .filter(Boolean) as any[])
+  if (editPoints.value.length >= 3) {
+    result.push({
+      points: editPoints.value,
+      fillColor: '#c9483233',
+      strokeColor: '#c94832',
+      strokeWidth: 3,
+      zIndex: 100,
+    })
+  }
+  return result
+})
 
 function sameId(left?: ShenLeId | string | null, right?: ShenLeId | string | null) {
   return left !== undefined && left !== null && right !== undefined && right !== null && String(left) === String(right)
@@ -209,9 +245,83 @@ function locateRegion(item: FlatRegion, toast = true) {
 
 function onMarkerTap(event: any) {
   const markerId = Number(event.detail?.markerId ?? event.markerId)
-  const item = flatRegions.value[markerId - 1]
+  if (markerId < LABEL_MARKER_BASE)
+    return
+  const item = flatRegions.value[markerId - LABEL_MARKER_BASE]
   if (item)
     locateRegion(item)
+}
+
+function hasBoundary(item: FlatRegion) {
+  return parseBoundary(item.boundary).length >= 3
+}
+
+function onMapTap(event: any) {
+  if (!editingRegion.value)
+    return
+  if (event.detail?.markerId !== undefined || event.detail?.type === 'marker')
+    return
+  const longitude = Number(event.detail?.longitude ?? event.longitude)
+  const latitude = Number(event.detail?.latitude ?? event.latitude)
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude))
+    return
+  editPoints.value.push({ longitude, latitude })
+}
+
+function startEditBoundary(item: FlatRegion) {
+  editingRegion.value = item
+  locatedId.value = String(item.id)
+  editPoints.value = parseBoundary(item.boundary)
+  const center = getCenter(item)
+  if (center) {
+    mapCenter.lng = center.lng
+    mapCenter.lat = center.lat
+    mapScale.value = Math.max(13, item.level <= 1 ? 13 : 15)
+  }
+}
+
+function undoLastPoint() {
+  if (editPoints.value.length)
+    editPoints.value.pop()
+}
+
+function clearEditPoints() {
+  editPoints.value = []
+}
+
+function cancelEditBoundary() {
+  editingRegion.value = null
+  editPoints.value = []
+}
+
+async function saveEditBoundary() {
+  if (!editingRegion.value || boundarySaving.value)
+    return
+  if (editPoints.value.length < 3) {
+    uni.showToast({ title: '至少需要3个点', icon: 'none' })
+    return
+  }
+  const center = calcCenter(editPoints.value)
+  if (!center)
+    return
+  boundarySaving.value = true
+  try {
+    await saveRegionBoundary({
+      id: editingRegion.value.id,
+      boundary: JSON.stringify(editPoints.value.map(point => [point.longitude, point.latitude])),
+      centerLng: center.lng,
+      centerLat: center.lat,
+    })
+    uni.showToast({ title: '边界保存成功', icon: 'success' })
+    cancelEditBoundary()
+    await loadData()
+  }
+  catch (error) {
+    uni.showToast({ title: error instanceof Error ? error.message : '边界保存失败', icon: 'none' })
+  }
+  finally {
+    boundarySaving.value = false
+  }
 }
 
 function resetForm(item?: FlatRegion) {
@@ -323,6 +433,26 @@ onPullDownRefresh(loadData)
 <template>
   <view class="sl-page region-page">
     <view class="map-card sl-card">
+      <view v-if="editingRegion" class="boundary-editor-bar">
+        <view class="boundary-editor-bar__info">
+          <text class="boundary-editor-bar__title">正在绘制：{{ editingRegion.rawName }}</text>
+          <text class="boundary-editor-bar__count">已添加 {{ editPoints.length }} 个点</text>
+        </view>
+        <view class="boundary-editor-bar__actions">
+          <wd-button size="small" plain :disabled="!editPoints.length" @click="undoLastPoint">
+            撤销
+          </wd-button>
+          <wd-button size="small" plain :disabled="!editPoints.length" @click="clearEditPoints">
+            清除
+          </wd-button>
+          <wd-button size="small" plain @click="cancelEditBoundary">
+            取消
+          </wd-button>
+          <wd-button size="small" type="primary" :loading="boundarySaving" @click="saveEditBoundary">
+            保存
+          </wd-button>
+        </view>
+      </view>
       <map
         class="region-map"
         :latitude="mapCenter.lat"
@@ -330,13 +460,19 @@ onPullDownRefresh(loadData)
         :markers="markers"
         :polygons="polygons"
         :scale="mapScale"
+        :enable-zoom="true"
+        :enable-scroll="true"
+        @tap="onMapTap"
         @markertap="onMarkerTap"
+        @callouttap="onMarkerTap"
       />
     </view>
 
     <view class="sl-section-head">
       <text class="sl-section-title">区域树</text>
-      <wd-button size="small" type="primary" @click="openAdd()">新增区域</wd-button>
+      <wd-button size="small" type="primary" @click="openAdd()">
+        新增区域
+      </wd-button>
     </view>
 
     <view v-if="!flatRegions.length && !loading" class="empty sl-card">
@@ -350,23 +486,36 @@ onPullDownRefresh(loadData)
           <view>
             <view class="title-line">
               <text class="region-name">{{ item.rawName }}</text>
-              <wd-tag :type="item.centerLng && item.centerLat ? 'success' : 'default'" plain>
-                {{ item.centerLng && item.centerLat ? '有坐标' : '缺坐标' }}
+              <wd-tag :type="hasBoundary(item) ? 'success' : 'default'" plain>
+                {{ hasBoundary(item) ? '已绘制' : '未绘制' }}
               </wd-tag>
             </view>
             <text class="region-meta">层级 {{ item.level }} · {{ statusLabel(0) }}</text>
           </view>
           <view class="row-actions">
-            <wd-button size="small" plain @click="locateRegion(item)">定位</wd-button>
-            <wd-button size="small" plain @click="openAdd(item)">下级</wd-button>
-            <wd-button size="small" type="primary" plain @click="openEdit(item)">编辑</wd-button>
-            <wd-button size="small" type="danger" plain @click="confirmDelete(item)">删除</wd-button>
+            <wd-button size="small" plain @click="locateRegion(item)">
+              定位
+            </wd-button>
+            <wd-button size="small" plain @click="startEditBoundary(item)">
+              边界
+            </wd-button>
+            <wd-button size="small" plain @click="openAdd(item)">
+              下级
+            </wd-button>
+            <wd-button size="small" type="primary" plain @click="openEdit(item)">
+              编辑
+            </wd-button>
+            <wd-button size="small" type="danger" plain @click="confirmDelete(item)">
+              删除
+            </wd-button>
           </view>
         </view>
       </view>
     </view>
 
-    <view v-if="loading" class="load-tip">加载中...</view>
+    <view v-if="loading" class="load-tip">
+      加载中...
+    </view>
 
     <wd-popup v-model="formVisible" position="bottom" custom-style="border-radius: 30rpx 30rpx 0 0; overflow: hidden;" safe-area-inset-bottom @touchmove.stop.prevent>
       <view class="form-sheet" @touchmove.stop.prevent>
@@ -388,28 +537,30 @@ onPullDownRefresh(loadData)
           <view class="grid-2">
             <view class="form-row">
               <text>区域名称</text>
-              <input v-model="form.name" placeholder="如：西田" />
+              <input v-model="form.name" placeholder="如：西田">
             </view>
             <view class="form-row">
               <text>层级</text>
-              <input v-model="form.level" type="number" disabled />
+              <input v-model="form.level" type="number" disabled>
             </view>
           </view>
           <view class="grid-2">
             <view class="form-row">
               <text>中心经度</text>
-              <input v-model="form.centerLng" type="digit" placeholder="lng" />
+              <input v-model="form.centerLng" type="digit" placeholder="lng">
             </view>
             <view class="form-row">
               <text>中心纬度</text>
-              <input v-model="form.centerLat" type="digit" placeholder="lat" />
+              <input v-model="form.centerLat" type="digit" placeholder="lat">
             </view>
           </view>
-          <wd-button block plain @click="chooseCenter">从地图选择中心点</wd-button>
+          <wd-button plain block @click="chooseCenter">
+            从地图选择中心点
+          </wd-button>
           <view class="grid-2">
             <view class="form-row">
               <text>排序</text>
-              <input v-model="form.orderNo" type="number" />
+              <input v-model="form.orderNo" type="number">
             </view>
             <view class="form-row">
               <text>状态</text>
@@ -432,8 +583,12 @@ onPullDownRefresh(loadData)
         </view>
 
         <view class="sheet-actions">
-          <wd-button block plain type="default" @click="formVisible = false">取消</wd-button>
-          <wd-button block type="primary" :loading="submitting" @click="submitForm">保存</wd-button>
+          <wd-button plain block type="default" @click="formVisible = false">
+            取消
+          </wd-button>
+          <wd-button block type="primary" :loading="submitting" @click="submitForm">
+            保存
+          </wd-button>
         </view>
       </view>
     </wd-popup>
@@ -448,6 +603,49 @@ onPullDownRefresh(loadData)
 .map-card {
   overflow: hidden;
   margin-top: 22rpx;
+}
+
+.boundary-editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16rpx 18rpx;
+  gap: 14rpx;
+  background: #fff7ed;
+  border-bottom: 1rpx solid #f1dfc8;
+}
+
+.boundary-editor-bar__info {
+  min-width: 0;
+  flex: 1;
+}
+
+.boundary-editor-bar__title,
+.boundary-editor-bar__count {
+  display: block;
+}
+
+.boundary-editor-bar__title {
+  overflow: hidden;
+  color: #7d4b1e;
+  font-size: 23rpx;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boundary-editor-bar__count {
+  margin-top: 5rpx;
+  color: #a87543;
+  font-size: 20rpx;
+}
+
+.boundary-editor-bar__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8rpx;
 }
 
 .region-map {

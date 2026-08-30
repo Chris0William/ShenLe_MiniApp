@@ -10,23 +10,25 @@ import { promptProtectedLogin } from '@/utils/login-flow'
 
 export const FG_LOG_ENABLE = false
 
-// 仅管理端独有页需要 888 门控。
+// 全量管理端独有页。房东维护人不能进入系统字典、用户或身份管理。
 // 共享页（地图/房源列表 admin/property-list/楼盘房源 community-properties/详情/我的 admin/mine）
 // 用户模式也要可达，因此不在此列——其管理动作由各页 canManage 控制显隐。
 const PROTECTED_PATHS = [
   '/pages/admin/user-manage/index', // 超管页，登录+管理员先过守卫，999 由页面自守卫
-  '/pages/common/community-manage/index',
+  '/pages/admin/application-detail/index', // 用户申请资料详情，仅超级管理员
+  '/pages/admin/landlord-manage/index',
+  '/pages/admin/landlord-profile-manage/index',
   '/pages/common/region-manage/index',
   '/pages/common/tag-manage/index',
 ]
 
-// 盘源对接人端也可访问的管理页：需登录，且须是管理员(888)或盘源对接人(isLandlord)。
-// building-manage 和 property-form 由后端 RequireCommunityOwnerOrAdmin 守卫实际写权限。
-const LANDLORD_OR_ADMIN_PATHS = [
+// 管理端或房东端共享页面；后端继续校验具体楼盘数据范围。
+const PORTAL_PATHS = [
   '/pages/admin/dashboard/index',
   '/pages/admin/sales-control/index',
   '/pages/landlord/my-communities/index',
   '/pages/landlord/account/index',
+  '/pages/common/community-manage/index',
   '/pages/common/building-manage/index',
   '/pages/common/property-form/index',
 ]
@@ -35,8 +37,8 @@ function needsLogin(path: string) {
   return PROTECTED_PATHS.some(item => path === item || path.startsWith(item))
 }
 
-function needsLandlordOrAdmin(path: string) {
-  return LANDLORD_OR_ADMIN_PATHS.some(item => path === item || path.startsWith(item))
+function needsPortalAccess(path: string) {
+  return PORTAL_PATHS.some(item => path === item || path.startsWith(item))
 }
 
 export const navigateToInterceptor = {
@@ -81,20 +83,19 @@ export const navigateToInterceptor = {
         promptProtectedLogin('登录管理员账号后可使用管理端功能')
         return false
       }
-      // 管理端独有页仅 888 可用；非 888 不踢死，提示后留在用户端
+      // 管理端独有页仅 888 可用；非 888 不踢死，提示后留在业务员端
       if (!auth.isAdmin) {
         uni.showToast({ title: '仅管理员可使用管理端', icon: 'none' })
         return false
       }
     }
-    if (needsLandlordOrAdmin(path)) {
+    if (needsPortalAccess(path)) {
       if (!auth.isLogin) {
         promptProtectedLogin('登录后可使用楼栋/房源管理功能')
         return false
       }
-      // 管理员或盘源对接人可访问；普通用户/游客不可
-      if (!auth.isAdmin && !auth.isLandlord) {
-        uni.showToast({ title: '仅管理员或盘源对接人可使用此功能', icon: 'none' })
+      if (!auth.canEnterAdmin && !auth.canEnterLandlordPortal) {
+        uni.showToast({ title: '当前账号没有管理权限', icon: 'none' })
         return false
       }
     }

@@ -21,7 +21,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     token.value = ''
     user.value = null
     loginTicket.value = ''
-    // 同步退回用户端，避免过期后仍停留在管理端外壳（tabbar/视图与已登出状态不一致）
+    // 同步退回业务员端，避免过期后仍停留在管理端外壳（tabbar/视图与已登出状态不一致）
     modeStore.setMode('user')
   })
 
@@ -32,6 +32,15 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const isGuest = computed(() => isLogin.value && (user.value?.accountType || 0) < 777) // 666 游客需申请
   const canViewRealData = computed(() => canUseApp.value || isAdmin.value)
   const isLandlord = computed(() => !!user.value?.isLandlord)
+  const isSourceContact = computed(() => !!user.value?.isSourceContact)
+  const isMaintainer = computed(() => !!user.value?.isMaintainer)
+  const canEnterLandlordPortal = computed(() => !!user.value?.canEnterLandlordPortal)
+  const canEnterRestrictedAdmin = computed(() => !!user.value?.canEnterRestrictedAdmin)
+  const canEnterAdmin = computed(() => isAdmin.value || canEnterRestrictedAdmin.value)
+  const canCreateSupply = computed(() => !!user.value?.canCreateSupply)
+  const canBatchWriteSupply = computed(() => !!user.value?.canBatchWriteSupply)
+  const canManageLandlords = computed(() => !!user.value?.canManageLandlords)
+  const canSetCommunityHotLevel = computed(() => !!user.value?.canSetCommunityHotLevel)
   const landlordApplyStatus = computed(() => user.value?.landlordApplyStatus)
   const canViewSupplyActivity = computed(() => !!user.value?.canViewSupplyActivity)
   const canUseMineFilters = computed(() => !!user.value?.canUseMineFilters)
@@ -64,7 +73,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     }
   }
 
-  async function mergeIsLandlord() {
+  async function mergeAccess() {
     try {
       const access = await getMyAccess()
       if (user.value) {
@@ -75,9 +84,9 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
         }
         uni.setStorageSync(SHENLE_USER_KEY, user.value)
       }
-      // 纯盘源对接人（非管理员）强制切换到盘源对接人端；setMode 写 storage，登录后 reLaunch 重建页面时
+      // 仅具备房东端身份的账号默认进入房东端；维护人仍可在业务员端与受限管理端之间切换。
       // readInitialMode（5.1）会读到正确模式。不在此处 reLaunch，避免与 finishLogin 的 reLaunch 重复。
-      if (user.value?.isLandlord && (user.value?.accountType || 0) < 888 && modeStore.mode !== 'landlord')
+      if (user.value?.canEnterLandlordPortal && !user.value?.canEnterRestrictedAdmin && (user.value?.accountType || 0) < 888 && modeStore.mode !== 'landlord')
         modeStore.setMode('landlord')
     }
     catch {}
@@ -86,7 +95,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   async function applyWxSession(session: WxLoginOutput) {
     setToken(session.accessToken)
     setUser(toLoginUser(session))
-    await mergeIsLandlord()
+    await mergeAccess()
   }
 
   async function refreshUser(silent = false) {
@@ -94,7 +103,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
       return null
     const profile = await getUserInfo(silent)
     setUser(profile)
-    await mergeIsLandlord()
+    await mergeAccess()
     return profile
   }
 
@@ -171,6 +180,15 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     canViewRealData,
     isGuest,
     isLandlord,
+    isSourceContact,
+    isMaintainer,
+    canEnterLandlordPortal,
+    canEnterRestrictedAdmin,
+    canEnterAdmin,
+    canCreateSupply,
+    canBatchWriteSupply,
+    canManageLandlords,
+    canSetCommunityHotLevel,
     landlordApplyStatus,
     canViewSupplyActivity,
     canUseMineFilters,

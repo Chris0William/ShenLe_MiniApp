@@ -15,10 +15,29 @@ export interface RequestOptions {
 
 let promptingLogin = false
 
-function cleanQuery(data?: Record<string, unknown>) {
+function appendQuery(url: string, data?: Record<string, unknown>) {
   if (!data)
-    return undefined
-  return Object.fromEntries(Object.entries(data).filter(([, value]) => value !== undefined && value !== null && value !== ''))
+    return url
+
+  const pairs: string[] = []
+  for (const [key, value] of Object.entries(data)) {
+    if (value === undefined || value === null || value === '')
+      continue
+
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (item !== undefined && item !== null && item !== '')
+          pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(item))}`)
+      }
+      continue
+    }
+
+    pairs.push(`${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+  }
+
+  if (!pairs.length)
+    return url
+  return `${url}${url.includes('?') ? '&' : '?'}${pairs.join('&')}`
 }
 
 function promptLoginAgain() {
@@ -35,9 +54,11 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync(SHENLE_TOKEN_KEY) as string
     uni.request({
-      url: `${getApiBaseUrl()}${url}`,
+      url: method === 'GET'
+        ? appendQuery(`${getApiBaseUrl()}${url}`, data)
+        : `${getApiBaseUrl()}${url}`,
       method,
-      data: method === 'GET' ? cleanQuery(data) : data,
+      data: method === 'GET' ? undefined : data,
       header: {
         'Content-Type': 'application/json',
         ...header,

@@ -1,4 +1,4 @@
-import type { AddSlCommunityInput, ListSlCommunityInput, PagedList, PageSlCommunityInput, ShenLeId, SlCommunityOutput, SlCommunitySelectOutput, SlCommunityStatsOutput, UpdateSlCommunityInput } from '@/types/shenle'
+import type { AddSlCommunityInput, ListSlCommunityInput, PagedList, PageSlCommunityInput, ShenLeId, SlCommunityOutput, SlCommunitySelectOutput, SlCommunityStatsOutput, SlCommunityTickerSetOutput, UpdateSlCommunityInput } from '@/types/shenle'
 import { get, post } from './request'
 
 export function getCommunityPage(input: PageSlCommunityInput) {
@@ -27,4 +27,12 @@ export function updateCommunity(input: UpdateSlCommunityInput) {
 
 export function deleteCommunity(id: ShenLeId, cascade = false) {
   return post<void>('/api/slCommunity/delete', { id, cascade })
+}
+
+export function setCommunityHotLevel(communityId: ShenLeId, hotLevel: number, hotExpireTime?: string | null) {
+  return post<void>('/api/slCommunity/setHotLevel', { communityId, hotLevel, hotExpireTime })
+}
+
+export function getCommunityTickers(landlordShareToken?: ShenLeId | string) {
+  return get<SlCommunityTickerSetOutput>('/api/slCommunity/tickers', landlordShareToken ? { landlordShareToken: String(landlordShareToken) } : undefined)
 }

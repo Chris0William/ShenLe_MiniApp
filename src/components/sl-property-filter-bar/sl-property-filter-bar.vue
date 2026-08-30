@@ -7,7 +7,9 @@ import { DISTANCE_OPTIONS } from '@/constants/shenle'
 import { getLocationOnceCached } from '@/utils/location-cache'
 import { clonePropertyFilters, sameId } from '@/utils/property-filter'
 
-type DropdownName = 'location' | 'price' | 'sort'
+type DropdownName = 'location' | 'price' | 'realtime' | 'special'
+type RealtimeMode = NonNullable<PropertyFilterState['realtimeModes']>[number]
+type SpecialMode = NonNullable<PropertyFilterState['specialModes']>[number]
 
 interface RegionHit {
   node: SlRegionTreeOutput
@@ -32,7 +34,20 @@ const emit = defineEmits<{
 
 const PRICE_MAX = 10000
 const PRICE_STEP = 100
-const UPDATED_DAY_OPTIONS = [1, 3, 7] as const
+const COMMUNITY_TYPE_OPTIONS = [
+  { value: 2, label: '公寓' },
+  { value: 1, label: '小区' },
+  { value: 3, label: '小产权' },
+] as const
+const REALTIME_OPTIONS: Array<{ value: RealtimeMode, label: string }> = [
+  { value: 'realtime', label: '实时更新' },
+  { value: 'hot', label: '热门盘源' },
+]
+const SPECIAL_OPTIONS: Array<{ value: SpecialMode, label: string }> = [
+  { value: 'monthlyPayment', label: '可押一付一' },
+  { value: 'shortRent', label: '可短租' },
+  { value: 'dailyRent', label: '可日租' },
+]
 const activeDropdown = ref<DropdownName | null>(null)
 const sheetVisible = ref(false)
 const draft = ref<PropertyFilterState>({})
@@ -61,8 +76,10 @@ function guardInteraction() {
 const locationActive = computed(() => !!props.filters.regionId || props.filters.distanceKm !== undefined)
 const priceActive = computed(() => props.filters.minPrice !== undefined || props.filters.maxPrice !== undefined)
 const keywordActive = computed(() => !!props.keyword?.trim())
-const sortActive = computed(() => props.filters.sortBy === 'distance')
-const sortLabel = computed(() => props.filters.sortBy === 'distance' ? '距离最近' : '最新更新')
+const realtimeActive = computed(() => !!props.filters.realtimeModes?.length)
+const specialActive = computed(() => !!props.filters.specialModes?.length)
+const realtimeLabel = computed(() => optionGroupLabel(props.filters.realtimeModes, REALTIME_OPTIONS, '实时'))
+const specialLabel = computed(() => optionGroupLabel(props.filters.specialModes, SPECIAL_OPTIONS, '特殊'))
 
 const locationLabel = computed(() => {
   const parts: string[] = []
@@ -295,15 +312,33 @@ function selectOperator(type: 'owner' | 'updater', item?: SlSupplyOperatorOutput
   draft.value[nameKey] = item.nickName
 }
 
-function selectUpdatedWithin(days?: 1 | 3 | 7) {
-  draft.value.updatedWithinDays = draft.value.updatedWithinDays === days ? undefined : days
+function toggleArrayValue<T>(values: T[] | undefined, value: T) {
+  const next = [...(values || [])]
+  const index = next.indexOf(value)
+  if (index >= 0)
+    next.splice(index, 1)
+  else
+    next.push(value)
+  return next.length ? next : undefined
 }
 
-function toggleMineFilter(key: 'onlyManagedByMe' | 'onlyUpdatedByMe') {
+function toggleCommunityType(value: number) {
+  draft.value.communityTypes = toggleArrayValue(draft.value.communityTypes, value)
+}
+
+function toggleRealtimeMode(value: RealtimeMode) {
+  draft.value.realtimeModes = toggleArrayValue(draft.value.realtimeModes, value)
+}
+
+function toggleSpecialMode(value: SpecialMode) {
+  draft.value.specialModes = toggleArrayValue(draft.value.specialModes, value)
+}
+
+function toggleRelationFilter(key: 'onlyContactedByMe' | 'onlyMaintainedByMe') {
   draft.value[key] = !draft.value[key] || undefined
 }
 
-function quickToggleMineFilter(key: 'onlyManagedByMe' | 'onlyUpdatedByMe') {
+function quickToggleRelationFilter(key: 'onlyContactedByMe' | 'onlyMaintainedByMe') {
   if (guardInteraction())
     return
   const next = clonePropertyFilters(props.filters)
@@ -333,8 +368,10 @@ function resetCurrent() {
     clearLocation()
   if (activeDropdown.value === 'price')
     clearPrice()
-  if (activeDropdown.value === 'sort')
-    draft.value.sortBy = undefined
+  if (activeDropdown.value === 'realtime')
+    draft.value.realtimeModes = undefined
+  if (activeDropdown.value === 'special')
+    draft.value.specialModes = undefined
   confirmCurrent()
 }
 
@@ -394,6 +431,14 @@ function priceRangeLabel(filters: Pick<PropertyFilterState, 'minPrice' | 'maxPri
   return `¥${min}-${max}`
 }
 
+function optionGroupLabel<T>(values: T[] | undefined, options: Array<{ value: T, label: string }>, fallback: string) {
+  if (!values?.length)
+    return fallback
+  if (values.length === 1)
+    return options.find(item => item.value === values[0])?.label || fallback
+  return `${fallback} ${values.length}`
+}
+
 function measureTrack() {
   const query = uni.createSelectorQuery().in(instance)
   query.select('.range-track').boundingClientRect((rect) => {
@@ -446,7 +491,9 @@ function onThumbTouchEnd() {
         @tap="toggleDropdown('location')"
       >
         <text class="filter-tab__label">{{ locationLabel }}</text>
-        <text class="filter-tab__arrow">▾</text>
+        <view class="filter-tab__arrow">
+          <wd-icon name="arrow-down" size="12px" color="currentColor" />
+        </view>
       </view>
       <view
         class="filter-tab"
@@ -454,17 +501,30 @@ function onThumbTouchEnd() {
         @tap="toggleDropdown('price')"
       >
         <text class="filter-tab__label">{{ priceLabel }}</text>
-        <text class="filter-tab__arrow">▾</text>
+        <view class="filter-tab__arrow">
+          <wd-icon name="arrow-down" size="12px" color="currentColor" />
+        </view>
       </view>
       <view
-        class="filter-tab filter-tab--sort"
-        :class="{ active: sortActive, open: activeDropdown === 'sort' }"
-        @tap="toggleDropdown('sort')"
+        class="filter-tab"
+        :class="{ active: realtimeActive, open: activeDropdown === 'realtime' }"
+        @tap="toggleDropdown('realtime')"
       >
-        <text class="filter-tab__label">{{ sortLabel }}</text>
-        <text class="filter-tab__arrow">▾</text>
+        <text class="filter-tab__label">{{ realtimeLabel }}</text>
+        <view class="filter-tab__arrow">
+          <wd-icon name="arrow-down" size="12px" color="currentColor" />
+        </view>
       </view>
-      <view class="filter-spacer" />
+      <view
+        class="filter-tab"
+        :class="{ active: specialActive, open: activeDropdown === 'special' }"
+        @tap="toggleDropdown('special')"
+      >
+        <text class="filter-tab__label">{{ specialLabel }}</text>
+        <view class="filter-tab__arrow">
+          <wd-icon name="arrow-down" size="12px" color="currentColor" />
+        </view>
+      </view>
       <view class="filter-reset" @tap="resetAll">
         <text>重置</text>
       </view>
@@ -476,19 +536,19 @@ function onThumbTouchEnd() {
     <view v-if="showMineFilters && !guarded" class="mine-quick-row">
       <view
         class="mine-quick"
-        :class="{ active: props.filters.onlyManagedByMe }"
-        @tap="quickToggleMineFilter('onlyManagedByMe')"
+        :class="{ active: props.filters.onlyContactedByMe }"
+        @tap="quickToggleRelationFilter('onlyContactedByMe')"
       >
-        <wd-icon name="user" size="14px" :color="props.filters.onlyManagedByMe ? '#fff' : '#126b4f'" />
-        <text>仅看我管理</text>
+        <wd-icon name="link" size="14px" :color="props.filters.onlyContactedByMe ? '#fff' : '#126b4f'" />
+        <text>仅看我对接</text>
       </view>
       <view
         class="mine-quick"
-        :class="{ active: props.filters.onlyUpdatedByMe }"
-        @tap="quickToggleMineFilter('onlyUpdatedByMe')"
+        :class="{ active: props.filters.onlyMaintainedByMe }"
+        @tap="quickToggleRelationFilter('onlyMaintainedByMe')"
       >
-        <wd-icon name="edit" size="14px" :color="props.filters.onlyUpdatedByMe ? '#fff' : '#126b4f'" />
-        <text>仅看我更新</text>
+        <wd-icon name="service" size="14px" :color="props.filters.onlyMaintainedByMe ? '#fff' : '#126b4f'" />
+        <text>仅看我维护</text>
       </view>
     </view>
 
@@ -585,14 +645,32 @@ function onThumbTouchEnd() {
         </view>
       </view>
 
-      <view v-if="activeDropdown === 'sort'" class="dropdown-section dropdown-section--short">
-        <text class="section-title">排序方式</text>
+      <view v-if="activeDropdown === 'realtime'" class="dropdown-section dropdown-section--short">
+        <text class="section-title">实时盘源</text>
         <view class="option-row">
-          <view class="filter-chip" :class="{ active: draft.sortBy !== 'distance' }" @tap="selectSort('latest')">
-            <text>最新更新优先</text>
+          <view
+            v-for="item in REALTIME_OPTIONS"
+            :key="item.value"
+            class="filter-chip"
+            :class="{ active: draft.realtimeModes?.includes(item.value) }"
+            @tap="toggleRealtimeMode(item.value)"
+          >
+            <text>{{ item.label }}</text>
           </view>
-          <view class="filter-chip" :class="{ active: draft.sortBy === 'distance' }" @tap="selectSort('distance')">
-            <text>距离最近优先</text>
+        </view>
+      </view>
+
+      <view v-if="activeDropdown === 'special'" class="dropdown-section dropdown-section--short">
+        <text class="section-title">特殊条件</text>
+        <view class="option-row">
+          <view
+            v-for="item in SPECIAL_OPTIONS"
+            :key="item.value"
+            class="filter-chip"
+            :class="{ active: draft.specialModes?.includes(item.value) }"
+            @tap="toggleSpecialMode(item.value)"
+          >
+            <text>{{ item.label }}</text>
           </view>
         </view>
       </view>
@@ -727,19 +805,46 @@ function onThumbTouchEnd() {
           </view>
 
           <view class="sheet-block">
-            <text class="sheet-block__title">最新更新</text>
+            <text class="sheet-block__title">楼盘类型</text>
             <view class="option-row">
-              <view class="filter-chip" :class="{ active: !draft.updatedWithinDays }" @tap="selectUpdatedWithin()">
-                <text>不限</text>
-              </view>
               <view
-                v-for="days in UPDATED_DAY_OPTIONS"
-                :key="days"
+                v-for="item in COMMUNITY_TYPE_OPTIONS"
+                :key="item.value"
                 class="filter-chip"
-                :class="{ active: draft.updatedWithinDays === days }"
-                @tap="selectUpdatedWithin(days)"
+                :class="{ active: draft.communityTypes?.includes(item.value) }"
+                @tap="toggleCommunityType(item.value)"
               >
-                <text>最近{{ days }}天</text>
+                <text>{{ item.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">实时</text>
+            <view class="option-row">
+              <view
+                v-for="item in REALTIME_OPTIONS"
+                :key="item.value"
+                class="filter-chip"
+                :class="{ active: draft.realtimeModes?.includes(item.value) }"
+                @tap="toggleRealtimeMode(item.value)"
+              >
+                <text>{{ item.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">特殊</text>
+            <view class="option-row">
+              <view
+                v-for="item in SPECIAL_OPTIONS"
+                :key="item.value"
+                class="filter-chip"
+                :class="{ active: draft.specialModes?.includes(item.value) }"
+                @tap="toggleSpecialMode(item.value)"
+              >
+                <text>{{ item.label }}</text>
               </view>
             </view>
           </view>
@@ -748,22 +853,22 @@ function onThumbTouchEnd() {
             <text class="sheet-block__title">排序方式</text>
             <view class="option-row">
               <view class="filter-chip" :class="{ active: draft.sortBy !== 'distance' }" @tap="selectSort('latest')">
-                <text>最新更新优先</text>
+                <text>更新时间优先</text>
               </view>
               <view class="filter-chip" :class="{ active: draft.sortBy === 'distance' }" @tap="selectSort('distance')">
-                <text>距离最近优先</text>
+                <text>距离优先</text>
               </view>
             </view>
           </view>
 
           <view v-if="showMineFilters" class="sheet-block">
-            <text class="sheet-block__title">我的盘源</text>
+            <text class="sheet-block__title">个人关系</text>
             <view class="option-row">
-              <view class="filter-chip" :class="{ active: draft.onlyManagedByMe }" @tap="toggleMineFilter('onlyManagedByMe')">
-                <text>仅看我管理</text>
+              <view class="filter-chip" :class="{ active: draft.onlyContactedByMe }" @tap="toggleRelationFilter('onlyContactedByMe')">
+                <text>仅看我对接</text>
               </view>
-              <view class="filter-chip" :class="{ active: draft.onlyUpdatedByMe }" @tap="toggleMineFilter('onlyUpdatedByMe')">
-                <text>仅看我更新</text>
+              <view class="filter-chip" :class="{ active: draft.onlyMaintainedByMe }" @tap="toggleRelationFilter('onlyMaintainedByMe')">
+                <text>仅看我维护</text>
               </view>
             </view>
           </view>
@@ -859,12 +964,13 @@ function onThumbTouchEnd() {
 .filter-tab {
   display: flex;
   min-width: 0;
-  max-width: 164rpx;
+  flex: 1 1 0;
   align-items: center;
-  gap: 8rpx;
-  padding: 20rpx 16rpx;
+  justify-content: center;
+  gap: 4rpx;
+  padding: 20rpx 4rpx;
   color: #293241;
-  font-size: 28rpx;
+  font-size: 25rpx;
   font-weight: 600;
 }
 
@@ -880,25 +986,18 @@ function onThumbTouchEnd() {
 .filter-tab__label {
   display: block;
   overflow: hidden;
-  max-width: 112rpx;
+  max-width: 100rpx;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .filter-tab__arrow {
-  display: inline-block;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
   color: currentcolor;
-  font-size: 22rpx;
-  line-height: 1;
   transition: transform 0.18s ease;
-}
-
-.filter-tab--sort {
-  max-width: 190rpx;
-}
-
-.filter-spacer {
-  flex: 1;
 }
 
 .filter-reset {
@@ -907,7 +1006,7 @@ function onThumbTouchEnd() {
   flex: 0 0 auto;
   align-items: center;
   margin-right: 6rpx;
-  padding: 0 18rpx;
+  padding: 0 12rpx;
   border-radius: 999rpx;
   background: #f4f6fa;
   color: #4b5563;

@@ -50,12 +50,12 @@ describe('supply contact and leaderboard UI contract', () => {
     expect(page).toContain('<sl-supply-contacts')
   })
 
-  it('keeps contacts compact and only exposes the source contact phone', () => {
+  it('keeps contacts compact and only exposes the resolved business contact phone', () => {
     const contacts = source('src/components/sl-supply-contacts/sl-supply-contacts.vue')
     expect(contacts).toContain('uni.makePhoneCall')
     expect(contacts).toContain('更新人')
-    expect(contacts).toContain('对接人')
-    expect(contacts).toContain('ownerPhone')
+    expect(contacts).toContain('联系人')
+    expect(contacts).toContain('supplyContactPhone')
     expect(contacts).not.toContain('lastUpdaterPhone')
   })
 
@@ -84,14 +84,16 @@ describe('supply contact and leaderboard UI contract', () => {
     expect(map).toContain('\'communityCount\'')
   })
 
-  it('shows mine filters only in the management-side map', () => {
+  it('shows confirmed relation filters on the map and community list', () => {
     const filters = source('src/components/sl-property-filter-bar/sl-property-filter-bar.vue')
     const map = source('src/pages/user/map/index.vue')
     const propertyList = source('src/pages/admin/property-list/index.vue')
     expect(filters).toContain('mine-quick-row')
-    expect(filters).toContain('quickToggleMineFilter(\'onlyManagedByMe\')')
-    expect(filters).toContain('quickToggleMineFilter(\'onlyUpdatedByMe\')')
-    expect(map).toContain('const showMineFilters = computed(() => modeStore.mode !== \'user\')')
+    expect(filters).toContain('quickToggleRelationFilter(\'onlyContactedByMe\')')
+    expect(filters).toContain('quickToggleRelationFilter(\'onlyMaintainedByMe\')')
+    expect(filters).toContain('仅看我对接')
+    expect(filters).toContain('仅看我维护')
+    expect(map).toContain('const showMineFilters = computed(() => isAdminMode.value && auth.canEnterAdmin)')
     expect(map).toContain(':show-mine-filters="showMineFilters"')
     expect(propertyList).not.toContain('show-mine-filters')
   })

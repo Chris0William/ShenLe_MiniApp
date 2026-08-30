@@ -42,6 +42,23 @@ const snapshot: SlPropertyBatchRowOutput = {
   images: [
     { id: 'image-1', fileType: 'image', fileName: '1.jpg', url: '/1.jpg' },
   ],
+  operationConfig: {
+    propertyId: 'property-1',
+    communityId: 'community-1',
+    buildingId: 'building-1',
+    title: '101',
+    halfYearCommissionPercent: 30,
+    oneYearCommissionPercent: 60,
+    managementPackageMode: 1,
+    networkPackageMode: 3,
+    supportsMonthlyRent: false,
+    supportsShortRent: false,
+    supportsDailyRent: false,
+    supportsMonthlyPayment: false,
+    supportsZeroDeposit: false,
+    shortRentCanMarkup: false,
+    isPromoted: false,
+  },
 }
 
 describe('batch add inputs', () => {
@@ -102,6 +119,22 @@ describe('batch update inputs', () => {
       area: null,
       remark: '保留备注',
       coverImageId: 'image-1',
+    })
+  })
+
+  it('writes only enabled operation fields and preserves the other operation values', () => {
+    const [updated] = buildBatchUpdateInputs([snapshot], {
+      enabledFields: ['halfYearCommissionPercent', 'networkPackageMode'],
+      values: { halfYearCommissionPercent: 45, networkPackageMode: 4 },
+      mediaMode: 'unchanged',
+      media: [],
+    })
+
+    expect(updated.operationConfig).toMatchObject({
+      halfYearCommissionPercent: 45,
+      oneYearCommissionPercent: 60,
+      managementPackageMode: 1,
+      networkPackageMode: 4,
     })
   })
 
@@ -302,7 +335,19 @@ describe('batch property management UI contract', () => {
   it('uses admin batch permission for batch-specific copy', () => {
     expect(page).toContain('canBatchManage ? `')
     expect(page).toContain('支持编辑与批量管理`')
-    expect(page).toContain('canBatchManage ? \'这个楼栋还没有房源，可以新增或批量创建。\'')
+    expect(page).toContain('canCreateSupply ? \'这个楼栋还没有房源，可以新增或批量创建。\'')
+    expect(page).toContain('房东端可在已有房源后进行批量维护。')
+  })
+
+  it('exposes the new operation fields in batch edit without enabling them by default', () => {
+    const component = fs.readFileSync(componentPath, 'utf8')
+    expect(component).toContain('operationEnabled.halfYearCommissionPercent')
+    expect(component).toContain('operationEnabled.oneYearCommissionPercent')
+    expect(component).toContain('operationEnabled.managementPackageMode')
+    expect(component).toContain('operationEnabled.networkPackageMode')
+    expect(component).toContain('operationValues.halfYearCommissionPercent')
+    expect(component).toContain('operationValues.oneYearCommissionPercent')
+    expect(component).toContain('values: { ...buildEditValues(), ...operationValuesPatch }')
   })
 
   it('re-reads full building detail before deciding whether total floors must expand', () => {

@@ -5,7 +5,9 @@ import { computed, reactive, ref } from 'vue'
 import { addBuilding, deleteBuilding, getBuildingDetail, getBuildingList, updateBuilding } from '@/api/building'
 import { getCommunityList } from '@/api/community'
 import { downloadFile, uploadFile } from '@/api/file'
+import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { modeStore } from '@/store/mode'
 import { MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
 import { createMediaLongPressGuard, renameEditableMedia, showMediaEditActionSheet } from '@/utils/media-edit'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
@@ -44,6 +46,9 @@ const submitting = ref(false)
 const uploading = ref(false)
 const oneClickCreating = ref(false)
 const changeStore = useEntityChangeStore()
+const auth = useShenleAuthStore()
+const canCreateSupply = computed(() => auth.canCreateSupply && modeStore.mode === 'admin')
+const canDeleteSupply = computed(() => auth.isAdmin && modeStore.mode === 'admin')
 const CHANGE_CONSUMER = 'building-manage'
 const mediaLongPressGuard = createMediaLongPressGuard()
 
@@ -214,6 +219,10 @@ async function loadFormImages(item: SlBuildingOutput) {
 }
 
 function openAdd() {
+  if (!canCreateSupply.value) {
+    uni.showToast({ title: '当前账号不能新增楼栋', icon: 'none' })
+    return
+  }
   if (!communityId.value) {
     uni.showToast({ title: '请先选择楼盘', icon: 'none' })
     return
@@ -369,6 +378,10 @@ async function submitForm() {
 }
 
 async function createDefaultBuilding() {
+  if (!canCreateSupply.value) {
+    uni.showToast({ title: '当前账号不能新增楼栋', icon: 'none' })
+    return
+  }
   if (oneClickCreating.value)
     return
   if (!communityId.value || headerTitle.value === '请选择楼盘') {
@@ -419,6 +432,10 @@ async function createDefaultBuilding() {
 }
 
 function confirmDelete(item: SlBuildingOutput) {
+  if (!canDeleteSupply.value) {
+    uni.showToast({ title: '当前账号不能删除楼栋', icon: 'none' })
+    return
+  }
   uni.showModal({
     title: '删除楼栋',
     content: `确定删除「${item.name}」？有房源时后端会拦截。`,
@@ -473,7 +490,7 @@ onPullDownRefresh(reloadAll)
           <wd-icon name="arrow-down" size="18px" color="#72817b" />
         </view>
       </picker>
-      <wd-button type="primary" @click="openAdd">
+      <wd-button v-if="canCreateSupply" type="primary" @click="openAdd">
         新增楼栋
       </wd-button>
     </view>
@@ -481,8 +498,8 @@ onPullDownRefresh(reloadAll)
     <view v-if="communityId && !list.length && !loading" class="empty sl-card">
       <wd-icon name="home" size="38px" color="#8ea099" />
       <text>暂无楼栋数据</text>
-      <text>可以直接创建与楼盘同名的默认楼栋。</text>
-      <wd-button type="primary" :loading="oneClickCreating" @click="createDefaultBuilding">
+      <text v-if="canCreateSupply">可以直接创建与楼盘同名的默认楼栋。</text>
+      <wd-button v-if="canCreateSupply" type="primary" :loading="oneClickCreating" @click="createDefaultBuilding">
         一键创建楼栋
       </wd-button>
     </view>
@@ -515,7 +532,7 @@ onPullDownRefresh(reloadAll)
               <wd-button size="small" type="primary" plain @click.stop="openEdit(item)">
                 编辑
               </wd-button>
-              <wd-button size="small" type="danger" plain @click.stop="confirmDelete(item)">
+              <wd-button v-if="canDeleteSupply" size="small" type="danger" plain @click.stop="confirmDelete(item)">
                 删除
               </wd-button>
             </view>

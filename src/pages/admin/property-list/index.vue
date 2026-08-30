@@ -6,6 +6,7 @@ import { getCommunityPage } from '@/api/community'
 import { getPublicRegionPage } from '@/api/public-preview'
 import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
+import { useLandlordShareStore } from '@/store/landlord-share'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
@@ -24,7 +25,11 @@ definePage({
 
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
-const canManage = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const landlordShare = useLandlordShareStore()
+const hasLandlordShare = landlordShare.active
+const shareOwnerName = landlordShare.ownerName
+const shareCommunityCount = landlordShare.communityCount
+const canManage = computed(() => auth.canEnterAdmin && modeStore.mode === 'admin')
 const isPreviewMode = computed(() => !auth.canViewRealData)
 
 const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
@@ -58,7 +63,13 @@ function buildQuery(pageNumber = page.value, size = pageSize): PageSlCommunityIn
     name: keyword.value.trim() || undefined,
     status: 0,
     ...buildCommunityFilterQuery(filters.value),
+    landlordShareToken: landlordShare.active.value ? landlordShare.shareToken.value : undefined,
   }
+}
+
+function clearLandlordShare() {
+  landlordShare.clear()
+  void load(true)
 }
 
 function buildPreviewQuery(pageNumber = page.value, size = pageSize) {
@@ -279,10 +290,16 @@ function openNavigation(item: SlCommunityOutput) {
 }
 
 onLoad(() => {
-  load(true)
-  autoLocate()
+  void (async () => {
+    if (landlordShare.hasContext.value)
+      await landlordShare.resolvePending()
+    await load(true)
+    void autoLocate()
+  })()
 })
 onShow(() => {
+  if (landlordShare.hasContext.value)
+    void landlordShare.resolvePending()
   const changes = [
     changeStore.consumePropertyChange('property-list'),
     changeStore.consumeCommunityChange('property-list'),
@@ -324,6 +341,13 @@ onReachBottom(() => {
       @confirm="onFilterConfirm"
       @reset="resetFilters"
       @guarded="onFilterGuarded"
+    />
+
+    <sl-landlord-share-scope
+      v-if="hasLandlordShare"
+      :owner-name="shareOwnerName"
+      :community-count="shareCommunityCount"
+      @clear="clearLandlordShare"
     />
 
     <view v-if="activeCount" class="active-summary sl-card">
