@@ -14,8 +14,8 @@ describe('commission display helpers', () => {
 
   it('clamps slider values to the supported percentage range', () => {
     expect(normalizeCommissionPercent(-1)).toBe(0)
-    expect(normalizeCommissionPercent(300)).toBe(300)
-    expect(normalizeCommissionPercent(301)).toBe(300)
+    expect(normalizeCommissionPercent(1000)).toBe(1000)
+    expect(normalizeCommissionPercent(1001)).toBe(1000)
     expect(normalizeCommissionPercent(25.6)).toBe(26)
   })
 })

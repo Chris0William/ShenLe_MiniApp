@@ -73,6 +73,18 @@ export interface PageSlPropertyInput extends BasePageInput {
   userLat?: number
   distanceKm?: number
   landlordShareToken?: string
+  availableOnly?: boolean
+}
+
+export interface PropertyListFilterState {
+  keyword: string
+  status?: number
+  minFloor?: number
+  maxFloor?: number
+  roomNoSuffix: string
+  bedrooms?: number
+  livingRooms?: number
+  bathrooms?: number
 }
 
 export interface PropertyFilterState {
@@ -101,7 +113,7 @@ export interface PropertyFilterState {
   onlyUpdatedByMe?: boolean
   communityTypes?: number[]
   realtimeModes?: Array<'realtime' | 'hot'>
-  specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent'>
+  specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent' | 'pet'>
   onlyContactedByMe?: boolean
   onlyMaintainedByMe?: boolean
   sortBy?: 'latest' | 'distance'
@@ -111,6 +123,7 @@ export interface PropertyFilterState {
 export interface ListSlPropertyInput {
   buildingId: ShenLeId
   landlordShareToken?: string
+  availableOnly?: boolean
 }
 
 export interface SlPropertyListOutput {
@@ -354,11 +367,12 @@ export interface PageSlCommunityInput extends BasePageInput {
   onlyManagedByMe?: boolean
   onlyUpdatedByMe?: boolean
   realtimeModes?: Array<'realtime' | 'hot'>
-  specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent'>
+  specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent' | 'pet'>
   onlyContactedByMe?: boolean
   onlyMaintainedByMe?: boolean
   sortBy?: 'latest' | 'distance'
   landlordShareToken?: string
+  availableOnly?: boolean
 }
 
 export interface ListSlCommunityInput {
@@ -428,6 +442,10 @@ export interface SlCommunityOutput {
   managementFee?: number | null
   networkFee?: number | null
   networkFeeMode?: 1 | 2 | null
+  managementPackageMode?: 1 | 2 | null
+  networkPackageMode?: 1 | 2 | 3 | 4 | null
+  petPolicy?: 1 | 2 | 3 | null
+  announcement?: string | null
   waterFee?: number | null
   electricityFee?: number | null
   lowestHalfYearCommissionPercent?: number | null
@@ -1075,6 +1093,10 @@ export interface SlSourceContactCommunityOutput {
   managementFee?: number | null
   networkFee?: number | null
   networkFeeMode?: 1 | 2 | null
+  managementPackageMode?: 1 | 2 | null
+  networkPackageMode?: 1 | 2 | 3 | 4 | null
+  petPolicy?: 1 | 2 | 3 | null
+  announcement?: string | null
   waterFee?: number | null
   electricityFee?: number | null
   lowestHalfYearCommissionPercent?: number | null
@@ -1102,6 +1124,7 @@ export interface SlCommunityOperationConfigOutput {
   oneYearCommissionPercent?: number | null
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
+  petPolicy?: 1 | 2 | 3 | null
   remark?: string | null
   hotLevel: number
   hotExpireTime?: string | null
@@ -1120,6 +1143,7 @@ export interface SaveSlCommunityOperationConfigInput {
   oneYearCommissionPercent?: number | null
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
+  petPolicy?: 1 | 2 | 3 | null
   applyToProperties?: boolean
   remark?: string | null
 }
@@ -1196,6 +1220,13 @@ export interface PageSlPromotionInput extends BasePageInput {
   buildingId?: ShenLeId
   keyword?: string
   promotionOnly?: boolean
+  status?: number
+  minFloor?: number
+  maxFloor?: number
+  roomNoSuffix?: string
+  bedrooms?: number
+  livingRooms?: number
+  bathrooms?: number
 }
 
 export interface SlPromotionPropertyOutput extends SlPropertyOperationConfigOutput {

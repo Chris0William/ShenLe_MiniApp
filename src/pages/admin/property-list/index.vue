@@ -30,6 +30,7 @@ const hasLandlordShare = landlordShare.active
 const shareOwnerName = landlordShare.ownerName
 const shareCommunityCount = landlordShare.communityCount
 const canManage = computed(() => auth.canEnterAdmin && modeStore.mode === 'admin')
+const isBusinessMode = computed(() => modeStore.mode === 'user')
 const isPreviewMode = computed(() => !auth.canViewRealData)
 
 const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
@@ -64,6 +65,7 @@ function buildQuery(pageNumber = page.value, size = pageSize): PageSlCommunityIn
     status: 0,
     ...buildCommunityFilterQuery(filters.value),
     landlordShareToken: landlordShare.active.value ? landlordShare.shareToken.value : undefined,
+    availableOnly: isBusinessMode.value || undefined,
   }
 }
 
@@ -249,7 +251,7 @@ function goProperties(item: SlCommunityOutput) {
     return
   const target = canManage.value
     ? `/pages/common/building-manage/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`
-    : `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`
+    : `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}&distance=${encodeURIComponent(String(item.distance ?? ''))}`
   uni.navigateTo({
     url: target,
   })
@@ -327,6 +329,9 @@ onReachBottom(() => {
         <text class="admin-head__title">{{ canManage ? '房源管理' : '找房' }}</text>
         <text v-if="canManage" class="admin-head__desc">先筛选楼盘，再进入楼盘管理房源</text>
       </view>
+      <view class="admin-head__refresh" aria-label="刷新" @tap="load(true)">
+        <wd-icon name="refresh" size="20px" color="#126b4f" :class="{ 'admin-head__refresh-icon--loading': loading }" />
+      </view>
     </view>
 
     <sl-location-card :locating="locating" :label="locationLabel" @choose="chooseReferencePoint" />
@@ -389,6 +394,7 @@ onReachBottom(() => {
         <view v-for="item in items" :key="String(item.id)" class="community-wrap">
           <sl-community-card
             :item="item"
+            :available-only="isBusinessMode"
             show-navigate
             @select="goProperties"
             @navigate="openNavigation"
@@ -446,6 +452,28 @@ onReachBottom(() => {
 .admin-head__title,
 .admin-head__desc {
   display: block;
+}
+
+.admin-head__refresh {
+  display: flex;
+  width: 68rpx;
+  height: 68rpx;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid rgb(18 107 79 / 14%);
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.admin-head__refresh-icon--loading {
+  animation: property-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes property-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .admin-head__title {

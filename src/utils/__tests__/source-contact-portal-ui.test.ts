@@ -113,7 +113,7 @@ describe('landlord portal behavior', () => {
     expect(rooms).toContain('buildingTotalFloors=${')
   })
 
-  it('keeps community fees at the community list level and uses shared commission sliders', () => {
+  it('keeps community fees at the community list level and uses shared commission inputs', () => {
     const region = source('src/pages/common/region-manage/index.vue')
     const commission = source('src/components/sl-commission-settings/sl-commission-settings.vue')
     expect(rooms).toContain('设置费用')
@@ -124,7 +124,8 @@ describe('landlord portal behavior', () => {
     expect(source('src/components/sl-property-batch/sl-property-batch.vue')).toContain('<sl-commission-settings')
     expect(promotion).toContain('<sl-commission-settings v-model="draft.monthlyPaymentRange"')
     expect(promotion).not.toContain('<wd-slider v-model="draft.monthlyPaymentRange"')
-    expect(commission).toContain(':max="COMMISSION_PERCENT_MAX"')
+    expect(commission).toContain('placeholder="0-1000"')
+    expect(commission).not.toContain('<wd-slider')
     expect(commission).toContain('半年佣金')
     expect(commission).toContain('一年佣金')
     expect(region).toContain('saveRegionBoundary')

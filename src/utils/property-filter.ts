@@ -221,7 +221,7 @@ export function getCommunityFilterLabels(filters: PropertyFilterState, maps: {
     labels.push(filters.realtimeModes.map(mode => modeMap[mode]).join('、'))
   }
   if (filters.specialModes?.length) {
-    const modeMap = { monthlyPayment: '可押一付一', shortRent: '可短租', dailyRent: '可日租' } as const
+    const modeMap = { monthlyPayment: '可押一付一', shortRent: '可短租', dailyRent: '可日租', pet: '可养宠物' } as const
     labels.push(filters.specialModes.map(mode => modeMap[mode]).join('、'))
   }
   if (filters.onlyContactedByMe)

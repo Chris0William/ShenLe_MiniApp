@@ -360,10 +360,12 @@ describe('batch property management UI contract', () => {
   })
 
   it('filters by floor, room suffix and exact layout and can select the full filtered building result', () => {
-    expect(page).toContain('activeFilter = ref<\'floor\' | \'room\' | \'layout\' | null>')
-    expect(page).toContain('roomNoSuffix')
-    expect(page).toContain('applyFloorFilter')
-    expect(page).toContain('applyLayoutFilter')
+    const filter = fs.readFileSync(path.resolve(process.cwd(), 'src/components/sl-property-list-filter/sl-property-list-filter.vue'), 'utf8')
+    expect(page).toContain('<sl-property-list-filter')
+    expect(filter).toContain('activeFilter = ref<\'floor\' | \'room\' | \'layout\' | null>')
+    expect(filter).toContain('roomNoSuffix')
+    expect(filter).toContain('applyFloor')
+    expect(filter).toContain('applyLayout')
     expect(page).toContain('getPropertyBatchList(buildingId.value)')
     expect(page).toContain('filterPropertyRows(snapshots, currentRowFilter())')
     expect(page).toContain('全选筛选结果')

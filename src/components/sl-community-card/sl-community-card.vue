@@ -9,6 +9,7 @@ const props = defineProps<{
   item: SlCommunityOutput
   compact?: boolean
   showNavigate?: boolean
+  availableOnly?: boolean
 }>()
 
 // 注意：自定义事件不能叫 tap——mp-weixin 上会被原生 tap 事件遮蔽，handler 收到 TouchEvent 而非 item
@@ -133,7 +134,7 @@ watch(
         <text v-if="distanceText(item)" class="community__distance">距 {{ distanceText(item) }}</text>
       </view>
       <view class="community__bottom">
-        <text>{{ item.propertyCount || 0 }} 套房源符合要求</text>
+        <text>{{ availableOnly ? (item.availableCount || 0) : (item.propertyCount || 0) }} 套房源符合要求</text>
         <text v-if="item.address" class="community__address">{{ item.address }}</text>
       </view>
       <view v-if="item.lastUpdaterName || item.ownerName" class="community__people">

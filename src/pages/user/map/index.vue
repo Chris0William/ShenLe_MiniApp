@@ -5,12 +5,14 @@ import { computed, nextTick, ref } from 'vue'
 import { getCommunityDetail, getCommunityPage, getCommunityTickers, setCommunityHotLevel } from '@/api/community'
 import { getPublicRegionMap } from '@/api/public-preview'
 import { getRecentSupplyActivity, getSupplyLeaderboard, getSupplyLeaderboardDetails } from '@/api/supply-activity'
+import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
 import { useShenleAuthStore } from '@/store/auth'
 import { useLandlordShareStore } from '@/store/landlord-share'
 import { modeStore } from '@/store/mode'
 import { useSourceContactStore } from '@/store/source-contact'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { formatCommissionRange } from '@/utils/commission'
+import { managementFeeText, networkFeeText } from '@/utils/community-business'
 import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
 import { requestLogin } from '@/utils/login-flow'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
@@ -55,6 +57,7 @@ const mapScale = ref(13)
 const communities = ref<SlCommunityOutput[]>([])
 const previewRegions = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
+const pageRefreshing = ref(false)
 const locating = ref(false)
 const choosingReferencePoint = ref(false)
 const locationLabel = ref('点击选择位置')
@@ -213,10 +216,16 @@ function moneyText(value?: number | null, unit = '元') {
   return value === null || value === undefined ? '未设置' : `${value}${unit}`
 }
 
-function networkFeeText(item: { networkFeeMode?: number | null, networkFee?: number | null }) {
-  if (item.networkFeeMode === 2)
-    return '自理'
-  return moneyText(item.networkFee, '元/月')
+function showCommunityAnnouncement(item: SlCommunityOutput) {
+  const announcement = item.announcement?.trim()
+  if (!announcement)
+    return
+  uni.showModal({
+    title: `${item.name}公告`,
+    content: announcement,
+    showCancel: false,
+    confirmText: '知道了',
+  })
 }
 
 function commissionText(item: { lowestHalfYearCommissionPercent?: number | null, highestHalfYearCommissionPercent?: number | null, lowestOneYearCommissionPercent?: number | null, highestOneYearCommissionPercent?: number | null }) {
@@ -323,6 +332,7 @@ function buildQuery(pageNumber = 1, size = 200): PageSlCommunityInput {
     status: 0,
     ...buildCommunityFilterQuery(filters.value),
     landlordShareToken: hasLandlordShare.value ? landlordShare.shareToken.value : undefined,
+    availableOnly: isBusinessMode.value || undefined,
   }
 }
 
@@ -483,7 +493,7 @@ async function focusHotCommunity(item: SlCommunityTickerOutput, clearHidden = fa
     target = communities.value.find(community => String(community.id) === String(item.communityId)) || null
     try {
       if (!target) {
-        target = await getCommunityDetail(item.communityId)
+        target = await getCommunityDetail(item.communityId, isBusinessMode.value)
         communities.value = [target]
         rebuildMarkers()
       }
@@ -610,14 +620,16 @@ function fitMapToLandlordCommunities() {
   mapContext.includePoints({ points, padding: [56, 44, 160, 44] })
 }
 
-async function activateLandlordMap(force = false) {
+async function activateLandlordMap(force = false, fitToResult = true) {
   await sourceContact.load(force)
   const firstPoint = landlordCoordinateCommunities.value[0]
-  if (firstPoint) {
+  if (fitToResult && firstPoint) {
     mapLat.value = Number(firstPoint.lat)
     mapLng.value = Number(firstPoint.lng)
     mapScale.value = landlordCoordinateCommunities.value.length === 1 ? 15 : 12
   }
+  if (!fitToResult)
+    return
   await nextTick()
   if (landlordFitTimer)
     clearTimeout(landlordFitTimer)
@@ -628,12 +640,36 @@ async function activateLandlordMap(force = false) {
 }
 
 async function refreshLandlordMap() {
-  landlordSelected.value = null
+  const selectedId = landlordSelected.value?.id
   try {
-    await activateLandlordMap(true)
+    await activateLandlordMap(true, false)
+    landlordSelected.value = selectedId
+      ? landlordCoordinateCommunities.value.find(item => String(item.id) === String(selectedId)) || null
+      : null
   }
   finally {
     uni.stopPullDownRefresh()
+  }
+}
+
+async function refreshMapPage() {
+  if (pageRefreshing.value)
+    return
+  pageRefreshing.value = true
+  try {
+    if (isLandlordView.value) {
+      await refreshLandlordMap()
+      return
+    }
+    const selectedId = selected.value?.id
+    await loadCommunities(false)
+    selected.value = selectedId
+      ? communities.value.find(item => String(item.id) === String(selectedId)) || null
+      : null
+    await loadCommunityTickerData()
+  }
+  finally {
+    pageRefreshing.value = false
   }
 }
 
@@ -761,7 +797,7 @@ function goProperties(item: SlCommunityOutput | null) {
   if (!canManage.value && !ensureCanUse('登录并通过审核后可查看具体楼盘与房源'))
     return
   uni.navigateTo({
-    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}`,
+    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}&distance=${encodeURIComponent(String(item.distance ?? ''))}`,
   })
 }
 
@@ -1105,7 +1141,7 @@ onUnload(() => {
 <template>
   <view class="map-page" :class="{ 'map-page--landlord': isLandlordView }" :style="safeTop">
     <template v-if="isLandlordView">
-      <sl-source-contact-header title="我的楼盘" />
+      <sl-source-contact-header title="我的楼盘" refresh :refreshing="pageRefreshing || sourceContact.loading" @refresh="refreshMapPage" />
 
       <view class="landlord-stats-strip">
         <view v-for="item in landlordProfileStats" :key="item.label" class="landlord-stats-strip__item">
@@ -1118,6 +1154,9 @@ onUnload(() => {
     <template v-else>
       <view class="map-head">
         <text class="map-head__title">楼盘地图</text>
+        <view class="map-head__refresh" aria-label="刷新" @tap="refreshMapPage">
+          <wd-icon name="refresh" size="20px" color="#126b4f" :class="{ 'map-head__refresh-icon--loading': pageRefreshing }" />
+        </view>
       </view>
 
       <sl-location-card :locating="locating" :label="locationLabel" @choose="chooseReferencePoint" />
@@ -1174,12 +1213,6 @@ onUnload(() => {
       </map>
 
       <template v-if="isLandlordView">
-        <view class="landlord-map-tools">
-          <view class="landlord-map-tool" @tap="refreshLandlordMap">
-            <wd-icon name="refresh" size="19px" color="#126b4f" />
-          </view>
-        </view>
-
         <view v-if="sourceContact.loading && !sourceContact.communities.length" class="landlord-map-empty">
           <wd-loading color="#126b4f" />
           <text>正在加载名下盘源</text>
@@ -1216,12 +1249,15 @@ onUnload(() => {
             <view class="landlord-community-preview__fees">
               <text class="landlord-community-preview__fee">水 {{ moneyText(landlordSelected.waterFee, '元/吨') }}</text>
               <text class="landlord-community-preview__fee">电 {{ moneyText(landlordSelected.electricityFee, '元/度') }}</text>
-              <text class="landlord-community-preview__fee">管理 {{ moneyText(landlordSelected.managementFee, '元/月') }}</text>
+              <text class="landlord-community-preview__fee">管理 {{ managementFeeText(landlordSelected) }}</text>
               <text class="landlord-community-preview__fee">网络 {{ networkFeeText(landlordSelected) }}</text>
             </view>
             <view class="landlord-community-preview__commission">
-              <text>佣金条件</text>
-              <text>{{ commissionText(landlordSelected) }}</text>
+              <view class="landlord-community-preview__commission-main">
+                <text>佣金条件</text>
+                <text>{{ commissionText(landlordSelected) }}</text>
+              </view>
+              <sl-pet-policy-text v-if="landlordSelected.petPolicy" :value="landlordSelected.petPolicy" class="landlord-community-preview__pet" />
             </view>
             <text class="landlord-community-preview__meta">
               {{ landlordSelected.buildingCount }} 栋 · {{ landlordSelected.availableCount }} 套可用 · {{ landlordSelected.rentedCount }} 套已租
@@ -1328,23 +1364,29 @@ onUnload(() => {
               <wd-tag v-if="selected.regionName" plain type="success">
                 {{ selected.regionName }}
               </wd-tag>
-              <text v-if="selected.propertyCount">{{ selected.propertyCount }} 套房源</text>
+              <text v-if="isBusinessMode ? selected.availableCount : selected.propertyCount">{{ isBusinessMode ? selected.availableCount : selected.propertyCount }} 套{{ isBusinessMode ? '可租房源' : '房源' }}</text>
               <text v-if="rentText(selected)">{{ rentText(selected) }}</text>
               <text v-if="selected.distance !== null && selected.distance !== undefined">距 {{ selected.distance }}km</text>
             </view>
             <view class="map-card__fees">
               <text>水 {{ moneyText(selected.waterFee, '元/吨') }}</text>
               <text>电 {{ moneyText(selected.electricityFee, '元/度') }}</text>
-              <text>管理 {{ moneyText(selected.managementFee, '元/月') }}</text>
+              <text>管理 {{ managementFeeText(selected) }}</text>
               <text>网络 {{ networkFeeText(selected) }}</text>
             </view>
             <view class="map-card__commission">
-              <text>佣金条件</text>
-              <text>{{ commissionText(selected) }}</text>
+              <view class="map-card__commission-main">
+                <text>佣金条件</text>
+                <text>{{ commissionText(selected) }}</text>
+              </view>
+              <sl-pet-policy-text v-if="selected.petPolicy" :value="selected.petPolicy" class="map-card__pet" />
             </view>
             <text class="map-card__update">更新 {{ formatCommunityUpdateTime(selected.supplyUpdateTime) }}</text>
           </view>
           <view class="map-card__actions">
+            <wd-button v-if="isBusinessMode && selected.announcement" class="map-card__announcement" size="small" plain icon="notification" @click.stop="showCommunityAnnouncement(selected)">
+              公告
+            </wd-button>
             <wd-button
               v-if="canSetHotLevel && selected.hasLandlord"
               size="small"
@@ -1615,6 +1657,28 @@ onUnload(() => {
   font-weight: 850;
 }
 
+.map-head__refresh {
+  display: flex;
+  width: 68rpx;
+  height: 68rpx;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border: 1rpx solid rgb(18 107 79 / 14%);
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.map-head__refresh-icon--loading {
+  animation: map-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes map-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .active-summary {
   display: flex;
   align-items: center;
@@ -1658,25 +1722,6 @@ onUnload(() => {
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.landlord-map-tools {
-  position: absolute;
-  z-index: 12;
-  top: 18rpx;
-  right: 18rpx;
-}
-
-.landlord-map-tool {
-  display: flex;
-  width: 66rpx;
-  height: 66rpx;
-  align-items: center;
-  justify-content: center;
-  border: 1rpx solid rgb(18 107 79 / 14%);
-  border-radius: 8rpx;
-  background: rgb(255 255 255 / 94%);
-  box-shadow: 0 8rpx 18rpx rgb(27 55 42 / 12%);
 }
 
 .landlord-map-empty {
@@ -1813,7 +1858,7 @@ onUnload(() => {
 .map-card__commission {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12rpx;
   margin-top: 8rpx;
@@ -1823,10 +1868,27 @@ onUnload(() => {
   font-size: 19rpx;
 }
 
-.landlord-community-preview__commission text:last-child,
-.map-card__commission text:last-child {
+.landlord-community-preview__commission-main,
+.map-card__commission-main {
+  display: flex;
   min-width: 0;
   flex: 1;
+  align-items: flex-start;
+  gap: 10rpx;
+}
+
+.landlord-community-preview__commission-main text:last-child,
+.map-card__commission-main text:last-child {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.45;
+}
+
+.landlord-community-preview__pet,
+.map-card__pet {
+  flex: none;
+  margin-left: 10rpx;
+  font-size: 21rpx;
   line-height: 1.45;
   text-align: right;
 }
@@ -2004,6 +2066,11 @@ onUnload(() => {
   justify-content: flex-end;
   gap: 14rpx;
   margin-top: 18rpx;
+}
+
+.map-card__announcement {
+  min-width: 138rpx;
+  margin-right: auto;
 }
 
 .map-badge {

@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import type { PageSlPropertyInput, ShenLeId, SlCommunityOutput, SlPropertyListOutput } from '@/types/shenle'
+import type { PageSlPropertyInput, PropertyListFilterState, ShenLeId, SlCommunityOutput, SlPropertyListOutput } from '@/types/shenle'
 import type { MediaKind } from '@/utils/media'
 import { onLoad, onShow } from '@dcloudio/uni-app'
-import { computed, reactive, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
 import { deleteProperty, getPropertyBatchList, getPropertyDetail, getPropertyList, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import SlBuildingSalesBoard from '@/components/sl-building-sales-board/sl-building-sales-board.vue'
+import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
 import SlPropertyBatch from '@/components/sl-property-batch/sl-property-batch.vue'
+import SlPropertyListFilter from '@/components/sl-property-list-filter/sl-property-list-filter.vue'
 import SlSupplyContacts from '@/components/sl-supply-contacts/sl-supply-contacts.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useShenleAuthStore } from '@/store/auth'
@@ -15,11 +17,14 @@ import { useEntityChangeStore } from '@/store/entity-change'
 import { useLandlordShareStore } from '@/store/landlord-share'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
+import { formatCommissionRange } from '@/utils/commission'
+import { managementFeeText, networkFeeText } from '@/utils/community-business'
 import { mediaKindOf } from '@/utils/media'
 import { createMediaLongPressGuard, renameEditableMedia, showMediaRenameActionSheet } from '@/utils/media-edit'
 import { filterPropertyRows } from '@/utils/property-batch'
 import { canManagePropertyWrites } from '@/utils/property-management'
 import { formatMoney, getStatusMeta, idToQuery, resolveAssetUrl } from '@/utils/shenle'
+import { formatSupplyTime } from '@/utils/supply-activity'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
 definePage({
@@ -34,6 +39,7 @@ const communityName = ref('')
 const buildingId = ref<ShenLeId>('')
 const buildingName = ref('')
 const buildingTotalFloors = ref<number | null>(null)
+const communityDistance = ref<number | null>(null)
 const keyword = ref('')
 const status = ref<number | undefined>()
 const minFloor = ref<number | undefined>()
@@ -42,16 +48,6 @@ const roomNoSuffix = ref('')
 const bedrooms = ref<number | undefined>()
 const livingRooms = ref<number | undefined>()
 const bathrooms = ref<number | undefined>()
-const activeFilter = ref<'floor' | 'room' | 'layout' | null>(null)
-const floorDraft = reactive({ min: '', max: '' })
-const roomDraft = ref('')
-const layoutDraft = reactive<{ bedrooms?: number, livingRooms?: number, bathrooms?: number }>({})
-const layoutNumbers = [undefined, 0, 1, 2, 3, 4, 5] as const
-const layoutFields = [
-  { key: 'bedrooms', label: '室' },
-  { key: 'livingRooms', label: '厅' },
-  { key: 'bathrooms', label: '卫' },
-] as const
 const page = ref(1)
 const pageSize = 10
 const total = ref(0)
@@ -87,22 +83,12 @@ const canManage = computed(() => canManagePropertyWrites({
   isMaintainer: auth.isMaintainer,
   mode: modeStore.mode,
 }))
+const isBusinessView = computed(() => modeStore.mode === 'user')
 const canManageBuildingScope = computed(() => canManage.value && !!buildingId.value)
 const canBatchManage = computed(() => canManageBuildingScope.value && auth.canBatchWriteSupply)
 const canCreateSupply = computed(() => canManageBuildingScope.value && auth.canCreateSupply && modeStore.mode === 'admin')
 const canDeleteSupply = computed(() => canManageBuildingScope.value && auth.isAdmin && modeStore.mode === 'admin')
 const CHANGE_CONSUMER = 'community-properties'
-const floorFilterLabel = computed(() => {
-  if (minFloor.value == null && maxFloor.value == null)
-    return '楼层'
-  return `${minFloor.value ?? '不限'}-${maxFloor.value ?? '不限'}层`
-})
-const roomFilterLabel = computed(() => roomNoSuffix.value ? `房号 · ${roomNoSuffix.value}` : '房号')
-const layoutFilterLabel = computed(() => {
-  if (bedrooms.value == null && livingRooms.value == null && bathrooms.value == null)
-    return '户型'
-  return `${bedrooms.value ?? '-'},${livingRooms.value ?? '-'},${bathrooms.value ?? '-'}`
-})
 const hasActiveListFilter = computed(() => !!keyword.value.trim()
   || status.value != null
   || minFloor.value != null
@@ -111,6 +97,28 @@ const hasActiveListFilter = computed(() => !!keyword.value.trim()
   || bedrooms.value != null
   || livingRooms.value != null
   || bathrooms.value != null)
+const listFilterModel = computed<PropertyListFilterState>({
+  get: () => ({
+    keyword: keyword.value,
+    status: status.value,
+    minFloor: minFloor.value,
+    maxFloor: maxFloor.value,
+    roomNoSuffix: roomNoSuffix.value,
+    bedrooms: bedrooms.value,
+    livingRooms: livingRooms.value,
+    bathrooms: bathrooms.value,
+  }),
+  set: (value) => {
+    keyword.value = value.keyword
+    status.value = value.status
+    minFloor.value = value.minFloor
+    maxFloor.value = value.maxFloor
+    roomNoSuffix.value = value.roomNoSuffix
+    bedrooms.value = value.bedrooms
+    livingRooms.value = value.livingRooms
+    bathrooms.value = value.bathrooms
+  },
+})
 
 function buildQuery(): PageSlPropertyInput {
   return {
@@ -127,7 +135,26 @@ function buildQuery(): PageSlPropertyInput {
     livingRooms: livingRooms.value,
     bathrooms: bathrooms.value,
     landlordShareToken: landlordShare.active.value ? landlordShare.shareToken.value : undefined,
+    availableOnly: isBusinessView.value || undefined,
   }
+}
+
+function applyListFilters(value: PropertyListFilterState) {
+  listFilterModel.value = value
+  resetSelectionForFilterChange()
+  void load(true)
+}
+
+function showAnnouncement() {
+  const announcement = communityDetail.value?.announcement?.trim()
+  if (!announcement)
+    return
+  uni.showModal({
+    title: `${communityDetail.value?.name || communityName.value}公告`,
+    content: announcement,
+    showCancel: false,
+    confirmText: '知道了',
+  })
 }
 
 function currentRowFilter() {
@@ -148,82 +175,9 @@ function resetSelectionForFilterChange() {
   allFilteredSelected.value = false
 }
 
-function toggleFilter(name: 'floor' | 'room' | 'layout') {
-  activeFilter.value = activeFilter.value === name ? null : name
-  if (name === 'floor') {
-    floorDraft.min = minFloor.value == null ? '' : String(minFloor.value)
-    floorDraft.max = maxFloor.value == null ? '' : String(maxFloor.value)
-  }
-  else if (name === 'room') {
-    roomDraft.value = roomNoSuffix.value
-  }
-  else {
-    layoutDraft.bedrooms = bedrooms.value
-    layoutDraft.livingRooms = livingRooms.value
-    layoutDraft.bathrooms = bathrooms.value
-  }
-}
-
-function optionalFloor(value: string) {
-  if (!value.trim())
-    return undefined
-  const parsed = Number(value)
-  if (!Number.isInteger(parsed) || parsed <= 0)
-    throw new Error('楼层必须是大于 0 的整数')
-  return parsed
-}
-
-function applyFloorFilter() {
-  try {
-    const min = optionalFloor(floorDraft.min)
-    const max = optionalFloor(floorDraft.max)
-    if (min != null && max != null && min > max)
-      throw new Error('起始楼层不能大于结束楼层')
-    minFloor.value = min
-    maxFloor.value = max
-    activeFilter.value = null
-    resetSelectionForFilterChange()
-    void load(true)
-  }
-  catch (error) {
-    uni.showToast({ title: error instanceof Error ? error.message : '楼层范围无效', icon: 'none' })
-  }
-}
-
-function applyRoomFilter() {
-  roomNoSuffix.value = roomDraft.value.trim()
-  activeFilter.value = null
-  resetSelectionForFilterChange()
-  void load(true)
-}
-
-function applyLayoutFilter() {
-  bedrooms.value = layoutDraft.bedrooms
-  livingRooms.value = layoutDraft.livingRooms
-  bathrooms.value = layoutDraft.bathrooms
-  activeFilter.value = null
-  resetSelectionForFilterChange()
-  void load(true)
-}
-
-function clearFloorFilter() {
-  floorDraft.min = ''
-  floorDraft.max = ''
-}
-
-function clearLayoutFilter() {
-  layoutDraft.bedrooms = undefined
-  layoutDraft.livingRooms = undefined
-  layoutDraft.bathrooms = undefined
-}
-
 async function load(reset = false) {
   if (!communityId.value || loading.value)
     return
-  // 用户模式：仅展示可租房源（status 0 空置 / 1 预定）。
-  // 后端 status 是单值无法一次传 0+1，循环拉全量后客户端过滤、扁平只读、不分页。
-  if (!canManage.value)
-    return loadAvailableForUser()
   if (reset) {
     page.value = 1
     items.value = []
@@ -234,37 +188,6 @@ async function load(reset = false) {
     const result = await getPropertyPage(buildQuery())
     total.value = result.total
     items.value = reset ? result.items : [...items.value, ...result.items]
-    hasLoaded.value = true
-  }
-  finally {
-    loading.value = false
-  }
-}
-
-async function loadAvailableForUser() {
-  if (loading.value)
-    return
-  loading.value = true
-  try {
-    const all: SlPropertyListOutput[] = []
-    let pageNo = 1
-    let totalCount = Number.POSITIVE_INFINITY
-    while (all.length < totalCount) {
-      const result = await getPropertyPage({
-        page: pageNo,
-        pageSize: 100,
-        communityId: communityId.value || undefined,
-        buildingId: buildingId.value || undefined,
-        title: keyword.value.trim() || undefined,
-      })
-      all.push(...result.items)
-      totalCount = result.total
-      if (!result.items.length)
-        break
-      pageNo += 1
-    }
-    items.value = all.filter(item => item.status === 0 || item.status === 1) // 0=空置 1=预定
-    total.value = items.value.length
     hasLoaded.value = true
   }
   finally {
@@ -295,7 +218,6 @@ function switchView(mode: 'list' | 'sales') {
     return
   if (selectionMode.value)
     exitBatchManager()
-  activeFilter.value = null
   viewMode.value = mode
   if (mode === 'sales')
     void loadSalesBoard()
@@ -328,20 +250,6 @@ async function patchBatchUpdatedItems(ids: readonly ShenLeId[]) {
   const details = await Promise.all(ids.map(id => getPropertyDetail(id)))
   const detailById = new Map(details.map(detail => [String(detail.id), detail]))
   items.value = items.value.map(item => detailById.get(String(item.id)) || item)
-}
-
-function selectStatus(value?: number) {
-  status.value = value
-  resetSelectionForFilterChange()
-  load(true)
-}
-
-function onSearch() {
-  // 搜索需登录（管理端不拦）
-  if (!canManage.value && !ensureCanUse('登录后即可搜索房源'))
-    return
-  resetSelectionForFilterChange()
-  load(true)
 }
 
 // ===== 楼盘媒体横滑栏 =====
@@ -386,8 +294,7 @@ async function handleRefresh() {
 }
 
 function handleScrollToLower() {
-  // 用户模式一次性全量加载，不分页。
-  if (viewMode.value !== 'list' || !canManage.value || loading.value || finished.value)
+  if (viewMode.value !== 'list' || loading.value || finished.value)
     return
   page.value += 1
   void load()
@@ -403,7 +310,7 @@ async function loadMedia() {
   if (!communityId.value)
     return
   try {
-    const detail = await getCommunityDetail(communityId.value)
+    const detail = await getCommunityDetail(communityId.value, isBusinessView.value)
     communityDetail.value = detail
     const list: CommunityMediaItem[] = (detail.images || []).map(media => ({
       id: media.id,
@@ -756,6 +663,8 @@ onLoad((query) => {
   buildingName.value = decodeURIComponent(String(query?.buildingName || ''))
   const totalFloors = Number(query?.buildingTotalFloors)
   buildingTotalFloors.value = Number.isFinite(totalFloors) && totalFloors > 0 ? totalFloors : null
+  const distance = Number(query?.distance)
+  communityDistance.value = Number.isFinite(distance) && distance >= 0 ? distance : null
   if (communityName.value || buildingName.value)
     uni.setNavigationBarTitle({ title: buildingName.value || communityName.value })
   void initializePage()
@@ -796,7 +705,7 @@ onShow(async () => {
       @scrolltolower="handleScrollToLower"
     >
       <view class="sl-page community-page">
-        <scroll-view v-if="mediaList.length" scroll-x class="media-strip">
+        <scroll-view v-if="mediaList.length && !isBusinessView" scroll-x class="media-strip">
           <view class="media-strip__inner">
             <view
               v-for="media in mediaList"
@@ -821,85 +730,49 @@ onShow(async () => {
           <sl-supply-contacts :community="communityDetail" />
         </view>
 
-        <view v-if="viewMode === 'list'" class="search sl-card">
-          <wd-icon name="search" size="20px" color="#7a8780" />
-          <input v-model="keyword" class="search__input" placeholder="搜索房源 / 房号" confirm-type="search" @confirm="onSearch">
-          <wd-button size="small" type="primary" @click="onSearch">
-            搜索
-          </wd-button>
-        </view>
+        <sl-property-list-filter
+          v-if="viewMode === 'list'"
+          v-model="listFilterModel"
+          :show-status="canManageBuildingScope"
+          @apply="applyListFilters"
+        />
 
-        <view v-if="viewMode === 'list' && canManageBuildingScope" class="property-filters sl-card">
-          <view class="property-filters__tabs">
-            <view class="filter-trigger" :class="{ active: activeFilter === 'floor' || minFloor != null || maxFloor != null }" @tap="toggleFilter('floor')">
-              <text>{{ floorFilterLabel }}</text>
-              <wd-icon name="arrow-down" size="14px" />
+        <view v-if="viewMode === 'list' && isBusinessView && communityDetail" class="business-summary sl-card">
+          <view class="business-summary__primary">
+            <text>{{ communityDetail.availableCount }} 套可租</text>
+            <text>{{ communityDetail.minRentPrice && communityDetail.maxRentPrice ? `¥${communityDetail.minRentPrice}-${communityDetail.maxRentPrice}/月` : '价格待完善' }}</text>
+            <text v-if="communityDistance != null">距 {{ communityDistance }}km</text>
+            <text>更新于 {{ formatSupplyTime(communityDetail.supplyUpdateTime) || '暂无记录' }}</text>
+          </view>
+          <view class="business-summary__fees">
+            <view class="business-summary__fee-item">
+              <text class="business-summary__fee-label">水费</text>
+              <text class="business-summary__fee-value">{{ communityDetail.waterFee ?? '未设置' }}{{ communityDetail.waterFee != null ? '元/吨' : '' }}</text>
             </view>
-            <view class="filter-trigger" :class="{ active: activeFilter === 'room' || !!roomNoSuffix }" @tap="toggleFilter('room')">
-              <text>{{ roomFilterLabel }}</text>
-              <wd-icon name="arrow-down" size="14px" />
+            <view class="business-summary__fee-item">
+              <text class="business-summary__fee-label">电费</text>
+              <text class="business-summary__fee-value">{{ communityDetail.electricityFee ?? '未设置' }}{{ communityDetail.electricityFee != null ? '元/度' : '' }}</text>
             </view>
-            <view class="filter-trigger" :class="{ active: activeFilter === 'layout' || bedrooms != null || livingRooms != null || bathrooms != null }" @tap="toggleFilter('layout')">
-              <text>{{ layoutFilterLabel }}</text>
-              <wd-icon name="arrow-down" size="14px" />
+            <view class="business-summary__fee-item">
+              <text class="business-summary__fee-label">管理费</text>
+              <text class="business-summary__fee-value">{{ managementFeeText(communityDetail) }}</text>
+            </view>
+            <view class="business-summary__fee-item">
+              <text class="business-summary__fee-label">网络费</text>
+              <text class="business-summary__fee-value">{{ networkFeeText(communityDetail) }}</text>
             </view>
           </view>
-
-          <view v-if="activeFilter === 'floor'" class="filter-panel">
-            <text class="filter-panel__title">楼层范围</text>
-            <view class="range-inputs">
-              <label><input v-model="floorDraft.min" type="number" placeholder="起始"><text>层</text></label>
-              <text>至</text>
-              <label><input v-model="floorDraft.max" type="number" placeholder="结束"><text>层</text></label>
-            </view>
-            <view class="filter-panel__actions">
-              <wd-button size="small" plain @click="clearFloorFilter">
-                重置
-              </wd-button>
-              <wd-button size="small" type="primary" @click="applyFloorFilter">
-                确定
-              </wd-button>
-            </view>
-          </view>
-
-          <view v-else-if="activeFilter === 'room'" class="filter-panel">
-            <text class="filter-panel__title">按房号结尾匹配</text>
-            <view class="suffix-input">
-              <input v-model="roomDraft" type="text" placeholder="例如 02 或 5003" confirm-type="search" @confirm="applyRoomFilter">
-            </view>
-            <text class="filter-panel__hint">输入 02 可匹配 502、602；输入 5003 可匹配 175003。</text>
-            <view class="filter-panel__actions">
-              <wd-button size="small" plain @click="roomDraft = ''">
-                重置
-              </wd-button>
-              <wd-button size="small" type="primary" @click="applyRoomFilter">
-                确定
-              </wd-button>
-            </view>
-          </view>
-
-          <view v-else-if="activeFilter === 'layout'" class="filter-panel">
-            <text class="filter-panel__title">户型（室、厅、卫）</text>
-            <view v-for="field in layoutFields" :key="field.key" class="layout-filter-row">
-              <text>{{ field.label }}</text>
-              <view class="layout-options">
-                <view
-                  v-for="number in layoutNumbers"
-                  :key="`${field.key}-${String(number)}`"
-                  class="layout-option"
-                  :class="{ active: layoutDraft[field.key] === number }"
-                  @tap="layoutDraft[field.key] = number"
-                >
-                  {{ number == null ? '不限' : number }}
-                </view>
+          <view class="business-summary__foot">
+            <view class="business-summary__commission">
+              <view class="business-summary__commission-copy">
+                <text class="business-summary__commission-label">佣金条件</text>
+                <text class="business-summary__commission-value">半年 {{ formatCommissionRange(communityDetail.lowestHalfYearCommissionPercent, communityDetail.highestHalfYearCommissionPercent) }} · 一年 {{ formatCommissionRange(communityDetail.lowestOneYearCommissionPercent, communityDetail.highestOneYearCommissionPercent) }}</text>
               </view>
+              <sl-pet-policy-text v-if="communityDetail.petPolicy" :value="communityDetail.petPolicy" class="business-summary__pet" />
             </view>
-            <view class="filter-panel__actions">
-              <wd-button size="small" plain @click="clearLayoutFilter">
-                重置
-              </wd-button>
-              <wd-button size="small" type="primary" @click="applyLayoutFilter">
-                确定
+            <view v-if="communityDetail.announcement" class="business-summary__actions">
+              <wd-button size="small" plain icon="notification" @click="showAnnouncement">
+                公告
               </wd-button>
             </view>
           </view>
@@ -913,23 +786,6 @@ onShow(async () => {
             销控
           </view>
         </view>
-
-        <scroll-view v-if="viewMode === 'list' && canManageBuildingScope" scroll-x class="chips">
-          <view class="chips__inner">
-            <view class="status-chip" :class="{ 'status-chip--active': status === undefined }" @tap="selectStatus(undefined)">
-              全部
-            </view>
-            <view
-              v-for="item in PROPERTY_STATUS_OPTIONS"
-              :key="item.value"
-              class="status-chip"
-              :class="{ 'status-chip--active': status === item.value }"
-              @tap="selectStatus(item.value)"
-            >
-              {{ item.label }}
-            </view>
-          </view>
-        </scroll-view>
 
         <template v-if="viewMode === 'list'">
           <view class="result-head">
@@ -1100,6 +956,103 @@ onShow(async () => {
 </template>
 
 <style scoped lang="scss">
+.business-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 14rpx;
+  padding: 20rpx;
+}
+
+.business-summary__primary {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10rpx 18rpx;
+}
+
+.business-summary__primary {
+  color: #26372f;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.business-summary__fees {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx 20rpx;
+  padding-top: 12rpx;
+  border-top: 1rpx solid var(--sl-line);
+}
+
+.business-summary__fee-item {
+  min-width: 0;
+}
+
+.business-summary__fee-label,
+.business-summary__fee-value {
+  display: block;
+}
+
+.business-summary__fee-label {
+  color: #87928c;
+  font-size: 20rpx;
+}
+
+.business-summary__fee-value {
+  margin-top: 4rpx;
+  color: #4c5c54;
+  font-size: 22rpx;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.business-summary__foot {
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.business-summary__commission {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.business-summary__commission-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.business-summary__commission-label {
+  color: #87928c;
+  font-size: 20rpx;
+}
+
+.business-summary__commission-value {
+  color: #126b4f;
+  font-size: 23rpx;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.business-summary__pet {
+  flex: none;
+  font-size: 22rpx;
+  text-align: right;
+}
+
+.business-summary__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .community-page-shell {
   width: 100%;
   height: 100vh;

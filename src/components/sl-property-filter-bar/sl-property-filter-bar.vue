@@ -7,7 +7,7 @@ import { DISTANCE_OPTIONS } from '@/constants/shenle'
 import { getLocationOnceCached } from '@/utils/location-cache'
 import { clonePropertyFilters, sameId } from '@/utils/property-filter'
 
-type DropdownName = 'location' | 'price' | 'realtime' | 'special'
+type DropdownName = 'location' | 'price' | 'type' | 'realtime' | 'special'
 type RealtimeMode = NonNullable<PropertyFilterState['realtimeModes']>[number]
 type SpecialMode = NonNullable<PropertyFilterState['specialModes']>[number]
 
@@ -36,8 +36,8 @@ const PRICE_MAX = 10000
 const PRICE_STEP = 100
 const COMMUNITY_TYPE_OPTIONS = [
   { value: 2, label: '公寓' },
-  { value: 1, label: '小区' },
   { value: 3, label: '小产权' },
+  { value: 1, label: '小区' },
 ] as const
 const REALTIME_OPTIONS: Array<{ value: RealtimeMode, label: string }> = [
   { value: 'realtime', label: '实时更新' },
@@ -47,6 +47,7 @@ const SPECIAL_OPTIONS: Array<{ value: SpecialMode, label: string }> = [
   { value: 'monthlyPayment', label: '可押一付一' },
   { value: 'shortRent', label: '可短租' },
   { value: 'dailyRent', label: '可日租' },
+  { value: 'pet', label: '可养宠物' },
 ]
 const activeDropdown = ref<DropdownName | null>(null)
 const sheetVisible = ref(false)
@@ -76,8 +77,10 @@ function guardInteraction() {
 const locationActive = computed(() => !!props.filters.regionId || props.filters.distanceKm !== undefined)
 const priceActive = computed(() => props.filters.minPrice !== undefined || props.filters.maxPrice !== undefined)
 const keywordActive = computed(() => !!props.keyword?.trim())
+const typeActive = computed(() => !!props.filters.communityTypes?.length)
 const realtimeActive = computed(() => !!props.filters.realtimeModes?.length)
 const specialActive = computed(() => !!props.filters.specialModes?.length)
+const typeLabel = computed(() => optionGroupLabel(props.filters.communityTypes, COMMUNITY_TYPE_OPTIONS, '类型'))
 const realtimeLabel = computed(() => optionGroupLabel(props.filters.realtimeModes, REALTIME_OPTIONS, '实时'))
 const specialLabel = computed(() => optionGroupLabel(props.filters.specialModes, SPECIAL_OPTIONS, '特殊'))
 
@@ -368,6 +371,8 @@ function resetCurrent() {
     clearLocation()
   if (activeDropdown.value === 'price')
     clearPrice()
+  if (activeDropdown.value === 'type')
+    draft.value.communityTypes = undefined
   if (activeDropdown.value === 'realtime')
     draft.value.realtimeModes = undefined
   if (activeDropdown.value === 'special')
@@ -431,7 +436,7 @@ function priceRangeLabel(filters: Pick<PropertyFilterState, 'minPrice' | 'maxPri
   return `¥${min}-${max}`
 }
 
-function optionGroupLabel<T>(values: T[] | undefined, options: Array<{ value: T, label: string }>, fallback: string) {
+function optionGroupLabel<T>(values: T[] | undefined, options: readonly { value: T, label: string }[], fallback: string) {
   if (!values?.length)
     return fallback
   if (values.length === 1)
@@ -501,6 +506,16 @@ function onThumbTouchEnd() {
         @tap="toggleDropdown('price')"
       >
         <text class="filter-tab__label">{{ priceLabel }}</text>
+        <view class="filter-tab__arrow">
+          <wd-icon name="arrow-down" size="12px" color="currentColor" />
+        </view>
+      </view>
+      <view
+        class="filter-tab"
+        :class="{ active: typeActive, open: activeDropdown === 'type' }"
+        @tap="toggleDropdown('type')"
+      >
+        <text class="filter-tab__label">{{ typeLabel }}</text>
         <view class="filter-tab__arrow">
           <wd-icon name="arrow-down" size="12px" color="currentColor" />
         </view>
@@ -654,6 +669,21 @@ function onThumbTouchEnd() {
             class="filter-chip"
             :class="{ active: draft.realtimeModes?.includes(item.value) }"
             @tap="toggleRealtimeMode(item.value)"
+          >
+            <text>{{ item.label }}</text>
+          </view>
+        </view>
+      </view>
+
+      <view v-if="activeDropdown === 'type'" class="dropdown-section dropdown-section--short">
+        <text class="section-title">楼盘类型</text>
+        <view class="option-row">
+          <view
+            v-for="item in COMMUNITY_TYPE_OPTIONS"
+            :key="item.value"
+            class="filter-chip"
+            :class="{ active: draft.communityTypes?.includes(item.value) }"
+            @tap="toggleCommunityType(item.value)"
           >
             <text>{{ item.label }}</text>
           </view>

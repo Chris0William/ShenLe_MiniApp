@@ -7,14 +7,19 @@ const props = withDefaults(defineProps<{
   subtitle?: string
   back?: boolean
   showSupport?: boolean
+  refresh?: boolean
+  refreshing?: boolean
 }>(), {
   subtitle: '',
   back: false,
   showSupport: true,
+  refresh: false,
+  refreshing: false,
 })
 
 const emit = defineEmits<{
   back: []
+  refresh: []
 }>()
 
 const sourceContact = useSourceContactStore()
@@ -45,7 +50,10 @@ function callSupport() {
         <text class="source-head__title">{{ props.title }}</text>
         <text v-if="props.subtitle" class="source-head__subtitle">{{ props.subtitle }}</text>
       </view>
-      <view v-if="props.back" class="source-head__spacer" />
+      <view v-if="props.refresh" class="source-head__icon" aria-label="刷新" @tap="emit('refresh')">
+        <wd-icon name="refresh" size="20px" color="#126b4f" :class="{ 'source-head__refresh--loading': props.refreshing }" />
+      </view>
+      <view v-else-if="props.back" class="source-head__spacer" />
     </view>
 
     <view v-if="props.showSupport" class="support-line" @tap="callSupport">
@@ -111,6 +119,16 @@ function callSupport() {
   border: 1rpx solid rgb(18 107 79 / 14%);
   border-radius: 8rpx;
   background: #fff;
+}
+
+.source-head__refresh--loading {
+  animation: source-head-spin 0.8s linear infinite;
+}
+
+@keyframes source-head-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .source-head__spacer {

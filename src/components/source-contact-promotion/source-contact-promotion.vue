@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import type { ShenLeId, SlPromotionPropertyOutput, SlSourceContactCommunityOutput } from '@/types/shenle'
+import type { PropertyListFilterState, ShenLeId, SlPromotionPropertyOutput, SlSourceContactCommunityOutput } from '@/types/shenle'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { getPromotionPropertyPage, savePromotion } from '@/api/source-contact-portal'
 import SlCommissionSettings from '@/components/sl-commission-settings/sl-commission-settings.vue'
+import SlPropertyListFilter from '@/components/sl-property-list-filter/sl-property-list-filter.vue'
 import { useSourceContactStore } from '@/store/source-contact'
 import { COMMISSION_PERCENT_MAX, formatCommissionRange } from '@/utils/commission'
 import { useSafeTopStyle } from '@/utils/safe-area'
@@ -19,7 +20,7 @@ const items = ref<SlPromotionPropertyOutput[]>([])
 const activeItem = ref<SlPromotionPropertyOutput | null>(null)
 const selectedIds = ref<ShenLeId[]>([])
 const selecting = ref(false)
-const keyword = ref('')
+const propertyFilters = ref<PropertyListFilterState>({ keyword: '', roomNoSuffix: '' })
 const promotionOnly = ref(false)
 const page = ref(1)
 const total = ref(0)
@@ -137,7 +138,7 @@ function showHomepageUnavailable() {
 
 async function openCommunity(item: SlSourceContactCommunityOutput) {
   selectedCommunity.value = item
-  keyword.value = ''
+  propertyFilters.value = { keyword: '', roomNoSuffix: '' }
   promotionOnly.value = false
   selecting.value = false
   selectedIds.value = []
@@ -163,8 +164,15 @@ async function loadProperties(reset = false) {
       page: page.value,
       pageSize: PAGE_SIZE,
       communityId: selectedCommunity.value.id,
-      keyword: keyword.value.trim() || undefined,
+      keyword: propertyFilters.value.keyword.trim() || undefined,
       promotionOnly: promotionOnly.value,
+      status: propertyFilters.value.status,
+      minFloor: propertyFilters.value.minFloor,
+      maxFloor: propertyFilters.value.maxFloor,
+      roomNoSuffix: propertyFilters.value.roomNoSuffix.trim() || undefined,
+      bedrooms: propertyFilters.value.bedrooms,
+      livingRooms: propertyFilters.value.livingRooms,
+      bathrooms: propertyFilters.value.bathrooms,
     })
     total.value = result.total
     items.value = reset ? result.items : [...items.value, ...result.items]
@@ -173,6 +181,12 @@ async function loadProperties(reset = false) {
     loading.value = false
     uni.stopPullDownRefresh()
   }
+}
+
+function applyPropertyFilters(value: PropertyListFilterState) {
+  propertyFilters.value = value
+  selectedIds.value = []
+  void loadProperties(true)
 }
 
 function loadMore() {
@@ -345,7 +359,15 @@ defineExpose({ refresh, activate })
 
 <template>
   <view class="promotion-page" :style="safeTop">
-    <sl-source-contact-header :title="title" :subtitle="subtitle" :back="screen !== 'home'" @back="goBack" />
+    <sl-source-contact-header
+      :title="title"
+      :subtitle="subtitle"
+      :back="screen !== 'home'"
+      :refresh="screen !== 'editor'"
+      :refreshing="loading || sourceContact.loading"
+      @back="goBack"
+      @refresh="refresh"
+    />
 
     <scroll-view v-if="screen === 'home'" scroll-y class="content-scroll">
       <view class="entry-list">
@@ -433,10 +455,7 @@ defineExpose({ refresh, activate })
 
     <view v-else-if="screen === 'properties'" class="properties-page">
       <view class="property-toolbar">
-        <view class="property-search">
-          <wd-icon name="search" size="17px" color="#8b9791" />
-          <input v-model="keyword" class="property-search__input" placeholder="搜索房号或标题" confirm-type="search" @confirm="loadProperties(true)">
-        </view>
+        <sl-property-list-filter v-model="propertyFilters" @apply="applyPropertyFilters" />
         <view class="property-toolbar__row">
           <view class="toggle-filter" :class="{ active: promotionOnly }" @tap="togglePromotionOnly">
             仅看已设置
@@ -521,7 +540,7 @@ defineExpose({ refresh, activate })
           </view>
           <template v-if="draft.supportsDailyRent">
             <label class="form-field"><text>佣金条件</text><view class="form-field__input"><input v-model="draft.dailyRentCommissionAmount" class="form-field__control" type="digit" placeholder="不少于1"><text class="form-field__unit">元</text></view></label>
-            <label class="form-field"><text>佣金比例</text><view class="form-field__input"><input v-model="draft.dailyRentCommissionPercent" class="form-field__control" type="digit" placeholder="0-300"><text class="form-field__unit">%</text></view></label>
+            <label class="form-field"><text>佣金比例</text><view class="form-field__input"><input v-model="draft.dailyRentCommissionPercent" class="form-field__control" type="digit" placeholder="0-1000"><text class="form-field__unit">%</text></view></label>
             <label class="form-field"><text>日租单价</text><view class="form-field__input"><input v-model="draft.dailyRentPrice" class="form-field__control" type="digit" placeholder="不少于1"><text class="form-field__unit">元/天</text></view></label>
           </template>
         </view>

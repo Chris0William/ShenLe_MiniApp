@@ -21,9 +21,11 @@ import {
   savePropertyOperationConfig,
 } from '@/api/source-contact-portal'
 import SlCommissionSettings from '@/components/sl-commission-settings/sl-commission-settings.vue'
+import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
 import { PROPERTY_STATUS_OPTIONS } from '@/constants/shenle'
 import { useSourceContactStore } from '@/store/source-contact'
 import { COMMISSION_PERCENT_MAX, formatCommissionRange, normalizeCommissionPercent } from '@/utils/commission'
+import { managementFeeText as formatManagementFeeText, networkFeeText as formatNetworkFeeText } from '@/utils/community-business'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
 
@@ -45,6 +47,7 @@ interface OperationDraft {
   commissionValue: string
   managementPackageMode: 1 | 2 | null
   networkPackageMode: 1 | 2 | 3 | 4 | null
+  petPolicy: 1 | 2 | 3 | null
   remark: string
 }
 
@@ -74,6 +77,7 @@ const draft = reactive<OperationDraft>({
   commissionValue: '',
   managementPackageMode: null,
   networkPackageMode: null,
+  petPolicy: null,
   remark: '',
 })
 
@@ -165,9 +169,7 @@ function percentText(value?: number | null) {
 }
 
 function networkFeeText(item: SlSourceContactCommunityOutput) {
-  if (item.networkFeeMode === 2)
-    return '自理'
-  return moneyText(item.networkFee, '元/月')
+  return formatNetworkFeeText(item)
 }
 
 function callCommunityContact(item: SlSourceContactCommunityOutput) {
@@ -330,6 +332,7 @@ function resetDraft(config?: SlCommunityOperationConfigOutput | SlPropertyOperat
   ]
   draft.managementPackageMode = propertyConfig?.effectiveManagementPackageMode ?? propertyConfig?.managementPackageMode ?? communityConfigValue?.managementPackageMode ?? null
   draft.networkPackageMode = propertyConfig?.effectiveNetworkPackageMode ?? propertyConfig?.networkPackageMode ?? communityConfigValue?.networkPackageMode ?? null
+  draft.petPolicy = communityConfigValue?.petPolicy ?? null
   draft.remark = 'remark' in (config || {}) ? (config as SlCommunityOperationConfigOutput).remark || '' : ''
 }
 
@@ -414,7 +417,7 @@ function buildOperationInput() {
       ...commissionFields,
     }
   }
-  return { ...input, ...commissionFields, networkFeeMode: draft.networkFeeMode }
+  return { ...input, ...commissionFields, networkFeeMode: draft.networkFeeMode, petPolicy: draft.petPolicy }
 }
 
 function confirmCommunitySync(): Promise<boolean> {
@@ -610,7 +613,15 @@ defineExpose({ refresh, activate })
 
 <template>
   <view class="room-state-page" :style="safeTop">
-    <sl-source-contact-header :title="title" :subtitle="subtitle" :back="screen !== 'communities'" @back="goBack" />
+    <sl-source-contact-header
+      :title="title"
+      :subtitle="subtitle"
+      :back="screen !== 'communities'"
+      :refresh="screen === 'communities' || screen === 'buildings' || screen === 'rooms'"
+      :refreshing="loading || sourceContact.loading"
+      @back="goBack"
+      @refresh="refresh"
+    />
 
     <view v-if="screen === 'communities'" class="content-area">
       <scroll-view :scroll-top="communityScrollTop" scroll-y class="content-scroll" @scrolltolower="changeCommunityPage(communityPage + 1)">
@@ -643,16 +654,19 @@ defineExpose({ refresh, activate })
                   <text>电费</text><text class="community-row__fee-value">{{ moneyText(item.electricityFee, '元/度') }}</text>
                 </view>
                 <view class="community-row__fee">
-                  <text>管理费</text><text class="community-row__fee-value">{{ moneyText(item.managementFee, '元/月') }}</text>
+                  <text>管理费</text><text class="community-row__fee-value">{{ formatManagementFeeText(item) }}</text>
                 </view>
                 <view class="community-row__fee">
                   <text>网络费</text><text class="community-row__fee-value">{{ networkFeeText(item) }}</text>
                 </view>
-                <view class="community-row__fee community-row__fee--wide">
-                  <text>佣金条件</text>
-                  <text class="community-row__fee-value community-row__fee-value--commission">
-                    半年 {{ formatCommissionRange(item.lowestHalfYearCommissionPercent, item.highestHalfYearCommissionPercent) }} · 一年 {{ formatCommissionRange(item.lowestOneYearCommissionPercent, item.highestOneYearCommissionPercent) }}
-                  </text>
+                <view class="community-row__fee community-row__fee--wide community-row__commission">
+                  <view class="community-row__commission-copy">
+                    <text>佣金条件</text>
+                    <text class="community-row__fee-value community-row__fee-value--commission">
+                      半年 {{ formatCommissionRange(item.lowestHalfYearCommissionPercent, item.highestHalfYearCommissionPercent) }} · 一年 {{ formatCommissionRange(item.lowestOneYearCommissionPercent, item.highestOneYearCommissionPercent) }}
+                    </text>
+                  </view>
+                  <sl-pet-policy-text v-if="item.petPolicy" :value="item.petPolicy" class="community-row__commission-pet" />
                 </view>
               </view>
               <view class="community-row__foot" @tap.stop>
@@ -939,11 +953,25 @@ defineExpose({ refresh, activate })
               </view>
             </view>
           </view>
+          <view v-if="screen === 'community-config'" class="setting-group">
+            <text class="form-section__title">宠物情况</text>
+            <view class="mode-grid mode-grid--three">
+              <view class="mode-option mode-option--pet-allowed" :class="{ 'mode-option--active': draft.petPolicy === 1 }" @tap="draft.petPolicy = draft.petPolicy === 1 ? null : 1">
+                可养宠物
+              </view>
+              <view class="mode-option mode-option--pet-denied" :class="{ 'mode-option--active': draft.petPolicy === 2 }" @tap="draft.petPolicy = draft.petPolicy === 2 ? null : 2">
+                不可养宠物
+              </view>
+              <view class="mode-option mode-option--pet-negotiable" :class="{ 'mode-option--active': draft.petPolicy === 3 }" @tap="draft.petPolicy = draft.petPolicy === 3 ? null : 3">
+                可沟通养宠物
+              </view>
+            </view>
+          </view>
         </view>
 
         <view v-if="screen === 'community-config'" class="form-section">
-          <text class="form-section__title">备注</text>
-          <textarea v-model="draft.remark" class="remark-input" :maxlength="500" placeholder="经营规则、结算说明等内部备注" />
+          <text class="form-section__title">公告</text>
+          <textarea v-model="draft.remark" class="remark-input" :maxlength="500" placeholder="填写后将在业务员端展示" />
         </view>
       </scroll-view>
       <view class="editor-footer">
@@ -1192,6 +1220,25 @@ defineExpose({ refresh, activate })
 
 .community-row__fee--wide {
   grid-column: 1 / -1;
+}
+
+.community-row__commission,
+.community-row__commission-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.community-row__commission-copy {
+  flex: 1;
+  gap: 8rpx;
+}
+
+.community-row__commission-pet {
+  flex: none;
+  margin-left: 12rpx;
+  font-size: 22rpx;
+  text-align: right;
 }
 
 .community-row__fee-value {
@@ -1557,6 +1604,25 @@ defineExpose({ refresh, activate })
 
 .mode-grid--four {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.mode-grid--three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mode-option--pet-allowed {
+  color: #bd8117;
+  font-weight: 800;
+}
+
+.mode-option--pet-denied {
+  color: #1f2924;
+  font-weight: 900;
+}
+
+.mode-option--pet-negotiable {
+  color: #d0a75a;
+  font-weight: 750;
 }
 
 .mode-grid--two {

@@ -13,8 +13,8 @@ export function getCommunityStats() {
   return get<SlCommunityStatsOutput[]>('/api/slCommunity/stats')
 }
 
-export function getCommunityDetail(id: ShenLeId) {
-  return get<SlCommunityOutput>('/api/slCommunity/detail', { id })
+export function getCommunityDetail(id: ShenLeId, availableOnly = false) {
+  return get<SlCommunityOutput>('/api/slCommunity/detail', { id, availableOnly: availableOnly || undefined })
 }
 
 export function addCommunity(input: AddSlCommunityInput) {

@@ -205,7 +205,7 @@ describe('property batch API contract', () => {
   const api = source('src/api/property.ts')
 
   it('exposes every committed property batch route without replacing single-write routes', () => {
-    expect(api).toContain('getPropertyBatchList = (buildingId: ShenLeId)')
+    expect(api).toContain('function getPropertyBatchList(buildingId: ShenLeId)')
     expect(api).toContain('get<SlPropertyBatchRowOutput[]>(\'/api/slProperty/batchList\'')
     expect(api).toContain('post<BatchSlPropertyResult>(\'/api/slProperty/batchAdd\'')
     expect(api).toContain('post<BatchSlPropertyResult>(\'/api/slProperty/batchUpdate\'')

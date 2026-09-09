@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { COMMISSION_PERCENT_MAX, normalizeCommissionPercent } from '@/utils/commission'
+import { normalizeCommissionPercent } from '@/utils/commission'
 
 const props = withDefaults(defineProps<{
   modelValue?: number[]
@@ -31,7 +31,10 @@ function normalize(value: unknown) {
 
 function updateValue(index: 0 | 1, value: unknown) {
   const next = [normalize(props.modelValue?.[0]), normalize(props.modelValue?.[1])]
-  next[index] = normalize(Array.isArray(value) ? value[0] : value)
+  const inputValue = typeof value === 'object' && value !== null && 'detail' in value
+    ? (value as { detail?: { value?: unknown } }).detail?.value
+    : value
+  next[index] = normalize(Array.isArray(inputValue) ? inputValue[0] : inputValue)
   emit('update:modelValue', next)
 }
 </script>
@@ -39,9 +42,20 @@ function updateValue(index: 0 | 1, value: unknown) {
 <template>
   <view class="commission-settings">
     <view class="commission-row" :class="{ 'commission-row--disabled': showSwitch && !halfYearEnabled }">
-      <view class="commission-row__head">
+      <view class="commission-row__main">
         <text class="commission-row__label">半年佣金</text>
-        <text class="commission-row__value">{{ halfYearValue }}%</text>
+        <view class="commission-row__input-wrap">
+          <input
+            class="commission-row__input"
+            type="number"
+            :value="String(halfYearValue)"
+            :disabled="disabled || (showSwitch && !halfYearEnabled)"
+            :maxlength="4"
+            placeholder="0-1000"
+            @input="updateValue(0, $event)"
+          >
+          <text class="commission-row__unit">%</text>
+        </view>
         <wd-switch
           v-if="showSwitch"
           :model-value="halfYearEnabled"
@@ -50,22 +64,23 @@ function updateValue(index: 0 | 1, value: unknown) {
           @update:model-value="emit('update:halfYearEnabled', Boolean($event))"
         />
       </view>
-      <wd-slider
-        :model-value="halfYearValue"
-        :min="0"
-        :max="COMMISSION_PERCENT_MAX"
-        :step="1"
-        hide-label
-        active-color="#126b4f"
-        :disabled="disabled || (showSwitch && !halfYearEnabled)"
-        @update:model-value="updateValue(0, $event)"
-      />
     </view>
 
     <view class="commission-row" :class="{ 'commission-row--disabled': showSwitch && !oneYearEnabled }">
-      <view class="commission-row__head">
+      <view class="commission-row__main">
         <text class="commission-row__label">一年佣金</text>
-        <text class="commission-row__value">{{ oneYearValue }}%</text>
+        <view class="commission-row__input-wrap">
+          <input
+            class="commission-row__input"
+            type="number"
+            :value="String(oneYearValue)"
+            :disabled="disabled || (showSwitch && !oneYearEnabled)"
+            :maxlength="4"
+            placeholder="0-1000"
+            @input="updateValue(1, $event)"
+          >
+          <text class="commission-row__unit">%</text>
+        </view>
         <wd-switch
           v-if="showSwitch"
           :model-value="oneYearEnabled"
@@ -74,16 +89,6 @@ function updateValue(index: 0 | 1, value: unknown) {
           @update:model-value="emit('update:oneYearEnabled', Boolean($event))"
         />
       </view>
-      <wd-slider
-        :model-value="oneYearValue"
-        :min="0"
-        :max="COMMISSION_PERCENT_MAX"
-        :step="1"
-        hide-label
-        active-color="#126b4f"
-        :disabled="disabled || (showSwitch && !oneYearEnabled)"
-        @update:model-value="updateValue(1, $event)"
-      />
     </view>
   </view>
 </template>
@@ -96,7 +101,7 @@ function updateValue(index: 0 | 1, value: unknown) {
 }
 
 .commission-row {
-  padding: 16rpx 18rpx 10rpx;
+  padding: 14rpx 18rpx;
   border: 1rpx solid #e1e9e3;
   border-radius: 8rpx;
   background: #f8faf8;
@@ -106,11 +111,11 @@ function updateValue(index: 0 | 1, value: unknown) {
   opacity: 0.56;
 }
 
-.commission-row__head {
+.commission-row__main {
   display: flex;
-  min-height: 44rpx;
+  min-height: 68rpx;
   align-items: center;
-  gap: 12rpx;
+  gap: 16rpx;
 }
 
 .commission-row__label {
@@ -119,10 +124,32 @@ function updateValue(index: 0 | 1, value: unknown) {
   font-weight: 700;
 }
 
-.commission-row__value {
+.commission-row__input-wrap {
+  display: flex;
+  width: 220rpx;
+  height: 64rpx;
+  box-sizing: border-box;
+  align-items: center;
   margin-left: auto;
+  padding: 0 18rpx;
+  border: 1rpx solid #dce6df;
+  border-radius: 8rpx;
+  background: #fff;
+}
+
+.commission-row__input {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
   color: #126b4f;
-  font-size: 27rpx;
+  font-size: 28rpx;
   font-weight: 850;
+  text-align: right;
+}
+
+.commission-row__unit {
+  margin-left: 8rpx;
+  color: #53635c;
+  font-size: 24rpx;
 }
 </style>

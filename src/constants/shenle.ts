@@ -80,10 +80,10 @@ export const AREA_SEGMENTS = [
 ] as const
 
 export const DEPOSIT_RULE_OPTIONS = [
-  { label: '一付一', value: '1-1' },
-  { label: '一付三', value: '1-3' },
-  { label: '二付一', value: '2-1' },
-  { label: '二付三', value: '2-3' },
+  { label: '押一付一', value: '1-1' },
+  { label: '押一付三', value: '1-3' },
+  { label: '押二付一', value: '2-1' },
+  { label: '押二付三', value: '2-3' },
   { label: '半年付', value: 'half-year' },
   { label: '年付', value: 'yearly' },
 ] as const

@@ -1,4 +1,4 @@
-export const COMMISSION_PERCENT_MAX = 300
+export const COMMISSION_PERCENT_MAX = 1000
 
 export function normalizeCommissionPercent(value: unknown) {
   const number = Number(value)

@@ -10,6 +10,7 @@ import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { ensureCanUse } from '@/utils/auth-guard'
 import { createMediaLongPressGuard, renameEditableMedia } from '@/utils/media-edit'
+import { decorationText, depositRuleText, orientationText, rentalTypeText } from '@/utils/property-display'
 import { canManagePropertyWrites } from '@/utils/property-management'
 import { formatArea, formatMoney, getStatusMeta, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
@@ -240,7 +241,7 @@ async function loadDetail() {
     return
   loading.value = true
   try {
-    const nextDetail = await getPropertyDetail(id.value)
+    const nextDetail = await getPropertyDetail(id.value, modeStore.mode === 'user')
     detail.value = nextDetail
     const communityTask = getCommunityDetail(nextDetail.communityId)
       .then((community) => { communityDetail.value = community })
@@ -338,16 +339,16 @@ onLoad((query) => {
       <view class="section sl-card">
         <text class="section__title">房源信息</text>
         <view class="info-row">
-          <text>朝向</text><text>{{ detail.orientation || '待补充' }}</text>
+          <text>朝向</text><text>{{ orientationText(detail.orientation) }}</text>
         </view>
         <view class="info-row">
-          <text>装修</text><text>{{ detail.decoration || '待补充' }}</text>
+          <text>装修</text><text>{{ decorationText(detail.decoration) }}</text>
         </view>
         <view class="info-row">
-          <text>出租方式</text><text>{{ detail.rentalType || '待补充' }}</text>
+          <text>出租方式</text><text>{{ rentalTypeText(detail.rentalType) }}</text>
         </view>
         <view class="info-row">
-          <text>押付</text><text>{{ detail.depositRule || '待补充' }}</text>
+          <text>押付</text><text>{{ depositRuleText(detail.depositRule) }}</text>
         </view>
       </view>
 
