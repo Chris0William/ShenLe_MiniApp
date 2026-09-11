@@ -35,6 +35,8 @@ import {
 } from '@/constants/shenle'
 import { COMMISSION_PERCENT_MAX, normalizeCommissionPercent } from '@/utils/commission'
 import { isLocalMediaUrl, mediaKindOf } from '@/utils/media'
+import { createMediaTrace, showMediaPickerFailure } from '@/utils/media-diagnostics'
+import { chooseMediaFallback, mediaPickerErrorText } from '@/utils/media-picker-fallback'
 import {
   buildBatchAddInputs,
   buildBatchUpdateInputs,
@@ -1044,6 +1046,8 @@ function localMediaKind(file: { tempFilePath: string, fileType?: 'image' | 'vide
   return mediaKindOf(undefined, file.tempFilePath)
 }
 
+let mediaTrace = createMediaTrace('property-batch')
+
 async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }>) {
   if (!files.length)
     return
@@ -1061,6 +1065,7 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
           belongId: draftId,
           kind: kind === 'video' ? 'video' : 'image',
           posterPath: local.thumbTempFilePath,
+          trace: mediaTrace,
           onUploaded: file => uploadedDraftIds.value.push(file.id),
         })
         successCount += 1
@@ -1091,6 +1096,7 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
   }
 }
 
+
 function startMediaUpload(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }>) {
   if (activeUploadPromise)
     return
@@ -1110,28 +1116,56 @@ onBeforeUnmount(() => {
 })
 
 function chooseUploadMedia() {
+  if (uploading.value || activeUploadPromise)
+    return
+  mediaTrace = createMediaTrace('property-batch')
+  mediaTrace.info('chooseMedia.start', { count: 9 })
+  const handlePickerFailure = (error: unknown, allowFallback = true) => {
+    const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
+    if (message.includes('cancel'))
+      return
+    console.error('choose batch media failed', error)
+    mediaTrace.fail(allowFallback ? 'chooseMedia.fail' : 'fallback.fail', error)
+    if (allowFallback) {
+      chooseMediaFallback(
+        files => startMediaUpload(files),
+        fallbackError => handlePickerFailure(fallbackError, false),
+        mediaTrace,
+      )
+      return
+    }
+    console.error('fallback batch media picker failed', mediaPickerErrorText(error))
+    showMediaPickerFailure(error, mediaTrace)
+  }
+
   const chooseMedia = wxChooseMedia()
   if (!chooseMedia) {
-    uni.chooseImage({
-      count: 9,
-      sizeType: ['compressed'],
-      success: (res) => {
-        const paths = Array.isArray(res.tempFilePaths) ? res.tempFilePaths : [res.tempFilePaths]
-        startMediaUpload(paths.map(tempFilePath => ({ tempFilePath, fileType: 'image' })))
-      },
-    })
+    chooseMediaFallback(files => startMediaUpload(files), error => handlePickerFailure(error, false), mediaTrace)
     return
   }
-  chooseMedia({
-    count: 9,
-    mediaType: ['mix'],
-    sourceType: ['album', 'camera'],
-    sizeType: ['compressed'],
-    maxDuration: 60,
-    success: result => startMediaUpload((result.tempFiles || [])
-      .filter(item => !!item.tempFilePath)
-      .map(item => ({ tempFilePath: item.tempFilePath!, fileType: item.fileType, thumbTempFilePath: item.thumbTempFilePath }))),
-  })
+  try {
+    chooseMedia({
+      count: 9,
+      mediaType: ['mix'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['original'],
+      maxDuration: 60,
+      success: (result) => {
+        const rawFiles = result.tempFiles || []
+        const files = rawFiles
+          .filter(item => !!item.tempFilePath)
+          .map(item => ({ tempFilePath: item.tempFilePath!, fileType: item.fileType, thumbTempFilePath: item.thumbTempFilePath }))
+        mediaTrace.info('chooseMedia.success', { count: files.length, rawCount: rawFiles.length, validCount: files.length })
+        console.info('[shenle-media] chooseMedia.items', rawFiles.map(item => ({ fileType: item.fileType, hasPath: !!item.tempFilePath, hasThumb: !!item.thumbTempFilePath })))
+        if (rawFiles.length !== files.length) {
+          uni.showToast({ title: `已选 ${rawFiles.length} 个，可上传 ${files.length} 个`, icon: 'none', duration: 3000 })
+        }
+        startMediaUpload(files)
+      },
+      fail: handlePickerFailure,
+    })
+  }
+  catch (error) { handlePickerFailure(error) }
 }
 
 function openMediaSource(target: MediaTarget = { type: 'edit' }) {

@@ -10,7 +10,9 @@ import { useShenleAuthStore } from '@/store/auth'
 import { useEntityChangeStore } from '@/store/entity-change'
 import { modeStore } from '@/store/mode'
 import { isLocalMediaUrl, MEDIA_SELECTION_BATCH_LIMIT } from '@/utils/media'
+import { createMediaTrace, showMediaPickerFailure } from '@/utils/media-diagnostics'
 import { createMediaLongPressGuard, renameEditableMedia, showMediaEditActionSheet } from '@/utils/media-edit'
+import { chooseMediaFallback, mediaPickerErrorText } from '@/utils/media-picker-fallback'
 import { idToQuery, resolveAssetUrl } from '@/utils/shenle'
 import { saveVideoToAlbum, showVideoSaveActionSheet } from '@/utils/video-save'
 
@@ -110,7 +112,10 @@ function publishCommunityChange(action: 'created' | 'updated' | 'deleted' | 'str
   changeStore.publishCommunityChange({ action, ids })
   changeStore.consumeCommunityChange(CHANGE_CONSUMER)
 }
+let mediaTrace = createMediaTrace('community')
 const uploading = ref(false)
+const uploadProgress = reactive({ done: 0, total: 0, failed: 0 })
+const uploadProgressPercent = computed(() => uploadProgress.total ? Math.round(uploadProgress.done / uploadProgress.total * 100) : 0)
 const picking = ref(false)
 const previewVideo = ref<CommunityMedia | null>(null)
 const ownerPickerVisible = ref(false)
@@ -458,12 +463,11 @@ function openAdd() {
 }
 
 async function openEdit(item: SlCommunityOutput) {
-  resetForm(item)
-  formVisible.value = true
   try {
     const detail = await getCommunityDetail(item.id)
     resetForm(detail)
     await loadFormImages(detail)
+    formVisible.value = true
   }
   catch {
     formVisible.value = false
@@ -548,11 +552,14 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
     return
 
   uploading.value = true
+  uploadProgress.done = 0
+  uploadProgress.total = files.length
+  uploadProgress.failed = 0
   let failureCount = 0
   try {
     for (const item of files) {
       try {
-        const file = await uploadMediaFile(item.tempPath, { kind: item.kind, posterPath: item.posterPath })
+        const file = await uploadMediaFile(item.tempPath, { kind: item.kind, posterPath: item.posterPath, trace: mediaTrace })
         form.media.push(normalizeMedia(
           { ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) },
           item.tempPath,
@@ -564,7 +571,11 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
       }
       catch (error) {
         failureCount += 1
+        uploadProgress.failed += 1
         console.error('upload community media failed', error)
+      }
+      finally {
+        uploadProgress.done += 1
       }
     }
   }
@@ -578,6 +589,7 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
   })
 }
 
+
 function chooseImageFallback() {
   uni.chooseImage({
     count: MEDIA_SELECTION_BATCH_LIMIT,
@@ -589,43 +601,74 @@ function chooseImageFallback() {
   })
 }
 
-function handleChooseMediaFailure(error: unknown) {
+function handleChooseMediaFailure(error: unknown, allowFallback = true) {
   const message = String((error as { errMsg?: string } | undefined)?.errMsg || '')
   if (message.includes('cancel'))
     return
 
   console.error('choose community media failed', error)
-  uni.showToast({ title: '媒体选择失败，请重试', icon: 'none' })
+  mediaTrace.fail(allowFallback ? 'chooseMedia.fail' : 'fallback.fail', error)
+  if (allowFallback) {
+    chooseMediaFallback(
+      files => void uploadSelectedMedia(files.map(file => ({
+        tempPath: file.tempFilePath,
+        kind: file.fileType,
+      }))),
+      fallbackError => handleChooseMediaFailure(fallbackError, false),
+      mediaTrace,
+    )
+    return
+  }
+  console.error('fallback community media picker failed', mediaPickerErrorText(error))
+  showMediaPickerFailure(error, mediaTrace)
 }
 
 function chooseMedia() {
   if (uploading.value)
     return
 
+  mediaTrace = createMediaTrace('community')
+  mediaTrace.info('chooseMedia.start', { count: MEDIA_SELECTION_BATCH_LIMIT })
   const chooseMediaApi = wxChooseMedia()
   if (!chooseMediaApi) {
-    chooseImageFallback()
+    chooseMediaFallback(
+      files => void uploadSelectedMedia(files.map(file => ({
+        tempPath: file.tempFilePath,
+        kind: file.fileType,
+      }))),
+      fallbackError => handleChooseMediaFailure(fallbackError, false),
+      mediaTrace,
+    )
     return
   }
 
-  chooseMediaApi({
-    count: MEDIA_SELECTION_BATCH_LIMIT,
-    mediaType: ['mix'],
-    sourceType: ['album', 'camera'],
-    sizeType: ['compressed'],
-    maxDuration: 60,
-    success: (res) => {
-      const files = (res.tempFiles || [])
-        .filter(item => !!item.tempFilePath)
-        .map(item => ({
-          tempPath: item.tempFilePath!,
-          kind: localMediaKind(item.tempFilePath!, item.fileType, item.thumbTempFilePath),
-          posterPath: item.thumbTempFilePath,
-        }))
-      void uploadSelectedMedia(files)
-    },
-    fail: handleChooseMediaFailure,
-  })
+  try {
+    chooseMediaApi({
+      count: MEDIA_SELECTION_BATCH_LIMIT,
+      mediaType: ['mix'],
+      sourceType: ['album', 'camera'],
+      sizeType: ['original'],
+      maxDuration: 60,
+      success: (res) => {
+        const rawFiles = res.tempFiles || []
+        const files = rawFiles
+          .filter(item => !!item.tempFilePath)
+          .map(item => ({
+            tempPath: item.tempFilePath!,
+            kind: localMediaKind(item.tempFilePath!, item.fileType, item.thumbTempFilePath),
+            posterPath: item.thumbTempFilePath,
+          }))
+        mediaTrace.info('chooseMedia.success', { count: files.length, rawCount: rawFiles.length, validCount: files.length })
+        console.info('[shenle-media] chooseMedia.items', rawFiles.map(item => ({ fileType: item.fileType, hasPath: !!item.tempFilePath, hasThumb: !!item.thumbTempFilePath })))
+        if (rawFiles.length !== files.length) {
+          uni.showToast({ title: `已选 ${rawFiles.length} 个，可上传 ${files.length} 个`, icon: 'none', duration: 3000 })
+        }
+        void uploadSelectedMedia(files)
+      },
+      fail: handleChooseMediaFailure,
+    })
+  }
+  catch (error) { handleChooseMediaFailure(error) }
 }
 
 function removeMedia(index: number) {
@@ -1113,6 +1156,10 @@ onReachBottom(() => loadData())
                 <wd-icon name="add" size="24px" color="#126b4f" />
                 <text>{{ uploading ? '上传中' : '上传媒体' }}</text>
               </view>
+            </view>
+            <view v-if="uploading" class="media-upload-status">
+              <view class="media-upload-status__track"><view class="media-upload-status__fill" :style="{ width: `${uploadProgressPercent}%` }" /></view>
+              <text>已处理 {{ uploadProgress.done }}/{{ uploadProgress.total }} 个</text>
             </view>
           </view>
           <view class="coord-grid">
@@ -1606,6 +1653,30 @@ onReachBottom(() => loadData())
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14rpx;
+}
+
+.media-upload-status {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+  margin-top: 14rpx;
+  color: var(--sl-muted);
+  font-size: 22rpx;
+}
+
+.media-upload-status__track {
+  flex: 1;
+  height: 10rpx;
+  overflow: hidden;
+  border-radius: 999rpx;
+  background: #e5eee7;
+}
+
+.media-upload-status__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sl-brand);
+  transition: width 180ms ease;
 }
 
 .image-item,

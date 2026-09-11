@@ -81,6 +81,14 @@ describe('video poster fallback', () => {
     expect(fileApi).toContain('size >= MIN_VIDEO_POSTER_SIZE')
   })
 
+  it('keeps the video when its optional poster upload or binding fails', () => {
+    const fileApi = fs.readFileSync(path.resolve(process.cwd(), 'src/api/file.ts'), 'utf8')
+
+    expect(fileApi).toContain('poster.optional-fail')
+    expect(fileApi).toContain('posterPending: true')
+    expect(fileApi).toContain('视频本体已经成功')
+  })
+
   it('keeps video and poster as one media item across upload and display entry points', () => {
     const uploadPages = [
       'src/pages/common/community-manage/index.vue',
@@ -115,7 +123,7 @@ describe('video poster fallback', () => {
       const source = fs.readFileSync(path.resolve(process.cwd(), pagePath), 'utf8')
       const failureHandler = source.match(/function handleChooseMediaFailure\([\s\S]*?\n\}/)?.[0] || ''
 
-      expect(failureHandler, pagePath).toContain('媒体选择失败，请重试')
+      expect(failureHandler, pagePath).toContain('showMediaPickerFailure')
       expect(failureHandler, pagePath).not.toContain('chooseImageFallback')
       expect(source, pagePath).toContain('fail: handleChooseMediaFailure')
     }

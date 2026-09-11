@@ -11,6 +11,7 @@ export interface RequestOptions {
   header?: Record<string, string>
   auth?: boolean
   silent?: boolean
+  timeout?: number
 }
 
 let promptingLogin = false
@@ -50,7 +51,7 @@ function promptLoginAgain() {
   }, 800)
 }
 
-export function request<T>({ url, method = 'GET', data, header, auth = true, silent = false }: RequestOptions): Promise<T> {
+export function request<T>({ url, method = 'GET', data, header, auth = true, silent = false, timeout }: RequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {
     const token = uni.getStorageSync(SHENLE_TOKEN_KEY) as string
     uni.request({
@@ -64,6 +65,7 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
         ...header,
         ...(auth && token ? { Authorization: `Bearer ${token}` } : {}),
       },
+      timeout,
       success(res) {
         const body = res.data as AdminResult<T>
         if (body?.code === 200) {
