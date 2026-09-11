@@ -7,6 +7,11 @@ export type ModeChangeListener = (next: AppMode, previous: AppMode) => void
 const APP_MODE_KEY = 'app-mode'
 const modeChangeListeners = new Set<ModeChangeListener>()
 
+export function isLandlordOnlySession() {
+  const user = uni.getStorageSync(SHENLE_USER_KEY)
+  return !!uni.getStorageSync(SHENLE_TOKEN_KEY) && !!user?.isLandlord && (user.accountType || 0) < 888
+}
+
 export function onModeChange(listener: ModeChangeListener) {
   modeChangeListeners.add(listener)
   return () => modeChangeListeners.delete(listener)
@@ -20,6 +25,8 @@ export function onModeChange(listener: ModeChangeListener) {
  */
 function readInitialMode(): AppMode {
   try {
+    if (isLandlordOnlySession())
+      return 'landlord'
     const saved = uni.getStorageSync(APP_MODE_KEY)
     const token = uni.getStorageSync(SHENLE_TOKEN_KEY)
     const user = uni.getStorageSync(SHENLE_USER_KEY)
@@ -43,6 +50,8 @@ function readInitialMode(): AppMode {
 export const modeStore = reactive({
   mode: readInitialMode() as AppMode,
   setMode(next: AppMode) {
+    if (isLandlordOnlySession())
+      next = 'landlord'
     const previous = this.mode
     this.mode = next
     uni.setStorageSync(APP_MODE_KEY, next)

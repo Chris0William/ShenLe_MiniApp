@@ -135,7 +135,7 @@ describe('video poster fallback', () => {
     }
   })
 
-  it('uses the iOS-compatible WeChat media type combination', () => {
+  it('enables mixed media selection while keeping local video previews', () => {
     const uploadEntries = [
       'src/pages/common/community-manage/index.vue',
       'src/pages/common/property-form/index.vue',
@@ -144,8 +144,7 @@ describe('video poster fallback', () => {
 
     for (const pagePath of uploadEntries) {
       const source = fs.readFileSync(path.resolve(process.cwd(), pagePath), 'utf8')
-      expect(source, pagePath).toContain('mediaType: [\'image\', \'video\']')
-      expect(source, pagePath).not.toContain('mediaType: [\'mix\']')
+      expect(source, pagePath).toContain('mediaType: [\'mix\']')
       expect(source, pagePath).toContain('isLocalMediaUrl(media.url)')
     }
   })

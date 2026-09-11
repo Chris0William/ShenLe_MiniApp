@@ -90,7 +90,7 @@ interface WechatChooseMediaResult {
 
 type WechatChooseMedia = (options: {
   count: number
-  mediaType: ('image' | 'video')[]
+  mediaType: ('image' | 'video' | 'mix')[]
   sourceType?: ('album' | 'camera')[]
   sizeType?: ('original' | 'compressed')[]
   maxDuration?: number
@@ -1124,7 +1124,7 @@ function chooseUploadMedia() {
   }
   chooseMedia({
     count: 9,
-    mediaType: ['image', 'video'],
+    mediaType: ['mix'],
     sourceType: ['album', 'camera'],
     sizeType: ['compressed'],
     maxDuration: 60,

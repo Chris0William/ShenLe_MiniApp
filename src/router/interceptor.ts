@@ -1,4 +1,6 @@
+import type { App } from 'vue'
 import { useShenleAuthStore } from '@/store/auth'
+import { isLandlordOnlySession, modeStore } from '@/store/mode'
 /**
  * by 菲鸽 on 2025-08-19
  * 路由拦截，通常也是登录拦截
@@ -41,6 +43,38 @@ function needsPortalAccess(path: string) {
   return PORTAL_PATHS.some(item => path === item || path.startsWith(item))
 }
 
+export function landlordRedirect(path: string) {
+  if (path === '/pages/landlord/my-communities/index')
+    return '/pages/admin/sales-control/index'
+  if (needsLogin(path) || path === '/pages/admin/property-list/index' || path === '/pages/common/apply/index')
+    return '/pages/user/map/index'
+  return ''
+}
+
+let landlordRedirectPending = false
+
+function enforceLandlordRoute(path: string) {
+  if (!isLandlordOnlySession())
+    return true
+  modeStore.setMode('landlord')
+  const target = landlordRedirect(path)
+  if (!target)
+    return true
+  if (!landlordRedirectPending) {
+    landlordRedirectPending = true
+    // 初始加载及返回旧页面时，等当前导航结束再重建房东端页面栈。
+    setTimeout(() => {
+      uni.reLaunch({
+        url: target,
+        complete: () => {
+          landlordRedirectPending = false
+        },
+      })
+    }, 0)
+  }
+  return false
+}
+
 export const navigateToInterceptor = {
   // 注意，这里的url是 '/' 开头的，如 '/pages/index/index'，跟 'pages.json' 里面的 path 不同
   // 增加对相对路径的处理，BY 网友 @ideal
@@ -77,6 +111,8 @@ export const navigateToInterceptor = {
     //   path = url
     // }
 
+    if (!enforceLandlordRoute(path))
+      return false
     const auth = useShenleAuthStore()
     if (needsLogin(path)) {
       if (!auth.isLogin) {
@@ -106,7 +142,14 @@ export const navigateToInterceptor = {
 }
 
 export const routeInterceptor = {
-  install() {
+  install(app: App) {
+    app.mixin({
+      onShow() {
+        const route = getLastPage()?.route
+        if (route)
+          enforceLandlordRoute(route.startsWith('/') ? route : `/${route}`)
+      },
+    })
     uni.addInterceptor('navigateTo', navigateToInterceptor)
     uni.addInterceptor('reLaunch', navigateToInterceptor)
     uni.addInterceptor('redirectTo', navigateToInterceptor)

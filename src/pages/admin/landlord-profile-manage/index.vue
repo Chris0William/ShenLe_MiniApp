@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { LandlordEnrollment } from '@/api/landlord-enrollment'
 import type {
   ShenLeId,
   SlLandlordCandidateOutput,
@@ -17,6 +18,7 @@ import {
   setLandlordMaintainers,
   setLandlordProfile,
 } from '@/api/landlord'
+import { getPendingEnrollments, reviewEnrollment } from '@/api/landlord-enrollment'
 import { useShenleAuthStore } from '@/store/auth'
 import { useSafeTopStyle } from '@/utils/safe-area'
 
@@ -32,6 +34,24 @@ type Panel = 'candidates' | 'maintainers' | 'communities' | null
 const ASSIGNMENT_PAGE_SIZE = 20
 
 const auth = useShenleAuthStore()
+const pendingEnrollments = ref<LandlordEnrollment[]>([])
+const reviewing = ref(false)
+
+async function reviewApplication(item: LandlordEnrollment, approve: boolean) {
+  if (reviewing.value)
+    return
+  const answer = await uni.showModal({ title: approve ? '通过房东申请' : '拒绝房东申请', content: item.nickName || '微信用户' })
+  if (!answer.confirm)
+    return
+  reviewing.value = true
+  try {
+    await reviewEnrollment(item.id, approve)
+    await load()
+  }
+  finally {
+    reviewing.value = false
+  }
+}
 const safeTop = useSafeTopStyle()
 
 function goBack() {
@@ -137,6 +157,8 @@ async function load() {
     const result = await getLandlordProfilePage({ page: 1, pageSize: 200, keyword: keyword.value.trim() || undefined })
     items.value = result.items || []
     total.value = result.total || 0
+    if (auth.isSuperAdmin)
+      pendingEnrollments.value = await getPendingEnrollments()
   }
   finally {
     loading.value = false
@@ -217,6 +239,8 @@ async function saveCandidates() {
   saving.value = true
   try {
     await batchSetLandlordProfiles(selectedCandidateIds.value)
+    if (selectedCandidateIds.value.some(id => sameId(id, auth.user?.id)))
+      await auth.refreshAccess()
     panel.value = null
     target.value = null
     await load()
@@ -308,6 +332,8 @@ function removeLandlord(item: SlLandlordProfileOutput) {
       if (!result.confirm)
         return
       await setLandlordProfile(item.userId, false)
+      if (sameId(item.userId, auth.user?.id))
+        await auth.refreshAccess()
       await load()
       uni.showToast({ title: '已取消房东身份', icon: 'success' })
     },
@@ -333,6 +359,23 @@ onPullDownRefresh(() => void load())
       </wd-button>
     </view>
 
+    <view v-if="auth.isSuperAdmin && pendingEnrollments.length" style="margin-bottom: 24rpx;">
+      <text class="sl-section-title">待审核房东申请</text>
+      <view v-for="item in pendingEnrollments" :key="String(item.id)" style="padding: 24rpx 0; border-bottom: 1px solid #e3ebe5;">
+        <view>{{ item.nickName || '微信用户' }} · {{ item.phone }}</view>
+        <view style="margin: 12rpx 0; color: #72817b; font-size: 24rpx;">
+          {{ item.applyTime }}
+        </view>
+        <view style="display: flex; gap: 20rpx;">
+          <wd-button size="small" plain :disabled="reviewing" @click="reviewApplication(item, false)">
+            拒绝
+          </wd-button>
+          <wd-button size="small" type="success" :disabled="reviewing" @click="reviewApplication(item, true)">
+            通过
+          </wd-button>
+        </view>
+      </view>
+    </view>
     <view class="search sl-card">
       <wd-icon name="search" size="18px" color="#839088" />
       <input v-model="keyword" class="search__input" placeholder="搜索昵称或手机号" confirm-type="search" @confirm="load">

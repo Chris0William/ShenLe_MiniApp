@@ -1,4 +1,4 @@
-import type { LoginUserOutput, WxLoginOutput } from '@/types/shenle'
+import type { LoginUserOutput, MyAccessOutput, WxLoginOutput } from '@/types/shenle'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { completeProfile, getUserInfo, loginWithWxTicket, logout, prepareWxLogin, uploadAvatar } from '@/api/auth'
@@ -10,6 +10,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const token = ref<string>(uni.getStorageSync(SHENLE_TOKEN_KEY) || '')
   const user = ref<LoginUserOutput | null>(uni.getStorageSync(SHENLE_USER_KEY) || null)
   const loginTicket = ref('')
+  let accessRequest: { token: string, promise: Promise<MyAccessOutput | null> } | null = null
 
   // 新登录链路不再让客户端持有 OpenId，清理旧版本遗留值。
   uni.removeStorageSync('shenle_openid')
@@ -32,11 +33,12 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const isGuest = computed(() => isLogin.value && (user.value?.accountType || 0) < 777) // 666 游客需申请
   const canViewRealData = computed(() => canUseApp.value || isAdmin.value)
   const isLandlord = computed(() => !!user.value?.isLandlord)
+  const isLandlordOnly = computed(() => isLandlord.value && !isAdmin.value)
   const isSourceContact = computed(() => !!user.value?.isSourceContact)
   const isMaintainer = computed(() => !!user.value?.isMaintainer)
   const canEnterLandlordPortal = computed(() => !!user.value?.canEnterLandlordPortal)
   const canEnterRestrictedAdmin = computed(() => !!user.value?.canEnterRestrictedAdmin)
-  const canEnterAdmin = computed(() => isAdmin.value || canEnterRestrictedAdmin.value)
+  const canEnterAdmin = computed(() => isAdmin.value || (!isLandlordOnly.value && canEnterRestrictedAdmin.value))
   const canCreateSupply = computed(() => !!user.value?.canCreateSupply)
   const canBatchWriteSupply = computed(() => !!user.value?.canBatchWriteSupply)
   const canManageLandlords = computed(() => !!user.value?.canManageLandlords)
@@ -73,23 +75,42 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     }
   }
 
+  function refreshAccess(silent = false): Promise<MyAccessOutput | null> {
+    const requestToken = token.value
+    if (!requestToken)
+      return Promise.resolve(null)
+    if (accessRequest?.token === requestToken)
+      return accessRequest.promise
+    const promise = getMyAccess(silent).then((access) => {
+      // 登出或换号后，旧请求不能覆盖新会话权限。
+      if (token.value !== requestToken || !user.value)
+        return null
+      setUser({
+        ...user.value,
+        ...access,
+        isLandlord: !!access.isLandlord,
+      })
+      // 普通房东锁定房东端；管理员、超管保留当前端，跳转仍由登录/路由流程处理。
+      if (isLandlordOnly.value && modeStore.mode !== 'landlord')
+        modeStore.setMode('landlord')
+      else if (modeStore.mode === 'landlord' && !canEnterLandlordPortal.value)
+        modeStore.setMode(canEnterAdmin.value ? 'admin' : 'user')
+      return access
+    }).finally(() => {
+      if (accessRequest?.promise === promise)
+        accessRequest = null
+    })
+    accessRequest = { token: requestToken, promise }
+    return promise
+  }
+
   async function mergeAccess() {
     try {
-      const access = await getMyAccess()
-      if (user.value) {
-        user.value = {
-          ...user.value,
-          ...access,
-          isLandlord: !!access.isLandlord,
-        }
-        uni.setStorageSync(SHENLE_USER_KEY, user.value)
-      }
-      // 仅具备房东端身份的账号默认进入房东端；维护人仍可在业务员端与受限管理端之间切换。
-      // readInitialMode（5.1）会读到正确模式。不在此处 reLaunch，避免与 finishLogin 的 reLaunch 重复。
-      if (user.value?.canEnterLandlordPortal && !user.value?.canEnterRestrictedAdmin && (user.value?.accountType || 0) < 888 && modeStore.mode !== 'landlord')
-        modeStore.setMode('landlord')
+      await refreshAccess()
     }
-    catch {}
+    catch (error) {
+      console.warn('refresh account access failed', error)
+    }
   }
 
   async function applyWxSession(session: WxLoginOutput) {
@@ -102,7 +123,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     if (!token.value)
       return null
     const profile = await getUserInfo(silent)
-    setUser(profile)
+    setUser({ ...user.value, ...profile })
     await mergeAccess()
     return profile
   }
@@ -180,6 +201,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     canViewRealData,
     isGuest,
     isLandlord,
+    isLandlordOnly,
     isSourceContact,
     isMaintainer,
     canEnterLandlordPortal,
@@ -200,6 +222,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     wxLoginWithPhone,
     wxLoginStep2,
     refreshUser,
+    refreshAccess,
     signOut,
   }
 })

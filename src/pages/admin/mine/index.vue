@@ -2,6 +2,7 @@
 import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { setMyNickName } from '@/api/auth'
+import { getEnrollmentCode } from '@/api/landlord-enrollment'
 import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
@@ -21,6 +22,22 @@ const isAdminView = computed(() => modeStore.mode === 'admin')
 const isLandlordView = computed(() => modeStore.mode === 'landlord')
 const pendingCount = ref(0)
 const nicknameVisible = ref(false)
+const enrollmentCodeVisible = ref(false)
+const enrollmentCode = ref('')
+const enrollmentCodeLoading = ref(false)
+
+async function openEnrollmentCode() {
+  enrollmentCodeVisible.value = true
+  if (enrollmentCode.value || enrollmentCodeLoading.value)
+    return
+  enrollmentCodeLoading.value = true
+  try {
+    enrollmentCode.value = await getEnrollmentCode()
+  }
+  finally {
+    enrollmentCodeLoading.value = false
+  }
+}
 const nicknameDraft = ref('')
 const nicknameSaving = ref(false)
 const loginConsentRef = ref<{ open: (options?: Parameters<typeof requestLogin>[0]) => void } | null>(null)
@@ -102,8 +119,17 @@ function callSupport() {
   uni.makePhoneCall({ phoneNumber: phone })
 }
 
-onShow(() => {
+onShow(async () => {
   uni.setNavigationBarTitle({ title: '我的' })
+  if (auth.isLogin) {
+    try {
+      await auth.refreshAccess(true)
+    }
+    catch {
+      uni.showToast({ title: '身份信息刷新失败，请重新进入此页', icon: 'none', duration: 3000 })
+      return
+    }
+  }
   if (isLandlordView.value)
     void sourceContact.load()
   if (isAdminView.value && auth.user?.canManageUsers)
@@ -140,6 +166,8 @@ function toAdmin() {
 }
 
 function toUser() {
+  if (auth.isLandlordOnly)
+    return
   modeStore.setMode('user')
   tabbarStore.setCurIdx(0)
   uni.reLaunch({ url: '/pages/user/map/index' })
@@ -164,6 +192,9 @@ async function signOut() {
         </text>
         <text v-if="auth.isLogin" class="nickname-edit" @tap="openNicknameEditor">修改昵称</text>
       </view>
+      <button v-if="auth.isSuperAdmin" class="enrollment-code-trigger" aria-label="房东入驻二维码" @tap.stop="openEnrollmentCode">
+        <view class="i-lucide-qr-code share-code-icon" />
+      </button>
       <view v-if="isLandlordView && auth.user?.isLandlord" class="share-code-trigger" role="button" aria-label="打开楼盘分享二维码" @tap.stop="landlordShareCodeRef?.open()">
         <view class="i-carbon-qr-code share-code-icon" />
       </view>
@@ -191,7 +222,7 @@ async function signOut() {
         </view>
       </view>
 
-      <view class="switch-card sl-card" @tap="toUser">
+      <view v-if="!auth.isLandlordOnly" class="switch-card sl-card" @tap="toUser">
         <view class="switch-card__main">
           <wd-icon name="swap" size="22px" color="#126b4f" />
           <text>切换到业务员端</text>
@@ -259,7 +290,7 @@ async function signOut() {
         <wd-icon v-if="sourceContact.profile?.supportUserPhone" name="phone" size="20px" color="#126b4f" />
       </view>
 
-      <view class="menu sl-card user-menu">
+      <view v-if="!auth.isLandlordOnly" class="menu sl-card user-menu">
         <view class="menu-row" @tap="toUser">
           <view class="menu-row__left">
             <view class="menu-icon menu-icon--green">
@@ -300,6 +331,16 @@ async function signOut() {
       退出登录
     </wd-button>
     <sl-login-consent ref="loginConsentRef" />
+    <wd-popup v-model="enrollmentCodeVisible" position="center" closable custom-style="width: 620rpx; padding: 40rpx; box-sizing: border-box; border-radius: 8px;">
+      <view style="display: flex; flex-direction: column; align-items: center; gap: 24rpx;">
+        <text>房东入驻码</text>
+        <wd-loading v-if="enrollmentCodeLoading" color="#126b4f" />
+        <image v-else-if="enrollmentCode" :src="enrollmentCode" mode="aspectFit" show-menu-by-longpress style="width: 430rpx; height: 430rpx;" />
+        <wd-button v-else plain @click="openEnrollmentCode">
+          重新加载
+        </wd-button>
+      </view>
+    </wd-popup>
     <sl-landlord-share-code ref="landlordShareCodeRef" />
   </view>
 </template>
@@ -348,6 +389,23 @@ async function signOut() {
   width: 22px;
   height: 22px;
   color: #126b4f;
+}
+
+.enrollment-code-trigger {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.enrollment-code-trigger::after {
+  border: 0;
 }
 
 .avatar {

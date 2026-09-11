@@ -92,7 +92,7 @@ async function promptOpenAlbumSetting() {
 
 export async function saveVideoToAlbum(source: SaveVideoSource) {
   if (!getVideoDownloadCandidates(source).length) {
-    uni.showToast({ title: '视频地址无效', icon: 'none' })
+    uni.showToast({ title: '视频地址无效', icon: 'none', duration: 3000 })
     return false
   }
 
@@ -100,19 +100,18 @@ export async function saveVideoToAlbum(source: SaveVideoSource) {
   try {
     const filePath = await resolveVideoFilePath(source)
     await saveLocalVideo(filePath)
-    uni.showToast({ title: '已保存到相册', icon: 'success' })
+    uni.hideLoading()
+    uni.showToast({ title: '已保存到相册', icon: 'success', duration: 3000 })
     return true
   }
   catch (error) {
+    uni.hideLoading()
     console.error('save video to album failed', error)
     if (isAlbumPermissionDenied(error))
       await promptOpenAlbumSetting()
     else
-      uni.showToast({ title: '视频保存失败，请稍后重试', icon: 'none' })
+      uni.showToast({ title: '视频保存失败，请稍后重试', icon: 'none', duration: 3000 })
     return false
-  }
-  finally {
-    uni.hideLoading()
   }
 }
 

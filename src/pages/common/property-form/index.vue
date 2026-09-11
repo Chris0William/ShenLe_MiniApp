@@ -96,7 +96,7 @@ interface WechatChooseMediaResult {
 
 interface WechatChooseMediaOption {
   count: number
-  mediaType: ('image' | 'video')[]
+  mediaType: ('image' | 'video' | 'mix')[]
   sourceType: ('album' | 'camera')[]
   sizeType: string[]
   maxDuration: number
@@ -287,22 +287,31 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
     return
 
   uploading.value = true
+  let failureCount = 0
   try {
     for (const item of files) {
-      const file = await uploadMediaFile(item.tempPath, { kind: item.kind, posterPath: item.posterPath })
-      form.media.push(normalizeMedia({ ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) }, item.tempPath, 'upload'))
-      if (file.posterLocalPath)
-        form.media[form.media.length - 1].posterUrl = file.posterLocalPath
-      if (!form.coverImageId)
-        form.coverImageId = String(file.id)
+      try {
+        const file = await uploadMediaFile(item.tempPath, { kind: item.kind, posterPath: item.posterPath })
+        form.media.push(normalizeMedia({ ...file, fileType: file.fileType || item.kind, suffix: file.suffix || extensionOf(item.tempPath) }, item.tempPath, 'upload'))
+        if (file.posterLocalPath)
+          form.media[form.media.length - 1].posterUrl = file.posterLocalPath
+        if (!form.coverImageId)
+          form.coverImageId = String(file.id)
+      }
+      catch (error) {
+        failureCount += 1
+        console.error('upload property media failed', error)
+      }
     }
-  }
-  catch (error) {
-    console.error('upload property media failed', error)
   }
   finally {
     uploading.value = false
   }
+  uni.showToast({
+    title: failureCount ? `上传成功 ${files.length - failureCount} 个，失败 ${failureCount} 个` : `已上传 ${files.length} 个媒体`,
+    icon: 'none',
+    duration: 3000,
+  })
 }
 
 function chooseImageFallback() {
@@ -326,6 +335,8 @@ function handleChooseMediaFailure(error: unknown) {
 }
 
 function chooseMedia() {
+  if (uploading.value)
+    return
   const chooseMediaApi = wxChooseMedia()
   if (!chooseMediaApi) {
     chooseImageFallback()
@@ -334,7 +345,7 @@ function chooseMedia() {
 
   chooseMediaApi({
     count: MEDIA_SELECTION_BATCH_LIMIT,
-    mediaType: ['image', 'video'],
+    mediaType: ['mix'],
     sourceType: ['album', 'camera'],
     sizeType: ['compressed'],
     maxDuration: 60,
@@ -612,6 +623,10 @@ function buildSubmitData(): AddSlPropertyInput {
 }
 
 async function submit() {
+  if (uploading.value) {
+    uni.showToast({ title: '媒体上传中，请完成后保存', icon: 'none', duration: 3000 })
+    return
+  }
   if (!validateForm() || submitting.value)
     return
   submitting.value = true
@@ -1063,7 +1078,7 @@ onLoad(async (query) => {
       <wd-button plain type="default" @click="cancel">
         取消
       </wd-button>
-      <wd-button block type="primary" :loading="submitting" @click="submit">
+      <wd-button block type="primary" :loading="submitting" :disabled="uploading" @click="submit">
         {{ isEdit ? '保存修改' : '发布房源' }}
       </wd-button>
     </view>

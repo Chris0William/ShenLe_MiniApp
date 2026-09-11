@@ -10,8 +10,8 @@ export function setUserRole(input: SetSlUserRoleInput) {
   return post<void>('/api/slUserManage/setRole', input as unknown as Record<string, unknown>)
 }
 
-export function getMyAccess() {
-  return get<MyAccessOutput>('/api/slAccess/myStatus')
+export function getMyAccess(silent = false) {
+  return get<MyAccessOutput>('/api/slAccess/myStatus', undefined, { silent })
 }
 
 export function applyAccess(input: ApplyAccessInput | number = 0) {

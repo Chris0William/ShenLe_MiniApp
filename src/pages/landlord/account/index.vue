@@ -67,6 +67,8 @@ function callPhone(phone?: string | null) {
 }
 
 function switchMode(mode: 'user' | 'admin') {
+  if (auth.isLandlordOnly)
+    return
   modeStore.setMode(mode)
   tabbarStore.setCurIdx(0)
   uni.reLaunch({ url: '/pages/user/map/index' })
@@ -84,8 +86,15 @@ async function signOut() {
   uni.reLaunch({ url: '/pages/user/map/index' })
 }
 
-onShow(() => {
-  void sourceContact.load()
+onShow(async () => {
+  try {
+    await auth.refreshAccess(true)
+    if (auth.canEnterLandlordPortal)
+      await sourceContact.load()
+  }
+  catch {
+    uni.showToast({ title: '身份信息刷新失败，请重试', icon: 'none', duration: 3000 })
+  }
 })
 </script>
 
@@ -134,10 +143,10 @@ onShow(() => {
         <wd-icon v-if="sourceContact.profile?.supportUserPhone" name="phone" size="20px" color="#126b4f" />
       </view>
 
-      <view class="section-title">
+      <view v-if="!auth.isLandlordOnly" class="section-title">
         切换视图
       </view>
-      <view class="action-list">
+      <view v-if="!auth.isLandlordOnly" class="action-list">
         <view class="action-row" @tap="switchMode('user')">
           <wd-icon name="view" size="20px" color="#126b4f" />
           <text>切换到业务员端</text>

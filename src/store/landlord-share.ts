@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { resolveLandlordShare } from '@/api/landlord-share'
-import { modeStore, onModeChange } from '@/store/mode'
+import { isLandlordOnlySession, modeStore, onModeChange } from '@/store/mode'
 
 const SHARE_TOKEN_KEY = 'shenle_landlord_share_token'
 const SHARE_OWNER_KEY = 'shenle_landlord_share_owner'
@@ -52,6 +52,10 @@ export function useLandlordShareStore() {
   const hasContext = computed(() => modeStore.mode === 'user' && !!shareToken.value)
 
   function capture(value?: string | null) {
+    if (isLandlordOnlySession()) {
+      clearState()
+      return false
+    }
     const normalized = normalizeToken(value)
     if (!normalized)
       return false
