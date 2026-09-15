@@ -1,0 +1,16 @@
+{
+  "environment": "test",
+  "database": "adminet_test",
+  "endpoint": "/api/slPublic/regionMap",
+  "method": "POST",
+  "samples": 50,
+  "concurrency": 5,
+  "errors": 0,
+  "elapsedSeconds": 1.49,
+  "minMs": 63.43,
+  "p50Ms": 104.34,
+  "p95Ms": 352.03,
+  "p99Ms": 390.31,
+  "maxMs": 390.31,
+  "notes": "测试环境只读低并发样本，不代表生产容量上限。"
+}

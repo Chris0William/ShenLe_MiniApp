@@ -1,0 +1,36 @@
+{
+  "branches": {
+    "frontend": "release/0.4.46",
+    "backend": "release/0.4.46",
+    "frontendHead": "1505405e10eea6185322d6d200be06c846ac37d3",
+    "backendHead": "5c4c77632fa95e3b8789d711f8da069488899aab"
+  },
+  "environment": {
+    "api": "https://shenzuyk.com/test-api",
+    "database": "adminet_test",
+    "container": "shenle-test-app",
+    "productionTouched": false
+  },
+  "verification": {
+    "backendTestsPassed": 464,
+    "backendTestsSkipped": 2,
+    "frontendTestFiles": 43,
+    "frontendTestsPassed": 311,
+    "frontendTestFileParallelism": false,
+    "dataChangeHttpCasesPassed": 8,
+    "rbacHttpCasesPassed": 30,
+    "simulatorCorePagesVerified": true,
+    "simulatorDirectPagesVerified": 19,
+    "simulatorConsoleErrors": 0,
+    "buildMode": "test"
+  },
+  "externalGates": [
+    "iOS/Android real-device and weak-network verification",
+    "production deployment and mini-program release",
+    "business confirmation of audit retention and bulk restore limits"
+  ],
+  "git": {
+    "committed": false,
+    "pushed": false
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "Environment": "test",
+  "Database": "adminet_test",
+  "Timestamp": "2026-09-11T16:32:43.0195753+08:00",
+  "Cases": [
+    {
+      "Case": "managed_status",
+      "Expected": 200,
+      "Actual": 200,
+      "Passed": true
+    },
+    {
+      "Case": "community_scope_page",
+      "Expected": 200,
+      "Actual": 200,
+      "Passed": true
+    },
+    {
+      "Case": "community_allowed_detail",
+      "Expected": 200,
+      "Actual": 200,
+      "Passed": true
+    },
+    {
+      "Case": "community_forbidden_detail",
+      "Expected": 400,
+      "Actual": 400,
+      "Passed": true
+    },
+    {
+      "Case": "community_forbidden_update",
+      "Expected": 400,
+      "Actual": 400,
+      "Passed": true
+    },
+    {
+      "Case": "creator_delete_denied",
+      "Expected": 400,
+      "Actual": 400,
+      "Passed": true
+    },
+    {
+      "Case": "rbac_management_denied",
+      "Expected": 400,
+      "Actual": 400,
+      "Passed": true
+    },
+    {
+      "Case": "media_allowed_metadata",
+      "Expected": 200,
+      "Actual": 200,
+      "Passed": true
+    },
+    {
+      "Case": "media_forbidden_metadata",
+      "Expected": 403,
+      "Actual": 403,
+      "Passed": true
+    },
+    {
+      "Case": "media_forbidden_preview",
+      "Expected": 403,
+      "Actual": 403,
+      "Passed": true
+    },
+    {
+      "Case": "media_mixed_batch",
+      "Expected": 403,
+      "Actual": 403,
+      "Passed": true
+    },
+    {
+      "Case": "media_relation_denied",
+      "Expected": 403,
+      "Actual": 403,
+      "Passed": true
+    },
+    {
+      "Case": "media_unbounded_relation_denied",
+      "Expected": 403,
+      "Actual": 403,
+      "Passed": true
+    },
+    {
+      "Case": "media_copy_source_denied",
+      "Expected": 400,
+      "Actual": 400,
+      "Passed": true
+    },
+    {
+      "Case": "old_token_without_phone_denied",
+      "Expected": 401,
+      "Actual": 401,
+      "Passed": true
+    },
+    {
+      "Case": "old_token_disabled_denied",
+      "Expected": 401,
+      "Actual": 401,
+      "Passed": true
+    },
+    {
+      "Case": "old_token_deleted_denied",
+      "Expected": 401,
+      "Actual": 401,
+      "Passed": true
+    },
+    {
+      "Case": "revoked_read_old_token_denied",
+      "Expected": 400,
+      "Actual": 400,
+      "Passed": true
+    },
+    {
+      "Case": "revoked_read_media_denied",
+      "Expected": 403,
+      "Actual": 403,
+      "Passed": true
+    }
+  ],
+  "FixtureUserId": "891091116200001",
+  "ConfigurationRestored": true,
+  "FixtureCleanupAttempted": true
+}

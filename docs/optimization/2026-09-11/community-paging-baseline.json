@@ -1,0 +1,114 @@
+[
+  {
+    "Case": "latest_first",
+    "Code": 200,
+    "Total": 551,
+    "ItemCount": 20,
+    "Digest": "2ee2232885b6845f087f352f6ca5bc8cb9b6e9ca54eb59aa617fdfec5bb28ad6",
+    "ElapsedMs": 167.7
+  },
+  {
+    "Case": "latest_second",
+    "Code": 200,
+    "Total": 551,
+    "ItemCount": 20,
+    "Digest": "dbbf2a0a19ae4649ff6ac9ac8288f778c3578a41ccf3cd27b9f07edd84c30a3b",
+    "ElapsedMs": 839.9
+  },
+  {
+    "Case": "located_latest",
+    "Code": 200,
+    "Total": 551,
+    "ItemCount": 20,
+    "Digest": "611480d8015246eeeb8ccabe6c980378eb0d00321372361577517d476b5e077b",
+    "ElapsedMs": 139.8
+  },
+  {
+    "Case": "rent",
+    "Code": 200,
+    "Total": 388,
+    "ItemCount": 20,
+    "Digest": "40b6c2c6be3ec5a3eb33b9808a1120058e0927df5c82f92bef5ad864d8e59fe1",
+    "ElapsedMs": 141.7
+  },
+  {
+    "Case": "zero_rent",
+    "Code": 200,
+    "Total": 0,
+    "ItemCount": 0,
+    "Digest": "1ef7935e0f9322293699491540895fe75bd79b8d663347c9bb2cc6f45c1a243b",
+    "ElapsedMs": 77.2
+  },
+  {
+    "Case": "available",
+    "Code": 200,
+    "Total": 472,
+    "ItemCount": 20,
+    "Digest": "6e8c0c5351780587736165a181faac82cffab3ba835dfe10db55f8fecec6ef5f",
+    "ElapsedMs": 160.7
+  },
+  {
+    "Case": "types",
+    "Code": 200,
+    "Total": 551,
+    "ItemCount": 20,
+    "Digest": "2ee2232885b6845f087f352f6ca5bc8cb9b6e9ca54eb59aa617fdfec5bb28ad6",
+    "ElapsedMs": 135.2
+  },
+  {
+    "Case": "hot",
+    "Code": 200,
+    "Total": 1,
+    "ItemCount": 1,
+    "Digest": "9797f589d4a87d641f257d8052f300e8144551d5bb0bb49730419e08cfebd65d",
+    "ElapsedMs": 85.5
+  },
+  {
+    "Case": "pet",
+    "Code": 200,
+    "Total": 0,
+    "ItemCount": 0,
+    "Digest": "1ef7935e0f9322293699491540895fe75bd79b8d663347c9bb2cc6f45c1a243b",
+    "ElapsedMs": 61.6
+  },
+  {
+    "Case": "updated_week",
+    "Code": 200,
+    "Total": 2,
+    "ItemCount": 2,
+    "Digest": "42ef51c4616ff500b9f92c1faadb35d3d87a817b4ceb67884b6d4f49d4705c61",
+    "ElapsedMs": 77.9
+  },
+  {
+    "Case": "radius",
+    "Code": 200,
+    "Total": 0,
+    "ItemCount": 0,
+    "Digest": "1ef7935e0f9322293699491540895fe75bd79b8d663347c9bb2cc6f45c1a243b",
+    "ElapsedMs": 113.5
+  },
+  {
+    "Case": "nearest",
+    "Code": 200,
+    "Total": 551,
+    "ItemCount": 20,
+    "Digest": "c4e6c2b1dd280466507592abf2e3ff0bcb81039a090f8a3907c94e64ba1db3cc",
+    "ElapsedMs": 123.9
+  },
+  {
+    "Case": "nearest_no_location",
+    "Code": 400,
+    "Total": null,
+    "ItemCount": 0,
+    "Digest": "955dc8902bc073d1843da2fb9c0dd38320d599e89c11f237443611fe4b0507cf",
+    "ElapsedMs": 72.0
+  },
+  {
+    "Case": "empty_page",
+    "Code": 200,
+    "Total": 551,
+    "ItemCount": 0,
+    "Digest": "2b2ce832588edd2d53b3d5a9ad4ee5d4b0b5df9d9d635e9f572876ea1acfc63e",
+    "ElapsedMs": 92.2
+  }
+]

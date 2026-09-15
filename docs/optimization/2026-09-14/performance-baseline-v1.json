@@ -1,0 +1,14 @@
+{
+  "environment": "test",
+  "database": "adminet_test",
+  "endpoint": "/api/slPublic/regionMap",
+  "method": "POST",
+  "samples": 20,
+  "errors": 0,
+  "minMs": 60.34,
+  "p50Ms": 69.54,
+  "p95Ms": 509.76,
+  "p99Ms": 509.76,
+  "maxMs": 891.62,
+  "notes": "只读顺序样本；非压力测试；未代表生产移动网络延迟。"
+}

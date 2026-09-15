@@ -213,7 +213,26 @@
         "navigationBarTitleText": "我的楼盘",
         "enablePullDownRefresh": true
       }
+    },
+    {
+      "path": "pages/admin/data-change/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "数据变更记录",
+        "disableScroll": true
+      }
+    },
+    // #ifdef MP-WEIXIN
+    {
+      "path": "pages/admin/authorization/index",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "角色与权限",
+        "disableScroll": true
+      }
     }
+    // #endif
   ],
   "subPackages": [],
   "tabBar": {

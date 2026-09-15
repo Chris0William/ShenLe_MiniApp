@@ -1,0 +1,67 @@
+{
+  "Environment": "test",
+  "Database": "adminet_test",
+  "Timestamp": "2026-09-14T11:22:00.0657122+08:00",
+  "Cases": [
+    {
+      "Case": "latest",
+      "Total": 551,
+      "MapItemCount": 551,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    },
+    {
+      "Case": "available",
+      "Total": 472,
+      "MapItemCount": 472,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    },
+    {
+      "Case": "rent",
+      "Total": 388,
+      "MapItemCount": 388,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    },
+    {
+      "Case": "types",
+      "Total": 551,
+      "MapItemCount": 551,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    },
+    {
+      "Case": "hot",
+      "Total": 1,
+      "MapItemCount": 1,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    },
+    {
+      "Case": "pet",
+      "Total": 0,
+      "MapItemCount": 0,
+      "Fields": ""
+    },
+    {
+      "Case": "updated",
+      "Total": 2,
+      "MapItemCount": 2,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    },
+    {
+      "Case": "located",
+      "Total": 551,
+      "MapItemCount": 551,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    },
+    {
+      "Case": "radius",
+      "Total": 0,
+      "MapItemCount": 0,
+      "Fields": ""
+    },
+    {
+      "Case": "nearest",
+      "Total": 551,
+      "MapItemCount": 551,
+      "Fields": "id,name,type,lng,lat,availableCount,minRentPrice,maxRentPrice,distance,supplyUpdateTime"
+    }
+  ]
+}
