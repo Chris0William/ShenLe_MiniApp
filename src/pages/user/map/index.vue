@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { PageSlCommunityInput, PropertyFilterState, SlCommunityOutput, SlCommunityTickerOutput, SlPublicRegionPreviewOutput, SlSourceContactCommunityOutput, SlSupplyLeaderboardDetailItemOutput, SlSupplyLeaderboardDimension, SlSupplyLeaderboardOutput, SlSupplyRecentOutput } from '@/types/shenle'
+import type { PageSlCommunityInput, PropertyFilterState, SlCommunityMapPointOutput, SlCommunityOutput, SlCommunityTickerOutput, SlPublicRegionPreviewOutput, SlSourceContactCommunityOutput, SlSupplyLeaderboardDetailItemOutput, SlSupplyLeaderboardDimension, SlSupplyLeaderboardOutput, SlSupplyRecentOutput } from '@/types/shenle'
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { computed, nextTick, ref } from 'vue'
-import { getCommunityDetail, getCommunityPage, getCommunityTickers, setCommunityHotLevel } from '@/api/community'
+import { getCommunityDetail, getCommunityMapPoints, getCommunityTickers, setCommunityHotLevel } from '@/api/community'
 import { getPublicRegionMap } from '@/api/public-preview'
 import { getRecentSupplyActivity, getSupplyLeaderboard, getSupplyLeaderboardDetails } from '@/api/supply-activity'
 import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
@@ -16,6 +16,7 @@ import { managementFeeText, networkFeeText } from '@/utils/community-business'
 import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
 import { requestLogin } from '@/utils/login-flow'
 import { buildCommunityFilterQuery, countCommunityFilters, getCommunityFilterLabels } from '@/utils/property-filter'
+import { hasPublicCoordinate } from '@/utils/public-preview'
 import { useSafeTopStyle } from '@/utils/safe-area'
 import { idToQuery } from '@/utils/shenle'
 import { formatRecentSupplyActivity, formatSupplyDateTime } from '@/utils/supply-activity'
@@ -55,6 +56,7 @@ const mapLat = ref(DEFAULT_CENTER.latitude)
 const mapLng = ref(DEFAULT_CENTER.longitude)
 const mapScale = ref(13)
 const communities = ref<SlCommunityOutput[]>([])
+const mapPoints = ref<SlCommunityMapPointOutput[]>([])
 const previewRegions = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
 const pageRefreshing = ref(false)
@@ -130,7 +132,7 @@ const visibleDetailDimension = computed<SlSupplyLeaderboardDimension>(() => sele
 const mapBadgeText = computed(() => {
   if (loading.value)
     return '加载中'
-  return isPreviewMode.value ? `${previewRegions.value.length} 个片区` : `${communities.value.length} 个楼盘`
+  return isPreviewMode.value ? `${previewRegions.value.length} 个片区` : `${mapPoints.value.length} 个楼盘`
 })
 
 const landlordCoordinateCommunities = computed(() => sourceContact.communities.filter(hasLandlordCoordinate))
@@ -163,7 +165,7 @@ const landlordMarkers = computed(() => landlordCoordinateCommunities.value.map((
 })))
 
 // ===== marker 体系 =====
-type MarkerMeta = { type: 'single', community: SlCommunityOutput } | { type: 'preview', region: SlPublicRegionPreviewOutput }
+type MarkerMeta = { type: 'single', point: SlCommunityMapPointOutput } | { type: 'preview', region: SlPublicRegionPreviewOutput }
 const markers = ref<any[]>([])
 const activeMarkers = computed(() => isLandlordView.value ? landlordMarkers.value : markers.value)
 const selected = ref<SlCommunityOutput | null>(null)
@@ -257,7 +259,7 @@ function rebuildMarkers() {
   if (isPreviewMode.value) {
     markerMeta = []
     markers.value = previewRegions.value
-      .filter(item => Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)))
+      .filter(hasPublicCoordinate)
       .map((item) => {
         markerMeta.push({ type: 'preview', region: item })
         return {
@@ -275,9 +277,11 @@ function rebuildMarkers() {
   }
   const list: any[] = []
   markerMeta = []
-  for (const item of communities.value.filter(hasCoordinate)) {
-    markerMeta.push({ type: 'single', community: item })
-    const rent = rentText(item)
+  for (const item of mapPoints.value.filter(hasCoordinate)) {
+    markerMeta.push({ type: 'single', point: item })
+    const rent = item.minRentPrice && item.maxRentPrice
+      ? item.minRentPrice === item.maxRentPrice ? `¥${item.minRentPrice}` : `¥${item.minRentPrice}-${item.maxRentPrice}`
+      : ''
     const calloutContent = rent ? `${item.name}\n${rent}` : item.name
     list.push({
       id: markerMeta.length,
@@ -380,6 +384,7 @@ function clearLandlordShare() {
 
 function buildPreviewQuery(pageNumber = 1, size = 200) {
   return {
+    includeUnlocatedRegions: true,
     page: pageNumber,
     pageSize: size,
     regionId: filters.value.regionId,
@@ -394,7 +399,7 @@ function previewCardAction() {
   ensureCanUse('登录并通过审核后可查看具体楼盘与房源')
 }
 
-function hasCoordinate(item: SlCommunityOutput) {
+function hasCoordinate(item: { lat?: number | null, lng?: number | null }) {
   const lat = Number(item.lat)
   const lng = Number(item.lng)
   return Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0
@@ -524,6 +529,7 @@ async function loadPreviewRegions(fitToResult = false) {
       return
     previewRegions.value = rows
     communities.value = []
+    mapPoints.value = []
     selected.value = null
     selectedPreview.value = null
     refreshRegionAndMarkers()
@@ -546,20 +552,11 @@ async function loadCommunities(fitToResult = false) {
   const requestVersion = ++communityLoadVersion
   loading.value = true
   try {
-    const candidates: SlCommunityOutput[] = []
-    let currentPage = 1
-    let totalCount = Number.POSITIVE_INFINITY
-    while (candidates.length < totalCount) {
-      const result = await getCommunityPage(buildQuery(currentPage))
-      candidates.push(...result.items)
-      totalCount = result.total
-      if (!result.items.length)
-        break
-      currentPage += 1
-    }
+    const points = await getCommunityMapPoints(buildQuery())
     if (requestVersion !== communityLoadVersion)
       return
-    communities.value = candidates.filter(hasCoordinate)
+    mapPoints.value = points
+    communities.value = []
     selected.value = null
     // 筛选后把地图视野移到结果范围，否则结果在屏幕外看着像"没变化"
     if (fitToResult)
@@ -575,7 +572,7 @@ async function loadCommunities(fitToResult = false) {
 }
 
 function fitMapToCommunities() {
-  const points = communities.value.map(item => ({ latitude: Number(item.lat), longitude: Number(item.lng) }))
+  const points = mapPoints.value.filter(hasCoordinate).map(item => ({ latitude: Number(item.lat), longitude: Number(item.lng) }))
   if (!points.length || !mapContext)
     return
   if (points.length === 1) {
@@ -589,7 +586,9 @@ function fitMapToCommunities() {
 }
 
 function fitMapToPreviewRegions() {
-  const points = previewRegions.value.map(item => ({ latitude: Number(item.latitude), longitude: Number(item.longitude) }))
+  const points = previewRegions.value
+    .filter(hasPublicCoordinate)
+    .map(item => ({ latitude: Number(item.latitude), longitude: Number(item.longitude) }))
   if (!points.length || !mapContext)
     return
   if (points.length === 1) {
@@ -663,9 +662,17 @@ async function refreshMapPage() {
     }
     const selectedId = selected.value?.id
     await loadCommunities(false)
-    selected.value = selectedId
-      ? communities.value.find(item => String(item.id) === String(selectedId)) || null
-      : null
+    if (selectedId) {
+      try {
+        selected.value = await getCommunityDetail(selectedId, isBusinessMode.value)
+      }
+      catch {
+        selected.value = null
+      }
+    }
+    else {
+      selected.value = null
+    }
     await loadCommunityTickerData()
   }
   finally {
@@ -700,7 +707,8 @@ async function getLocation(showTip = false) {
     applyReferencePoint(res.longitude, res.latitude, res.label)
     if (showTip)
       uni.showToast({ title: '已更新当前位置', icon: 'success' })
-    await loadCommunities()
+    if (filters.value.distanceKm !== undefined || filters.value.sortBy === 'distance')
+      await loadCommunities()
   }
   catch {
     if (requestVersion !== referencePointVersion)
@@ -780,8 +788,22 @@ function onMarkerTap(event: any) {
     return
   }
   if (meta.type === 'single') {
-    selected.value = meta.community
+    void selectMapPoint(meta.point)
     selectedPreview.value = null
+  }
+}
+
+let selectedPointId = ''
+
+async function selectMapPoint(point: SlCommunityMapPointOutput) {
+  selectedPointId = String(point.id)
+  try {
+    const detail = await getCommunityDetail(point.id, isBusinessMode.value)
+    if (selectedPointId === String(point.id))
+      selected.value = detail
+  }
+  catch {
+    uni.showToast({ title: '楼盘详情加载失败，请重试', icon: 'none' })
   }
 }
 
@@ -1103,7 +1125,7 @@ onLoad((query) => {
       ;(getApp() as any).__mapDebug = {
         tapMarker: (markerId: number) => onMapMarkerTap({ detail: { markerId } }),
         state: () => ({
-          communities: communities.value.length,
+          communities: mapPoints.value.length,
           previewRegions: previewRegions.value.length,
           landlordCommunities: sourceContact.communities.length,
           markers: activeMarkers.value.length,

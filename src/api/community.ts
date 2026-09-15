@@ -1,8 +1,12 @@
-import type { AddSlCommunityInput, ListSlCommunityInput, PagedList, PageSlCommunityInput, ShenLeId, SlCommunityOutput, SlCommunitySelectOutput, SlCommunityStatsOutput, SlCommunityTickerSetOutput, UpdateSlCommunityInput } from '@/types/shenle'
+import type { AddSlCommunityInput, ListSlCommunityInput, PagedList, PageSlCommunityInput, ShenLeId, SlCommunityMapPointOutput, SlCommunityOutput, SlCommunitySelectOutput, SlCommunityStatsOutput, SlCommunityTickerSetOutput, UpdateSlCommunityInput } from '@/types/shenle'
 import { get, post } from './request'
 
 export function getCommunityPage(input: PageSlCommunityInput) {
   return get<PagedList<SlCommunityOutput>>('/api/slCommunity/page', input as unknown as Record<string, unknown>)
+}
+
+export function getCommunityMapPoints(input: PageSlCommunityInput) {
+  return get<SlCommunityMapPointOutput[]>('/api/slCommunity/mapPoints', input as unknown as Record<string, unknown>)
 }
 
 export function getCommunityList(input: ListSlCommunityInput = {}) {

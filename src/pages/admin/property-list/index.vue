@@ -38,7 +38,8 @@ const DEFAULT_LOCATION = { longitude: 114.0579, latitude: 22.5431 }
 const keyword = ref('')
 const filters = ref<PropertyFilterState>({})
 const page = ref(1)
-const pageSize = 200
+// 楼盘卡片会按需加载封面，首屏限制数量避免手机端并发渲染和媒体请求过多。
+const pageSize = 20
 const total = ref(0)
 const items = ref<SlCommunityOutput[]>([])
 const previewItems = ref<SlPublicRegionPreviewOutput[]>([])
@@ -147,7 +148,8 @@ async function autoLocate() {
     if (requestVersion !== referencePointVersion)
       return
     setReferencePoint(res.longitude, res.latitude, res.label)
-    await load(true)
+    if (filters.value.distanceKm !== undefined || filters.value.sortBy === 'distance')
+      await load(true)
   }
   catch {
     if (requestVersion !== referencePointVersion)

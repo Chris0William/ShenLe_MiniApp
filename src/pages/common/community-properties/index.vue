@@ -5,7 +5,7 @@ import { onLoad, onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { getCommunityDetail } from '@/api/community'
 import { downloadFile } from '@/api/file'
-import { deleteProperty, getPropertyBatchList, getPropertyDetail, getPropertyList, getPropertyPage, updatePropertyStatus } from '@/api/property'
+import { deleteProperty, getPropertyBatchList, getPropertyList, getPropertyPage, updatePropertyStatus } from '@/api/property'
 import SlBuildingSalesBoard from '@/components/sl-building-sales-board/sl-building-sales-board.vue'
 import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
 import SlPropertyBatch from '@/components/sl-property-batch/sl-property-batch.vue'
@@ -55,6 +55,8 @@ const items = ref<SlPropertyListOutput[]>([])
 const communityDetail = ref<SlCommunityOutput | null>(null)
 const loading = ref(false)
 const hasLoaded = ref(false)
+const loadError = ref('')
+let pendingReset = false
 const refresherTriggered = ref(false)
 const batchOverlayVisible = ref(false)
 const auth = useShenleAuthStore()
@@ -81,13 +83,14 @@ const canManage = computed(() => canManagePropertyWrites({
   isAdmin: auth.isAdmin,
   isLandlord: auth.isLandlord,
   isMaintainer: auth.isMaintainer,
+  canWriteSupply: auth.canWriteSupply,
   mode: modeStore.mode,
 }))
 const isBusinessView = computed(() => modeStore.mode === 'user')
 const canManageBuildingScope = computed(() => canManage.value && !!buildingId.value)
 const canBatchManage = computed(() => canManageBuildingScope.value && auth.canBatchWriteSupply)
 const canCreateSupply = computed(() => canManageBuildingScope.value && auth.canCreateSupply && modeStore.mode === 'admin')
-const canDeleteSupply = computed(() => canManageBuildingScope.value && auth.isAdmin && modeStore.mode === 'admin')
+const canDeleteSupply = computed(() => canManageBuildingScope.value && auth.canDeleteSupply && modeStore.mode === 'admin')
 const CHANGE_CONSUMER = 'community-properties'
 const hasActiveListFilter = computed(() => !!keyword.value.trim()
   || status.value != null
@@ -175,13 +178,19 @@ function resetSelectionForFilterChange() {
   allFilteredSelected.value = false
 }
 
-async function load(reset = false) {
-  if (!communityId.value || loading.value)
-    return
+async function load(reset = false): Promise<boolean> {
+  if (!communityId.value)
+    return false
+  if (loading.value) {
+    if (reset)
+      pendingReset = true
+    return false
+  }
   if (reset) {
     page.value = 1
     items.value = []
     total.value = 0
+    loadError.value = ''
   }
   loading.value = true
   try {
@@ -189,9 +198,19 @@ async function load(reset = false) {
     total.value = result.total
     items.value = reset ? result.items : [...items.value, ...result.items]
     hasLoaded.value = true
+    loadError.value = ''
+    return true
+  }
+  catch {
+    loadError.value = '加载失败，请重试'
+    return false
   }
   finally {
     loading.value = false
+    if (pendingReset) {
+      pendingReset = false
+      void load(true)
+    }
   }
 }
 
@@ -229,13 +248,13 @@ async function reloadLoadedRangePreservingScroll() {
   const loadedPages = Math.max(1, page.value)
   loading.value = true
   try {
-    const responses = []
-    for (let pageNo = 1; pageNo <= loadedPages; pageNo++) {
-      responses.push(await getPropertyPage({
-        ...buildQuery(),
-        page: pageNo,
-      }))
-    }
+    const query = buildQuery()
+    const responses = await Promise.all(
+      Array.from({ length: loadedPages }, (_, index) => getPropertyPage({
+        ...query,
+        page: index + 1,
+      })),
+    )
     items.value = responses.flatMap(result => result.items)
     total.value = responses[0]?.total || 0
     page.value = loadedPages
@@ -247,9 +266,29 @@ async function reloadLoadedRangePreservingScroll() {
 }
 
 async function patchBatchUpdatedItems(ids: readonly ShenLeId[]) {
-  const details = await Promise.all(ids.map(id => getPropertyDetail(id)))
-  const detailById = new Map(details.map(detail => [String(detail.id), detail]))
-  items.value = items.value.map(item => detailById.get(String(item.id)) || item)
+  if (!ids.length)
+    return
+  // 有筛选或业务端可租口径时，单条结果可能因修改后退出命中集，交给完整窗口重算。
+  if (hasActiveListFilter.value || isBusinessView.value) {
+    await reloadLoadedRangePreservingScroll()
+    return
+  }
+  const result = await getPropertyPage({
+    ...buildQuery(),
+    page: 1,
+    pageSize: Math.min(ids.length, 200),
+    ids: [...ids],
+  })
+  const targetIds = new Set(ids.map(id => String(id)))
+  const updated = new Map(result.items.map(item => [String(item.id), item]))
+  const beforeCount = items.value.filter(item => targetIds.has(String(item.id))).length
+  items.value = items.value.flatMap((item) => {
+    if (!targetIds.has(String(item.id)))
+      return [item]
+    const next = updated.get(String(item.id))
+    return next ? [next] : []
+  })
+  total.value = Math.max(0, total.value - beforeCount + result.items.length)
 }
 
 // ===== 楼盘媒体横滑栏 =====
@@ -296,8 +335,16 @@ async function handleRefresh() {
 function handleScrollToLower() {
   if (viewMode.value !== 'list' || loading.value || finished.value)
     return
-  page.value += 1
-  void load()
+  const nextPage = page.value + 1
+  page.value = nextPage
+  void load().then((success) => {
+    if (!success && page.value === nextPage)
+      page.value -= 1
+  })
+}
+
+function retryLoad() {
+  void load(true)
 }
 
 function handleBatchVisibilityChange(visible: boolean) {
@@ -845,6 +892,13 @@ onShow(async () => {
 
           <view v-if="loading" class="loading">
             加载中...
+          </view>
+          <view v-else-if="loadError" class="empty sl-card">
+            <wd-icon name="warning" size="42px" color="#c94832" />
+            <text class="empty__title">{{ loadError }}</text>
+            <wd-button size="small" type="primary" @click="retryLoad">
+              重试
+            </wd-button>
           </view>
           <view v-else-if="hasLoaded && !items.length" class="empty sl-card">
             <wd-icon name="home" size="42px" color="#8ea099" />

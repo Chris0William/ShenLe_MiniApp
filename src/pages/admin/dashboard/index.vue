@@ -33,7 +33,7 @@ const dashboardActions = computed(() => {
     { label: '销控表', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index' },
     { label: '楼盘管理', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index' },
   ]
-  if (auth.isAdmin) {
+  if (auth.canManageDictionaries) {
     actions.push(
       { label: '区域管理', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index' },
       { label: '标签管理', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index' },
