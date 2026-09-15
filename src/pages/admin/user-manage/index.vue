@@ -72,6 +72,11 @@ async function loadPending() {
   pending.value = await getPendingUsers().catch(() => [])
 }
 
+function openAuthorization(item?: SlUserOutput) {
+  const query = item ? `?userId=${encodeURIComponent(String(item.userId))}` : ''
+  uni.navigateTo({ url: `/pages/admin/authorization/index${query}` })
+}
+
 function openApplicationDetail(item: SlPendingUserOutput) {
   uni.navigateTo({ url: `/pages/admin/application-detail/index?applicationId=${encodeURIComponent(String(item.applicationId))}` })
 }
@@ -224,6 +229,9 @@ onReachBottom(() => {
 
     <view class="result-head">
       <text>{{ total }} 个用户</text>
+      <wd-button v-if="auth.isSuperAdmin" size="small" plain @click="openAuthorization()">
+        权限管理
+      </wd-button>
     </view>
 
     <view class="list">
@@ -236,20 +244,30 @@ onReachBottom(() => {
               {{ item.accountTypeName }}
             </view>
           </view>
+          <view v-if="item.isRbacManaged" class="rbac-role-list">
+            <text v-for="name in item.rbacRoleNames?.length ? item.rbacRoleNames : ['未分配业务角色']" :key="name" class="rbac-role-tag">
+              {{ name }}
+            </text>
+          </view>
           <view class="user__actions">
             <view class="role-btn role-btn--nick" @tap="openUserNickname(item)">
               修改昵称
             </view>
             <template v-if="item.accountType < 999">
-              <view
-                v-for="opt in ROLE_OPTIONS"
-                :key="opt.value"
-                class="role-btn"
-                :class="{ active: item.accountType === opt.value }"
-                @tap="changeRole(item, opt.value)"
-              >
-                {{ opt.label }}
+              <view v-if="auth.isSuperAdmin" class="role-btn role-btn--permission" @tap="openAuthorization(item)">
+                权限设置
               </view>
+              <template v-if="!item.isRbacManaged">
+                <view
+                  v-for="opt in ROLE_OPTIONS"
+                  :key="opt.value"
+                  class="role-btn"
+                  :class="{ active: item.accountType === opt.value }"
+                  @tap="changeRole(item, opt.value)"
+                >
+                  {{ opt.label }}
+                </view>
+              </template>
               <view class="role-btn role-btn--danger" @tap="removeUser(item)">
                 注销
               </view>
@@ -544,6 +562,28 @@ onReachBottom(() => {
 .role-btn--nick {
   border-color: rgb(180 109 8 / 28%);
   color: #9a6408;
+}
+
+.role-btn--permission {
+  border-color: rgb(18 107 79 / 40%);
+  background: rgb(18 107 79 / 7%);
+  color: var(--sl-brand);
+}
+
+.rbac-role-list {
+  display: flex;
+  gap: 8rpx;
+  margin-top: 10rpx;
+  flex-wrap: wrap;
+}
+
+.rbac-role-tag {
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+  background: #edf7f0;
+  color: #126b4f;
+  font-size: 21rpx;
+  font-weight: 700;
 }
 
 .nickname-popup {

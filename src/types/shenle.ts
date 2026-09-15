@@ -50,6 +50,7 @@ export enum PropertyStatus {
 }
 
 export interface PageSlPropertyInput extends BasePageInput {
+  ids?: ShenLeId[]
   title?: string
   communityId?: ShenLeId
   buildingId?: ShenLeId
@@ -166,6 +167,7 @@ export interface SlPropertyImageOutput extends ImageOutput {
 
 export interface SlPropertyBatchRowOutput {
   id: ShenLeId
+  editVersion?: string | null
   title: string
   communityId: ShenLeId
   buildingId: ShenLeId
@@ -199,6 +201,7 @@ export interface SlPropertyBatchRowOutput {
 }
 
 export interface SlPropertyOutput extends SlPropertyListOutput {
+  editVersion?: string | null
   communityId: ShenLeId
   buildingId: ShenLeId
   buildingName?: string | null
@@ -281,6 +284,7 @@ export interface AddSlPropertyInput {
 
 export interface UpdateSlPropertyInput extends AddSlPropertyInput {
   id: ShenLeId
+  expectedVersion?: string | null
 }
 
 export interface UpdateSlPropertyStatusInput {
@@ -398,10 +402,12 @@ export interface AddSlCommunityInput {
 
 export interface UpdateSlCommunityInput extends AddSlCommunityInput {
   id: ShenLeId
+  expectedVersion?: string | null
 }
 
 export interface SlCommunityOutput {
   id: ShenLeId
+  editVersion?: string | null
   name: string
   type: number
   typeName?: string | null
@@ -463,6 +469,19 @@ export interface SlCommunityOutput {
   supplyContactName?: string | null
   supplyContactPhone?: string | null
   supplyContactRole?: 'landlord' | 'maintainer' | string | null
+}
+
+export interface SlCommunityMapPointOutput {
+  id: ShenLeId
+  name: string
+  type: number
+  lng?: number | null
+  lat?: number | null
+  availableCount: number
+  minRentPrice?: number | null
+  maxRentPrice?: number | null
+  distance?: number | null
+  supplyUpdateTime?: string | null
 }
 
 export interface SlCommunityTickerOutput {
@@ -593,10 +612,12 @@ export interface BatchAddSlBuildingOutput {
 
 export interface UpdateSlBuildingInput extends AddSlBuildingInput {
   id: ShenLeId
+  expectedVersion?: string | null
 }
 
 export interface SlBuildingOutput {
   id: ShenLeId
+  editVersion?: string | null
   communityId: ShenLeId
   name: string
   totalFloors?: number | null
@@ -665,6 +686,11 @@ export interface SlTagCategoryOutput {
 }
 
 export interface LoginUserOutput {
+  authorizationRevision?: ShenLeId
+  rbacEnabled?: boolean
+  isRbacManaged?: boolean
+  permissionKeys?: string[]
+  roleCodes?: string[]
   id: ShenLeId
   account: string
   nickName?: string
@@ -704,6 +730,7 @@ export interface LoginUserOutput {
 }
 
 export interface SlPublicRegionQueryInput extends BasePageInput {
+  includeUnlocatedRegions?: boolean
   regionId?: ShenLeId
   minPrice?: number
   maxPrice?: number
@@ -766,6 +793,8 @@ export interface SlUserOutput {
   accountTypeName: string
   status: number
   isLandlord?: boolean
+  isRbacManaged?: boolean
+  rbacRoleNames?: string[]
   createTime?: string | null
 }
 
@@ -779,6 +808,11 @@ export interface SetSlUserRoleInput {
 }
 
 export interface MyAccessOutput {
+  authorizationRevision?: ShenLeId
+  rbacEnabled?: boolean
+  isRbacManaged?: boolean
+  permissionKeys?: string[]
+  roleCodes?: string[]
   accountType: number
   applyStatus: number
   application?: MyAccessApplicationOutput | null

@@ -55,7 +55,7 @@ const adminMenus = computed(() => {
     { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index', badge: 0 },
     { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index', badge: 0 },
   ]
-  if (auth.isAdmin) {
+  if (auth.canManageDictionaries) {
     base.splice(2, 0, { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index', badge: 0 }, { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 })
   }
   if (auth.user?.canManageSourceContacts)
@@ -64,6 +64,10 @@ const adminMenus = computed(() => {
     base.push({ title: '房东端管理', desc: '房东、维护人、联系电话与楼盘归属', icon: 'usergroup', tone: 'green', url: '/pages/admin/landlord-profile-manage/index', badge: 0 })
   if (auth.user?.canManageUsers)
     base.push({ title: '用户管理', desc: '审批申请、设置用户角色', icon: 'usergroup', tone: 'gold', url: '/pages/admin/user-manage/index', badge: pendingCount.value })
+  if (auth.isSuperAdmin)
+    base.push({ title: '角色与权限', desc: '角色模板、数据范围及用户例外', icon: 'setting', tone: 'green', url: '/pages/admin/authorization/index', badge: 0 })
+  if (auth.isSuperAdmin)
+    base.push({ title: '数据变更记录', desc: '查看版本差异与恢复记录', icon: 'history', tone: 'gold', url: '/pages/admin/data-change/index', badge: 0 })
   return base
 })
 

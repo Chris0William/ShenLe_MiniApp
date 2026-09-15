@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { getPortalAccess, resolvePortalMode } from '@/utils/authorization'
 import { SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
 export type AppMode = 'user' | 'admin' | 'landlord'
@@ -9,7 +10,7 @@ const modeChangeListeners = new Set<ModeChangeListener>()
 
 export function isLandlordOnlySession() {
   const user = uni.getStorageSync(SHENLE_USER_KEY)
-  return !!uni.getStorageSync(SHENLE_TOKEN_KEY) && !!user?.isLandlord && (user.accountType || 0) < 888
+  return !!uni.getStorageSync(SHENLE_TOKEN_KEY) && getPortalAccess(user).landlordOnly
 }
 
 export function onModeChange(listener: ModeChangeListener) {
@@ -25,6 +26,11 @@ export function onModeChange(listener: ModeChangeListener) {
  */
 function readInitialMode(): AppMode {
   try {
+    const currentUser = uni.getStorageSync(SHENLE_USER_KEY)
+    if (currentUser?.isRbacManaged) {
+      const savedMode = uni.getStorageSync(APP_MODE_KEY)
+      return resolvePortalMode(['user', 'admin', 'landlord'].includes(savedMode) ? savedMode : 'user', currentUser, !!uni.getStorageSync(SHENLE_TOKEN_KEY))
+    }
     if (isLandlordOnlySession())
       return 'landlord'
     const saved = uni.getStorageSync(APP_MODE_KEY)
@@ -50,7 +56,10 @@ function readInitialMode(): AppMode {
 export const modeStore = reactive({
   mode: readInitialMode() as AppMode,
   setMode(next: AppMode) {
-    if (isLandlordOnlySession())
+    const user = uni.getStorageSync(SHENLE_USER_KEY)
+    if (user?.isRbacManaged)
+      next = resolvePortalMode(next, user, !!uni.getStorageSync(SHENLE_TOKEN_KEY))
+    else if (isLandlordOnlySession())
       next = 'landlord'
     const previous = this.mode
     this.mode = next

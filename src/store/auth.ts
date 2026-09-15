@@ -4,13 +4,15 @@ import { computed, ref } from 'vue'
 import { completeProfile, getUserInfo, loginWithWxTicket, logout, prepareWxLogin, uploadAvatar } from '@/api/auth'
 import { getMyAccess } from '@/api/user-manage'
 import { modeStore } from '@/store/mode'
+import { authorizationSignature, getPortalAccess, hasPermission, isAdministratorIdentity, resolvePortalMode } from '@/utils/authorization'
+import { captureSessionContext, invalidateAuthorizationContext, invalidateSessionContext, isCurrentLogin, isCurrentSession } from '@/utils/session-context'
 import { SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
 export const useShenleAuthStore = defineStore('shenle-auth', () => {
   const token = ref<string>(uni.getStorageSync(SHENLE_TOKEN_KEY) || '')
   const user = ref<LoginUserOutput | null>(uni.getStorageSync(SHENLE_USER_KEY) || null)
   const loginTicket = ref('')
-  let accessRequest: { token: string, promise: Promise<MyAccessOutput | null> } | null = null
+  let accessRequest: { context: ReturnType<typeof captureSessionContext>, promise: Promise<MyAccessOutput | null> } | null = null
 
   // 新登录链路不再让客户端持有 OpenId，清理旧版本遗留值。
   uni.removeStorageSync('shenle_openid')
@@ -27,42 +29,59 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   })
 
   const isLogin = computed(() => !!token.value)
-  const isAdmin = computed(() => (user.value?.accountType || 0) >= 888) // 888 管理员可进管理端
+  const isAdmin = computed(() => isAdministratorIdentity(user.value))
   const isSuperAdmin = computed(() => (user.value?.accountType || 0) >= 999) // 999 超级管理员可用户管理
-  const canUseApp = computed(() => (user.value?.accountType || 0) >= 777) // 777 普通用户可正常使用
-  const isGuest = computed(() => isLogin.value && (user.value?.accountType || 0) < 777) // 666 游客需申请
-  const canViewRealData = computed(() => canUseApp.value || isAdmin.value)
+  const isRbacManaged = computed(() => user.value?.isRbacManaged === true)
+  const canUseApp = computed(() => isLogin.value && hasPermission(user.value, 'supply.read', (user.value?.accountType || 0) >= 777))
+  const isGuest = computed(() => isLogin.value && !canUseApp.value && (user.value?.accountType || 0) < 777)
+  const portalAccess = computed(() => getPortalAccess(user.value))
+  const canViewRealData = computed(() => canUseApp.value && (!isRbacManaged.value
+    || (modeStore.mode === 'user' ? portalAccess.value.business : modeStore.mode === 'admin' ? portalAccess.value.admin : portalAccess.value.landlord)))
   const isLandlord = computed(() => !!user.value?.isLandlord)
-  const isLandlordOnly = computed(() => isLandlord.value && !isAdmin.value)
+  const isLandlordOnly = computed(() => isLogin.value && portalAccess.value.landlordOnly)
   const isSourceContact = computed(() => !!user.value?.isSourceContact)
   const isMaintainer = computed(() => !!user.value?.isMaintainer)
-  const canEnterLandlordPortal = computed(() => !!user.value?.canEnterLandlordPortal)
-  const canEnterRestrictedAdmin = computed(() => !!user.value?.canEnterRestrictedAdmin)
-  const canEnterAdmin = computed(() => isAdmin.value || (!isLandlordOnly.value && canEnterRestrictedAdmin.value))
-  const canCreateSupply = computed(() => !!user.value?.canCreateSupply)
-  const canBatchWriteSupply = computed(() => !!user.value?.canBatchWriteSupply)
-  const canManageLandlords = computed(() => !!user.value?.canManageLandlords)
-  const canSetCommunityHotLevel = computed(() => !!user.value?.canSetCommunityHotLevel)
+  const canEnterLandlordPortal = computed(() => isLogin.value && portalAccess.value.landlord)
+  const canEnterRestrictedAdmin = computed(() => hasPermission(user.value, 'portal.admin', !!user.value?.canEnterRestrictedAdmin))
+  const canEnterAdmin = computed(() => isLogin.value && portalAccess.value.admin)
+  const canCreateSupply = computed(() => hasPermission(user.value, 'supply.create', !!user.value?.canCreateSupply))
+  const canBatchWriteSupply = computed(() => hasPermission(user.value, 'supply.batch', !!user.value?.canBatchWriteSupply))
+  const canManageLandlords = computed(() => hasPermission(user.value, 'landlord.manage', !!user.value?.canManageLandlords))
+  const canSetCommunityHotLevel = computed(() => hasPermission(user.value, 'community.hot', !!user.value?.canSetCommunityHotLevel))
+  const canManageDictionaries = computed(() => hasPermission(user.value, 'dictionary.manage', isAdmin.value))
+  const canWriteSupply = computed(() => hasPermission(user.value, 'supply.write', !!user.value?.canWriteAllSupply || !!user.value?.canWriteAssignedSupply))
+  const canDeleteSupply = computed(() => hasPermission(user.value, 'supply.delete', isAdmin.value))
   const landlordApplyStatus = computed(() => user.value?.landlordApplyStatus)
-  const canViewSupplyActivity = computed(() => !!user.value?.canViewSupplyActivity)
-  const canUseMineFilters = computed(() => !!user.value?.canUseMineFilters)
-  const canFilterBySupplyOperator = computed(() => !!user.value?.canFilterBySupplyOperator)
+  const canViewSupplyActivity = computed(() => hasPermission(user.value, 'supply.activity', !!user.value?.canViewSupplyActivity))
+  const canUseMineFilters = computed(() => hasPermission(user.value, 'supply.mine-filter', !!user.value?.canUseMineFilters))
+  const canFilterBySupplyOperator = computed(() => hasPermission(user.value, 'supply.operator-filter', !!user.value?.canFilterBySupplyOperator))
   const displayName = computed(() => (isLogin.value ? user.value?.nickName || '微信用户' : '未登录'))
 
   function setToken(value: string) {
+    // 同秒重新登录也可能得到相同JWT，仍要隔离上一个登录流程的请求。
+    const changed = token.value !== value || !!value
+    if (changed)
+      invalidateSessionContext()
     token.value = value
     if (value)
       uni.setStorageSync(SHENLE_TOKEN_KEY, value)
     else
       uni.removeStorageSync(SHENLE_TOKEN_KEY)
+    if (changed)
+      uni.$emit('shenle:session-changed')
   }
 
   function setUser(value: LoginUserOutput | null) {
+    const accessChanged = authorizationSignature(user.value) !== authorizationSignature(value)
     user.value = value
     if (value)
       uni.setStorageSync(SHENLE_USER_KEY, value)
     else
       uni.removeStorageSync(SHENLE_USER_KEY)
+    if (accessChanged) {
+      invalidateAuthorizationContext()
+      uni.$emit('shenle:access-changed')
+    }
   }
 
   function toLoginUser(session: WxLoginOutput): LoginUserOutput {
@@ -77,21 +96,29 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
 
   function refreshAccess(silent = false): Promise<MyAccessOutput | null> {
     const requestToken = token.value
+    const context = captureSessionContext()
     if (!requestToken)
       return Promise.resolve(null)
-    if (accessRequest?.token === requestToken)
+    if (accessRequest && isCurrentSession(accessRequest.context))
       return accessRequest.promise
     const promise = getMyAccess(silent).then((access) => {
       // 登出或换号后，旧请求不能覆盖新会话权限。
-      if (token.value !== requestToken || !user.value)
+      if (!isCurrentSession(context) || token.value !== requestToken || !user.value)
         return null
       setUser({
         ...user.value,
         ...access,
+        authorizationRevision: access.authorizationRevision ?? 0,
+        isRbacManaged: access.isRbacManaged === true,
+        rbacEnabled: access.rbacEnabled === true,
+        permissionKeys: access.permissionKeys || [],
+        roleCodes: access.roleCodes || [],
         isLandlord: !!access.isLandlord,
       })
       // 普通房东锁定房东端；管理员、超管保留当前端，跳转仍由登录/路由流程处理。
-      if (isLandlordOnly.value && modeStore.mode !== 'landlord')
+      if (isRbacManaged.value)
+        modeStore.setMode(resolvePortalMode(modeStore.mode, user.value, isLogin.value))
+      else if (isLandlordOnly.value && modeStore.mode !== 'landlord')
         modeStore.setMode('landlord')
       else if (modeStore.mode === 'landlord' && !canEnterLandlordPortal.value)
         modeStore.setMode(canEnterAdmin.value ? 'admin' : 'user')
@@ -100,7 +127,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
       if (accessRequest?.promise === promise)
         accessRequest = null
     })
-    accessRequest = { token: requestToken, promise }
+    accessRequest = { context, promise }
     return promise
   }
 
@@ -122,7 +149,10 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   async function refreshUser(silent = false) {
     if (!token.value)
       return null
+    const context = captureSessionContext()
     const profile = await getUserInfo(silent)
+    if (!isCurrentSession(context) || !user.value)
+      return null
     setUser({ ...user.value, ...profile })
     await mergeAccess()
     return profile
@@ -178,16 +208,19 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
   }
 
   async function signOut() {
+    const context = captureSessionContext()
     try {
       if (token.value)
         await logout()
     }
     catch {}
     finally {
-      setToken('')
-      setUser(null)
-      loginTicket.value = ''
-      modeStore.setMode('user')
+      if (isCurrentLogin(context)) {
+        setToken('')
+        setUser(null)
+        loginTicket.value = ''
+        modeStore.setMode('user')
+      }
     }
   }
 
@@ -197,6 +230,7 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     isLogin,
     isAdmin,
     isSuperAdmin,
+    isRbacManaged,
     canUseApp,
     canViewRealData,
     isGuest,
@@ -211,6 +245,9 @@ export const useShenleAuthStore = defineStore('shenle-auth', () => {
     canBatchWriteSupply,
     canManageLandlords,
     canSetCommunityHotLevel,
+    canManageDictionaries,
+    canWriteSupply,
+    canDeleteSupply,
     landlordApplyStatus,
     canViewSupplyActivity,
     canUseMineFilters,

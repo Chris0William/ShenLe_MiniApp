@@ -7,6 +7,7 @@ import { isLandlordOnlySession, modeStore } from '@/store/mode'
  * 黑、白名单的配置，请看 config.ts 文件， EXCLUDE_LOGIN_PATH_LIST
  */
 import { tabbarStore } from '@/tabbar/store'
+import { hasPermission } from '@/utils/authorization'
 import { getLastPage, parseUrlToObj } from '@/utils/index'
 import { promptProtectedLogin } from '@/utils/login-flow'
 
@@ -17,12 +18,23 @@ export const FG_LOG_ENABLE = false
 // 用户模式也要可达，因此不在此列——其管理动作由各页 canManage 控制显隐。
 const PROTECTED_PATHS = [
   '/pages/admin/user-manage/index', // 超管页，登录+管理员先过守卫，999 由页面自守卫
+  '/pages/admin/authorization/index', // 角色与用户权限，仅超级管理员
   '/pages/admin/application-detail/index', // 用户申请资料详情，仅超级管理员
   '/pages/admin/landlord-manage/index',
   '/pages/admin/landlord-profile-manage/index',
   '/pages/common/region-manage/index',
   '/pages/common/tag-manage/index',
 ]
+
+const PROTECTED_PERMISSIONS: Record<string, string> = {
+  '/pages/admin/user-manage/index': 'user.manage',
+  '/pages/admin/application-detail/index': 'user.manage',
+  '/pages/admin/authorization/index': 'authorization.manage',
+  '/pages/admin/landlord-manage/index': 'source-contact.manage',
+  '/pages/admin/landlord-profile-manage/index': 'landlord.manage',
+  '/pages/common/region-manage/index': 'dictionary.manage',
+  '/pages/common/tag-manage/index': 'dictionary.manage',
+}
 
 // 管理端或房东端共享页面；后端继续校验具体楼盘数据范围。
 const PORTAL_PATHS = [
@@ -120,7 +132,14 @@ export const navigateToInterceptor = {
         return false
       }
       // 管理端独有页仅 888 可用；非 888 不踢死，提示后留在业务员端
-      if (!auth.isAdmin) {
+      if (auth.isRbacManaged) {
+        const permission = PROTECTED_PERMISSIONS[path]
+        if (!auth.canEnterAdmin || !permission || !hasPermission(auth.user, permission)) {
+          uni.showToast({ title: '当前账号无权使用该功能', icon: 'none', duration: 3000 })
+          return false
+        }
+      }
+      else if (!auth.isAdmin) {
         uni.showToast({ title: '仅管理员可使用管理端', icon: 'none' })
         return false
       }
