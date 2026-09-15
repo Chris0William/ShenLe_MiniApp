@@ -59,6 +59,7 @@ interface ExpectedAddSlPropertyInput {
 
 interface ExpectedUpdateSlPropertyInput extends ExpectedAddSlPropertyInput {
   id: ShenLeId
+  expectedVersion?: string | null
 }
 
 interface ExpectedBatchAddSlBuildingInput {
@@ -124,6 +125,7 @@ interface ExpectedBatchSlPropertyResult {
 
 interface ExpectedSlPropertyBatchRowOutput {
   id: ShenLeId
+  editVersion?: string | null
   title: string
   communityId: ShenLeId
   buildingId: ShenLeId

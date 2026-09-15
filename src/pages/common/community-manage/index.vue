@@ -101,11 +101,12 @@ const loading = ref(false)
 const finished = ref(false)
 const formVisible = ref(false)
 const isEdit = ref(false)
+const editVersion = ref<string | null>(null)
 const submitting = ref(false)
 const changeStore = useEntityChangeStore()
 const auth = useShenleAuthStore()
 const canCreateSupply = computed(() => auth.canCreateSupply && modeStore.mode === 'admin')
-const canDeleteSupply = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const canDeleteSupply = computed(() => auth.canDeleteSupply && modeStore.mode === 'admin')
 const CHANGE_CONSUMER = 'community-manage'
 
 function publishCommunityChange(action: 'created' | 'updated' | 'deleted' | 'structural', ids: ShenLeId[]) {
@@ -405,6 +406,7 @@ function onFormRegionChange(event: any) {
 
 function resetForm(item?: SlCommunityOutput) {
   isEdit.value = !!item
+  editVersion.value = item?.editVersion || null
   form.id = item ? String(item.id) : ''
   form.name = item?.name || ''
   form.type = item?.type || 2
@@ -588,7 +590,6 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
     duration: 3000,
   })
 }
-
 
 function chooseImageFallback() {
   uni.chooseImage({
@@ -877,7 +878,7 @@ async function submitForm() {
   try {
     const payload = buildPayload()
     if (isEdit.value) {
-      const updatePayload = { ...payload, id: form.id }
+      const updatePayload = { ...payload, id: form.id, expectedVersion: editVersion.value }
       await updateCommunity(updatePayload)
       await saveOwnerAssignment(form.id)
       patchCommunityListItem(updatePayload)
@@ -1158,7 +1159,9 @@ onReachBottom(() => loadData())
               </view>
             </view>
             <view v-if="uploading" class="media-upload-status">
-              <view class="media-upload-status__track"><view class="media-upload-status__fill" :style="{ width: `${uploadProgressPercent}%` }" /></view>
+              <view class="media-upload-status__track">
+                <view class="media-upload-status__fill" :style="{ width: `${uploadProgressPercent}%` }" />
+              </view>
               <text>已处理 {{ uploadProgress.done }}/{{ uploadProgress.total }} 个</text>
             </view>
           </view>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  PROPERTY_MEDIA_SOURCE_ACTIONS,
   canManagePropertyWrites,
+  PROPERTY_MEDIA_SOURCE_ACTIONS,
   resolvePropertyMediaSource,
   toOptionalNumber,
 } from '../property-management'
@@ -20,6 +20,16 @@ describe('canManagePropertyWrites', () => {
   it('rejects regular users in every management mode', () => {
     expect(canManagePropertyWrites({ isAdmin: false, isLandlord: false, mode: 'admin' })).toBe(false)
     expect(canManagePropertyWrites({ isAdmin: false, isLandlord: false, mode: 'landlord' })).toBe(false)
+  })
+
+  it('lets an explicit denial override administrator and landlord identities', () => {
+    expect(canManagePropertyWrites({ isAdmin: true, isLandlord: true, mode: 'admin', canWriteSupply: false })).toBe(false)
+    expect(canManagePropertyWrites({ isAdmin: false, isLandlord: true, mode: 'landlord', canWriteSupply: false })).toBe(false)
+  })
+
+  it('supports custom write grants without exposing management in business mode', () => {
+    expect(canManagePropertyWrites({ isAdmin: false, isLandlord: false, mode: 'admin', canWriteSupply: true })).toBe(true)
+    expect(canManagePropertyWrites({ isAdmin: true, isLandlord: false, mode: 'user', canWriteSupply: true })).toBe(false)
   })
 })
 

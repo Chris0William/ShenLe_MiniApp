@@ -1096,7 +1096,6 @@ async function uploadMediaFiles(files: Array<{ tempFilePath: string, fileType?: 
   }
 }
 
-
 function startMediaUpload(files: Array<{ tempFilePath: string, fileType?: 'image' | 'video', thumbTempFilePath?: string }>) {
   if (activeUploadPromise)
     return

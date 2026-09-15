@@ -40,7 +40,7 @@ describe('management property entry flow', () => {
     expect(communityProperties).toContain('isLandlord: auth.isLandlord')
     expect(communityProperties).toContain('canManageBuildingScope')
     expect(communityProperties).toContain('auth.canCreateSupply && modeStore.mode === \'admin\'')
-    expect(communityProperties).toContain('auth.isAdmin && modeStore.mode === \'admin\'')
+    expect(communityProperties).toContain('auth.canDeleteSupply && modeStore.mode === \'admin\'')
     expect(communityProperties).toContain('新增房源')
     expect(communityProperties).toContain('批量管理')
   })

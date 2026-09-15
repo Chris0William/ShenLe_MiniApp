@@ -6,6 +6,7 @@ export interface PropertyManagementAccess {
   isAdmin: boolean
   isLandlord: boolean
   isMaintainer?: boolean
+  canWriteSupply?: boolean
   mode: AppMode
 }
 
@@ -19,6 +20,8 @@ export const PROPERTY_MEDIA_SOURCE_ACTIONS: {
 ]
 
 export function canManagePropertyWrites(access: PropertyManagementAccess): boolean {
+  if (typeof access.canWriteSupply === 'boolean')
+    return access.canWriteSupply && (access.mode === 'admin' || access.mode === 'landlord')
   return (access.isAdmin && access.mode === 'admin')
     || (!!access.isMaintainer && access.mode === 'admin')
     || (access.isLandlord && access.mode === 'landlord')

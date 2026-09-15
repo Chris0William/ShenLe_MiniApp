@@ -42,13 +42,14 @@ const coverMap = ref<Record<string, string>>({})
 const loading = ref(false)
 const formVisible = ref(false)
 const isEdit = ref(false)
+const editVersion = ref<string | null>(null)
 const submitting = ref(false)
 const uploading = ref(false)
 const oneClickCreating = ref(false)
 const changeStore = useEntityChangeStore()
 const auth = useShenleAuthStore()
 const canCreateSupply = computed(() => auth.canCreateSupply && modeStore.mode === 'admin')
-const canDeleteSupply = computed(() => auth.isAdmin && modeStore.mode === 'admin')
+const canDeleteSupply = computed(() => auth.canDeleteSupply && modeStore.mode === 'admin')
 const CHANGE_CONSUMER = 'building-manage'
 const mediaLongPressGuard = createMediaLongPressGuard()
 
@@ -170,6 +171,7 @@ function onFormCommunityChange(event: any) {
 
 function resetForm(item?: SlBuildingOutput) {
   isEdit.value = !!item
+  editVersion.value = item?.editVersion || null
   form.id = item ? String(item.id) : ''
   form.communityId = item ? String(item.communityId) : communityId.value
   form.name = item?.name || ''
@@ -360,7 +362,7 @@ async function submitForm() {
   try {
     const payload = buildPayload()
     if (isEdit.value) {
-      await updateBuilding({ ...payload, id: form.id })
+      await updateBuilding({ ...payload, id: form.id, expectedVersion: editVersion.value })
       publishBuildingChange('updated', [form.id])
     }
     else {

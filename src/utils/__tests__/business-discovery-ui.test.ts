@@ -10,8 +10,14 @@ describe('business discovery experience', () => {
   it('requests only available supply and shows business context without landlord media', () => {
     const map = source('src/pages/user/map/index.vue')
     const properties = source('src/pages/common/community-properties/index.vue')
+    const propertyList = source('src/pages/admin/property-list/index.vue')
 
     expect(map).toContain('availableOnly: isBusinessMode.value || undefined')
+    expect(map).toContain('getCommunityMapPoints(buildQuery())')
+    expect(map).not.toContain('while (candidates.length < totalCount)')
+    expect(map).toContain('filters.value.distanceKm !== undefined || filters.value.sortBy === \'distance\'')
+    expect(propertyList).toContain('filters.value.distanceKm !== undefined || filters.value.sortBy === \'distance\'')
+    expect(propertyList).toContain('const pageSize = 20')
     expect(map).toContain('selected.availableCount')
     expect(map).toContain('selected.announcement')
     expect(map).not.toContain('landlord-map-tools')

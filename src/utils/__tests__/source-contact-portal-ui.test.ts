@@ -44,7 +44,7 @@ describe('landlord portal shell', () => {
   it('hides dictionary actions from maintainer workbench while keeping supply management entries', () => {
     expect(promotionPage).toContain('{ label: \'销控表\'')
     expect(promotionPage).toContain('{ label: \'楼盘管理\'')
-    expect(promotionPage).toContain('if (auth.isAdmin)')
+    expect(promotionPage).toContain('if (auth.canManageDictionaries)')
     expect(promotionPage).toContain('{ label: \'区域管理\'')
     expect(promotionPage).toContain('{ label: \'标签管理\'')
   })

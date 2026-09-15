@@ -417,6 +417,7 @@ export function buildBatchAddInputs(
 function snapshotToUpdateInput(snapshot: SlPropertyBatchRowOutput): UpdateSlPropertyInput {
   return {
     id: snapshot.id,
+    expectedVersion: snapshot.editVersion ?? null,
     title: snapshot.title,
     communityId: snapshot.communityId,
     buildingId: snapshot.buildingId,

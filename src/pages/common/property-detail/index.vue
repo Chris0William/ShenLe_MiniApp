@@ -52,6 +52,7 @@ const canRenameMedia = computed(() => canManagePropertyWrites({
   isAdmin: auth.isAdmin,
   isLandlord: auth.isLandlord,
   isMaintainer: auth.isMaintainer,
+  canWriteSupply: auth.canWriteSupply,
   mode: modeStore.mode,
 }))
 const mediaLongPressGuard = createMediaLongPressGuard()

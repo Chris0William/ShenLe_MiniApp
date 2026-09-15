@@ -110,6 +110,7 @@ type WechatChooseMedia = (option: WechatChooseMediaOption) => void
 
 const isEdit = ref(false)
 const editId = ref('')
+const editVersion = ref<string | null>(null)
 const submitting = ref(false)
 const loading = ref(false)
 const invalidEntry = ref(false)
@@ -325,7 +326,6 @@ async function uploadSelectedMedia(files: LocalUploadMedia[]) {
     duration: 3000,
   })
 }
-
 
 function chooseImageFallback() {
   uni.chooseImage({
@@ -677,7 +677,7 @@ async function submit() {
   try {
     const data = buildSubmitData()
     if (isEdit.value) {
-      await updateProperty({ ...data, id: editId.value })
+      await updateProperty({ ...data, id: editId.value, expectedVersion: editVersion.value })
       changeStore.publishPropertyChange({
         action: 'updated',
         ids: [editId.value],
@@ -774,6 +774,7 @@ onLoad(async (query) => {
       isEdit.value = true
       editId.value = String(query.id)
       const detail = await getPropertyDetail(editId.value)
+      editVersion.value = detail.editVersion || null
       await fillDetail(detail)
       try {
         const building = await getBuildingDetail(detail.buildingId)
@@ -1033,7 +1034,9 @@ onLoad(async (query) => {
           </view>
         </view>
         <view v-if="uploading" class="media-upload-status">
-          <view class="media-upload-status__track"><view class="media-upload-status__fill" :style="{ width: `${uploadProgressPercent}%` }" /></view>
+          <view class="media-upload-status__track">
+            <view class="media-upload-status__fill" :style="{ width: `${uploadProgressPercent}%` }" />
+          </view>
           <text>已处理 {{ uploadProgress.done }}/{{ uploadProgress.total }} 个</text>
         </view>
         <view v-if="houseTags.length" class="tag-section">

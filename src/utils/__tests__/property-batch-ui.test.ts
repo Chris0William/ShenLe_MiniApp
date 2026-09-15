@@ -256,7 +256,7 @@ describe('batch property management UI contract', () => {
 
   it('keeps landlord single-property actions while exposing admin-only batch endpoints only to admins', () => {
     expect(page).toContain('const canBatchManage = computed')
-    expect(page).toContain('auth.isAdmin && modeStore.mode === \'admin\'')
+    expect(page).toContain('auth.canDeleteSupply && modeStore.mode === \'admin\'')
     expect(page).toContain('v-if="canBatchManage"')
     expect(page).toContain('canManageBuildingScope')
   })
