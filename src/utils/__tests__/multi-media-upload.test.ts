@@ -27,6 +27,8 @@ describe.each(pages)('%s multi-media upload', (page) => {
     const upload = pageFunction(page, 'uploadSelectedMedia', {
       form,
       uploading,
+      uploadProgress: { done: 0, total: 0, failed: 0 },
+      mediaTrace: {},
       uploadMediaFile,
       uni: { showToast: toast },
       normalizeMedia: (file: unknown) => file,
@@ -47,6 +49,8 @@ describe.each(pages)('%s multi-media upload', (page) => {
     const upload = pageFunction(page, 'uploadSelectedMedia', {
       form,
       uploading: { value: false },
+      uploadProgress: { done: 0, total: 0, failed: 0 },
+      mediaTrace: {},
       uploadMediaFile,
       uni: { showToast: toast },
       normalizeMedia: (file: unknown) => file,

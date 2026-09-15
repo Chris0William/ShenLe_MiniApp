@@ -26,4 +26,17 @@ describe('get query serialization', () => {
     expect(options.url).toContain('specialModes=shortRent')
     expect(options.data).toBeUndefined()
   })
+
+  it('serializes partial property refresh ids as repeated query keys', async () => {
+    const request = vi.fn((options: { url: string, data?: unknown, success: (response: unknown) => void }) => {
+      options.success({ statusCode: 200, data: { code: 200, result: { items: [], total: 0 } } })
+    })
+    vi.stubGlobal('uni', { getStorageSync: vi.fn(() => ''), request })
+
+    const { getPropertyPage } = await import('@/api/property')
+    await getPropertyPage({ page: 1, pageSize: 2, ids: ['101', '102'] })
+
+    const options = request.mock.calls[0][0]
+    expect(options.url).toContain('ids=101&ids=102')
+  })
 })

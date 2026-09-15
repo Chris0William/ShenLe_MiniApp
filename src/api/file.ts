@@ -1,10 +1,12 @@
 import type { AdminResult, BindSlMediaPosterInput, CleanupSlMediaDraftInput, ImageOutput, RenameSlMediaInput, ShenLeId } from '@/types/shenle'
 import type { MediaTrace } from '@/utils/media-diagnostics'
 import JSONBigInt from 'json-bigint'
+import { createSessionFileCache } from '@/utils/session-file-cache'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY } from '@/utils/shenle'
 import { post } from './request'
 
-const fileCache = new Map<string, string>()
+const fileCache = createSessionFileCache(downloadRemoteFile, localFileExists)
+let cacheListenerRegistered = false
 const losslessJson = JSONBigInt({ storeAsString: true })
 const MIN_VIDEO_POSTER_SIZE = 256
 const UPLOAD_TIMEOUT_MS = 60_000
@@ -64,11 +66,11 @@ function getLocalFileSize(filePath: string): Promise<number> {
     const timer = setTimeout(() => reject(new Error(`读取媒体信息超时（${FILE_INFO_TIMEOUT_MS / 1000}秒）`)), FILE_INFO_TIMEOUT_MS)
     uni.getFileInfo({
       filePath,
-      success: result => {
+      success: (result) => {
         clearTimeout(timer)
         resolve(result.size)
       },
-      fail: error => {
+      fail: (error) => {
         clearTimeout(timer)
         reject(error)
       },
@@ -127,62 +129,62 @@ export function uploadFile(filePath: string, options?: UploadFileOptions): Promi
     }
     try {
       task = uni.uploadFile({
-      url: `${getApiBaseUrl()}/api/sysFile/uploadFile`,
-      filePath,
-      name: 'file',
-      header: token ? { Authorization: `Bearer ${token}` } : {},
-      formData: buildUploadFormData(options),
-      success(res) {
-        if (settled)
-          return
-        if (res.statusCode < 200 || res.statusCode >= 300) {
-          const message = `上传失败（HTTP ${res.statusCode}）`
-          options?.trace?.fail(`${options.stage || 'file'}.request.http-fail`, new Error(message), {
-            httpStatus: res.statusCode,
-            kind: options.fileType?.startsWith('image:') ? 'poster' : options.fileType === 'video' ? 'video' : 'file',
-            provider: 'uni',
-          })
-          uni.showToast({ title: message, icon: 'none' })
-          rejectOnce(new Error(message))
-          return
-        }
-        let body: AdminResult<ImageOutput>
-        try {
-          body = parseUploadResponse(res.data)
-        }
-        catch {
-          options?.trace?.fail(`${options.stage || 'file'}.response.parse-fail`, new Error('上传响应解析失败'), {
-            httpStatus: res.statusCode,
-            provider: 'uni',
-          })
-          uni.showToast({ title: '上传失败', icon: 'none' })
-          rejectOnce(new Error('上传响应解析失败'))
-          return
-        }
-        if (body.code === 200) {
-          options?.trace?.info(`${options.stage || 'file'}.request.success`, {
+        url: `${getApiBaseUrl()}/api/sysFile/uploadFile`,
+        filePath,
+        name: 'file',
+        header: token ? { Authorization: `Bearer ${token}` } : {},
+        formData: buildUploadFormData(options),
+        success(res) {
+          if (settled)
+            return
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const message = `上传失败（HTTP ${res.statusCode}）`
+            options?.trace?.fail(`${options.stage || 'file'}.request.http-fail`, new Error(message), {
+              httpStatus: res.statusCode,
+              kind: options.fileType?.startsWith('image:') ? 'poster' : options.fileType === 'video' ? 'video' : 'file',
+              provider: 'uni',
+            })
+            uni.showToast({ title: message, icon: 'none' })
+            rejectOnce(new Error(message))
+            return
+          }
+          let body: AdminResult<ImageOutput>
+          try {
+            body = parseUploadResponse(res.data)
+          }
+          catch {
+            options?.trace?.fail(`${options.stage || 'file'}.response.parse-fail`, new Error('上传响应解析失败'), {
+              httpStatus: res.statusCode,
+              provider: 'uni',
+            })
+            uni.showToast({ title: '上传失败', icon: 'none' })
+            rejectOnce(new Error('上传响应解析失败'))
+            return
+          }
+          if (body.code === 200) {
+            options?.trace?.info(`${options.stage || 'file'}.request.success`, {
+              httpStatus: res.statusCode,
+              businessCode: body.code,
+              provider: 'uni',
+            })
+            resolveOnce(body.result)
+            return
+          }
+          options?.trace?.fail(`${options.stage || 'file'}.response.business-fail`, new Error(body.message || '上传失败'), {
             httpStatus: res.statusCode,
             businessCode: body.code,
             provider: 'uni',
           })
-          resolveOnce(body.result)
-          return
-        }
-        options?.trace?.fail(`${options.stage || 'file'}.response.business-fail`, new Error(body.message || '上传失败'), {
-          httpStatus: res.statusCode,
-          businessCode: body.code,
-          provider: 'uni',
-        })
-        uni.showToast({ title: body.message || '上传失败', icon: 'none' })
-        rejectOnce(new Error(body.message || '上传失败'))
-      },
-      fail(error) {
-        if (settled)
-          return
-        options?.trace?.fail(`${options.stage || 'file'}.request.fail`, error, { provider: 'uni' })
-        uni.showToast({ title: '上传失败', icon: 'none' })
-        rejectOnce(error)
-      },
+          uni.showToast({ title: body.message || '上传失败', icon: 'none' })
+          rejectOnce(new Error(body.message || '上传失败'))
+        },
+        fail(error) {
+          if (settled)
+            return
+          options?.trace?.fail(`${options.stage || 'file'}.request.fail`, error, { provider: 'uni' })
+          uni.showToast({ title: '上传失败', icon: 'none' })
+          rejectOnce(error)
+        },
       })
     }
     catch (error) {
@@ -196,10 +198,10 @@ export async function uploadMediaFile(filePath: string, options: UploadMediaFile
   let media: ImageOutput
   try {
     media = await uploadFile(filePath, {
-    belongId: options.belongId,
-    fileType: options.kind,
-    trace: options.trace,
-    stage: 'media',
+      belongId: options.belongId,
+      fileType: options.kind,
+      trace: options.trace,
+      stage: 'media',
     })
     options.trace?.info('media.upload.success', { kind: options.kind, provider: 'uni' })
   }
@@ -252,20 +254,39 @@ export function getPreviewUrl(fileId: string | number) {
 }
 
 export function downloadFile(fileId: string | number): Promise<string> {
-  const key = String(fileId)
-  const cached = fileCache.get(key)
-  if (cached)
-    return Promise.resolve(cached)
+  if (!cacheListenerRegistered) {
+    uni.$on('shenle:session-changed', fileCache.clear)
+    uni.$on('shenle:access-changed', fileCache.clear)
+    cacheListenerRegistered = true
+  }
+  return fileCache.download(String(fileId))
+}
 
+function localFileExists(path: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const manager = typeof uni.getFileSystemManager === 'function' ? uni.getFileSystemManager() : null
+      if (!manager || typeof manager.access !== 'function') {
+        resolve(false)
+        return
+      }
+      manager.access({ path, success: () => resolve(true), fail: () => resolve(false) })
+    }
+    catch {
+      resolve(false)
+    }
+  })
+}
+
+function downloadRemoteFile(key: string, context: { token: string }): Promise<string> {
   return new Promise((resolve, reject) => {
-    const token = uni.getStorageSync(SHENLE_TOKEN_KEY) as string
+    const token = context.token
     uni.downloadFile({
       url: getPreviewUrl(key),
       header: token ? { Authorization: `Bearer ${token}` } : {},
       success(res) {
         const tempPath = res.tempFilePath || ''
         if (res.statusCode === 200 && tempPath && !tempPath.toLowerCase().endsWith('.json')) {
-          fileCache.set(key, res.tempFilePath)
           resolve(res.tempFilePath)
           return
         }

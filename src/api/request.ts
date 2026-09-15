@@ -1,5 +1,6 @@
 import type { AdminResult } from '@/types/shenle'
 import { promptProtectedLogin } from '@/utils/login-flow'
+import { captureSessionContext, invalidateSessionContext, isCurrentSession, StaleSessionError } from '@/utils/session-context'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY, SHENLE_USER_KEY } from '@/utils/shenle'
 
 export type RequestMethod = 'GET' | 'POST'
@@ -53,7 +54,8 @@ function promptLoginAgain() {
 
 export function request<T>({ url, method = 'GET', data, header, auth = true, silent = false, timeout }: RequestOptions): Promise<T> {
   return new Promise((resolve, reject) => {
-    const token = uni.getStorageSync(SHENLE_TOKEN_KEY) as string
+    const context = captureSessionContext()
+    const token = context.token
     uni.request({
       url: method === 'GET'
         ? appendQuery(`${getApiBaseUrl()}${url}`, data)
@@ -67,8 +69,12 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
       },
       timeout,
       success(res) {
+        if (auth && !isCurrentSession(context)) {
+          reject(new StaleSessionError())
+          return
+        }
         const body = res.data as AdminResult<T>
-        if (body?.code === 200) {
+        if (res.statusCode >= 200 && res.statusCode < 300 && body?.code === 200) {
           resolve(body.result)
           return
         }
@@ -76,12 +82,15 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
         // 401=token 失效/过期；403=被强制下线（权限变更后进登录黑名单，JwtHandler context.Fail()）。
         // 本应用所有业务鉴权失败走 Oops.Oh()（200 信封 + 业务码），不会产生 403，故 403 只可能是黑名单 → 同样需重新登录。
         if (body?.code === 401 || body?.code === 403 || res.statusCode === 401 || res.statusCode === 403) {
-          uni.removeStorageSync(SHENLE_TOKEN_KEY)
-          uni.removeStorageSync(SHENLE_USER_KEY)
-          // 通知 auth store 同步清理内存登录态（storage 与 pinia 不同步会造成登录页/业务页来回横跳）
-          uni.$emit('shenle:unauthorized')
-          if (!silent) {
-            promptLoginAgain()
+          if (auth) {
+            invalidateSessionContext()
+            uni.removeStorageSync(SHENLE_TOKEN_KEY)
+            uni.removeStorageSync(SHENLE_USER_KEY)
+            uni.$emit('shenle:session-changed')
+            // 当前会话失效时同步Pinia；旧会话401已在回调开头排除。
+            uni.$emit('shenle:unauthorized')
+            if (!silent)
+              promptLoginAgain()
           }
           reject(new Error(body?.message || '未授权'))
           return
@@ -94,6 +103,10 @@ export function request<T>({ url, method = 'GET', data, header, auth = true, sil
         reject(new Error(message))
       },
       fail(error) {
+        if (auth && !isCurrentSession(context)) {
+          reject(new StaleSessionError())
+          return
+        }
         console.error('request fail:', error)
         if (!silent) {
           uni.showToast({ title: '网络异常，请稍后重试', icon: 'none' })
