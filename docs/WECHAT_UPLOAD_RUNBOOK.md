@@ -71,3 +71,27 @@ upload
 ```
 
 结果：AppID `wxb3b545efe13da99b`，包大小 `1,156,257` 字节，CLI 返回 `upload` 成功。
+
+## 已知问题与稳定上传通道（2026-09-15 验证）
+
+### 故障现象
+
+`cli.bat`（及同结构的 `wechatidecli.cmd`）在某些 shell 环境（如 ZCode 的 bash→cmd 链路）下会因首行 `chcp 65001` 触发 cmd 批处理重解析缺陷：路径/参数含中文时字节偏移错乱，`setlocal` 被反复重执行，报 `Maximum setlocal recursion level reached`，上传命令零输出挂起。Codex 的 PowerShell 环境此前未触发该边界。
+
+### 稳定命令（绕过 cmd，直调 exe，与 cli.bat 完全等价）
+
+先验证通道（只读）：
+
+```bash
+cd "/d/Program/Tencent/微信web开发者工具"
+BS='const e=process.argv[1],a=process.argv.slice(2).filter(function(x){return x!=="--electron"});if(!process.env.cwd)process.env.cwd=process.cwd();process.argv=[process.execPath,"--ms-enable-electron-run-as-node",e,"--electron"].concat(a);require(e)'
+ELECTRON_RUN_AS_NODE=1 timeout 60 ./微信开发者工具.exe -e "$BS" "D:\Program\Tencent\微信web开发者工具\resources\app.asar.unpacked\js\common\cli\index.js" islogin --port 9421
+# 预期输出 {"login":true}
+```
+
+上传时把 `islogin` 换成 `upload --project "<项目绝对路径>" --version "<版本>" --desc "<描述>" --port 9421 --lang zh`，其余不变。成功标准与上文一致（AppID + 包大小 + upload）。
+
+### 选择规则
+
+- PowerShell 交互环境：优先用标准 `cli.bat` 命令（历史验证）。
+- 任何智能体 shell（ZCode/Codex 等）出现挂起或 setlocal 递归报错时：直接改用本节稳定命令，不要反复重试 cli.bat。
