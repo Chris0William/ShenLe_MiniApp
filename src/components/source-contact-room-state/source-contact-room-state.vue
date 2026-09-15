@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  CreateCommunityShareCodeOutput,
   SaveSlCommunityOperationConfigInput,
   SaveSlPropertyOperationConfigInput,
   ShenLeId,
@@ -12,6 +13,7 @@ import type {
 } from '@/types/shenle'
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { getBuildingStats } from '@/api/building'
+import { createCommunityShareCode } from '@/api/landlord-share'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
 import {
   batchSavePropertyCommission,
@@ -48,6 +50,9 @@ interface OperationDraft {
   managementPackageMode: 1 | 2 | null
   networkPackageMode: 1 | 2 | 3 | 4 | null
   petPolicy: 1 | 2 | 3 | null
+  hideRentToGuest: boolean | null
+  hideCommissionToGuest: boolean | null
+  hideAnnouncementToGuest: boolean | null
   remark: string
 }
 
@@ -78,6 +83,9 @@ const draft = reactive<OperationDraft>({
   managementPackageMode: null,
   networkPackageMode: null,
   petPolicy: null,
+  hideRentToGuest: null,
+  hideCommissionToGuest: null,
+  hideAnnouncementToGuest: null,
   remark: '',
 })
 
@@ -333,7 +341,32 @@ function resetDraft(config?: SlCommunityOperationConfigOutput | SlPropertyOperat
   draft.managementPackageMode = propertyConfig?.effectiveManagementPackageMode ?? propertyConfig?.managementPackageMode ?? communityConfigValue?.managementPackageMode ?? null
   draft.networkPackageMode = propertyConfig?.effectiveNetworkPackageMode ?? propertyConfig?.networkPackageMode ?? communityConfigValue?.networkPackageMode ?? null
   draft.petPolicy = communityConfigValue?.petPolicy ?? null
+  draft.hideRentToGuest = communityConfigValue?.hideRentToGuest ?? null
+  draft.hideCommissionToGuest = communityConfigValue?.hideCommissionToGuest ?? null
+  draft.hideAnnouncementToGuest = communityConfigValue?.hideAnnouncementToGuest ?? null
   draft.remark = 'remark' in (config || {}) ? (config as SlCommunityOperationConfigOutput).remark || '' : ''
+}
+
+const communityCodeVisible = ref(false)
+const communityCodeLoading = ref(false)
+const communityCode = ref<CreateCommunityShareCodeOutput | null>(null)
+
+async function openCommunityShareCode(item: SlSourceContactCommunityOutput) {
+  selectedCommunity.value = item
+  communityCodeVisible.value = true
+  if (communityCodeLoading.value)
+    return
+  communityCodeLoading.value = true
+  try {
+    communityCode.value = await createCommunityShareCode(item.id)
+  }
+  catch (error) {
+    communityCodeVisible.value = false
+    uni.showToast({ title: error instanceof Error ? error.message : '二维码生成失败', icon: 'none' })
+  }
+  finally {
+    communityCodeLoading.value = false
+  }
 }
 
 async function openCommunityConfig(item?: SlSourceContactCommunityOutput) {
@@ -417,7 +450,15 @@ function buildOperationInput() {
       ...commissionFields,
     }
   }
-  return { ...input, ...commissionFields, networkFeeMode: draft.networkFeeMode, petPolicy: draft.petPolicy }
+  return {
+    ...input,
+    ...commissionFields,
+    networkFeeMode: draft.networkFeeMode,
+    petPolicy: draft.petPolicy,
+    hideRentToGuest: draft.hideRentToGuest,
+    hideCommissionToGuest: draft.hideCommissionToGuest,
+    hideAnnouncementToGuest: draft.hideAnnouncementToGuest,
+  }
 }
 
 function confirmCommunitySync(): Promise<boolean> {
@@ -681,6 +722,9 @@ defineExpose({ refresh, activate })
                 </view>
                 <wd-button size="small" plain icon="setting" @click.stop="openCommunityConfig(item)">
                   设置费用
+                </wd-button>
+                <wd-button size="small" plain icon="qr-code" @click.stop="openCommunityShareCode(item)">
+                  楼盘码
                 </wd-button>
               </view>
             </view>
@@ -969,6 +1013,29 @@ defineExpose({ refresh, activate })
           </view>
         </view>
 
+        <view v-if="screen === 'community-config'" class="setting-group guest-visibility">
+          <text class="form-section__title">租客可见性</text>
+          <text class="form-section__hint">打开后，游客扫码查看本楼盘时该项显示为 ???，业务员不受影响</text>
+          <view class="guest-switch-row" @tap="draft.hideRentToGuest = draft.hideRentToGuest === true ? null : true">
+            <text>租客可以看到租金</text>
+            <view class="guest-switch" :class="{ on: draft.hideRentToGuest === true }">
+              <view class="guest-switch__knob" />
+            </view>
+          </view>
+          <view class="guest-switch-row" @tap="draft.hideCommissionToGuest = draft.hideCommissionToGuest === true ? null : true">
+            <text>租客可以看到佣金</text>
+            <view class="guest-switch" :class="{ on: draft.hideCommissionToGuest === true }">
+              <view class="guest-switch__knob" />
+            </view>
+          </view>
+          <view class="guest-switch-row" @tap="draft.hideAnnouncementToGuest = draft.hideAnnouncementToGuest === true ? null : true">
+            <text>租客可以看到公告</text>
+            <view class="guest-switch" :class="{ on: draft.hideAnnouncementToGuest === true }">
+              <view class="guest-switch__knob" />
+            </view>
+          </view>
+        </view>
+
         <view v-if="screen === 'community-config'" class="form-section">
           <text class="form-section__title">公告</text>
           <textarea v-model="draft.remark" class="remark-input" :maxlength="500" placeholder="填写后将在业务员端展示" />
@@ -1061,6 +1128,29 @@ defineExpose({ refresh, activate })
       </view>
     </view>
   </view>
+
+<!-- 单楼盘分享二维码弹层 -->
+<view v-if="communityCodeVisible" class="code-mask" @tap="communityCodeVisible = false" @touchmove.stop.prevent />
+<view v-if="communityCodeVisible" class="code-pop" @touchmove.stop.prevent>
+  <view class="code-pop__head">
+    <text class="code-pop__title">楼盘分享码</text>
+    <view class="code-pop__close" @tap="communityCodeVisible = false">
+      <wd-icon name="close" size="18px" color="#72817b" />
+    </view>
+  </view>
+  <view v-if="communityCodeLoading && !communityCode" class="code-pop__loading">
+    <wd-loading color="#126b4f" />
+    <text>正在生成二维码</text>
+  </view>
+  <template v-else-if="communityCode">
+    <text class="code-pop__name">{{ communityCode.communityName }}</text>
+    <image class="code-pop__qr" :src="communityCode.qrPngBase64" mode="aspectFit" show-menu-by-longpress />
+    <text class="code-pop__hint">扫码后仅展示该楼盘的房源</text>
+    <wd-button plain block type="success" :loading="communityCodeLoading" @click="communityCode && openCommunityShareCode(selectedCommunity!)">
+      刷新二维码
+    </wd-button>
+  </template>
+</view>
 </template>
 
 <style scoped lang="scss">
@@ -1729,5 +1819,128 @@ defineExpose({ refresh, activate })
   flex-direction: column;
   font-size: 24rpx;
   gap: 14rpx;
+}
+
+/* 租客可见性三开关 */
+.guest-visibility {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+}
+
+.guest-switch-row {
+  display: flex;
+  min-height: 88rpx;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0;
+  color: #1e2f27;
+  font-size: 27rpx;
+}
+
+.guest-switch {
+  display: flex;
+  width: 88rpx;
+  height: 48rpx;
+  box-sizing: border-box;
+  align-items: center;
+  padding: 4rpx;
+  border-radius: 999rpx;
+  background: #dfe5e1;
+  transition: background 0.2s ease;
+}
+
+.guest-switch.on {
+  background: #126b4f;
+}
+
+.guest-switch__knob {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 999rpx;
+  background: #fff;
+  box-shadow: 0 4rpx 10rpx rgb(18 107 79 / 24%);
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.guest-switch.on .guest-switch__knob {
+  transform: translateX(40rpx);
+}
+
+/* 单楼盘分享码弹层 */
+.code-mask {
+  position: fixed;
+  z-index: 2500;
+  inset: 0;
+  background: rgb(17 24 39 / 55%);
+}
+
+.code-pop {
+  position: fixed;
+  z-index: 2501;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+  width: 620rpx;
+  padding: 34rpx 30rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  text-align: center;
+  transform: translate(-50%, -50%);
+}
+
+.code-pop__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.code-pop__title {
+  color: #1e2f27;
+  font-size: 31rpx;
+  font-weight: 850;
+}
+
+.code-pop__close {
+  display: flex;
+  width: 52rpx;
+  height: 52rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: #f2f6f3;
+}
+
+.code-pop__loading {
+  display: flex;
+  min-height: 460rpx;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 14rpx;
+  color: #72817b;
+  font-size: 23rpx;
+}
+
+.code-pop__name {
+  display: block;
+  margin-top: 16rpx;
+  color: #1e2f27;
+  font-size: 29rpx;
+  font-weight: 700;
+}
+
+.code-pop__qr {
+  display: block;
+  width: 420rpx;
+  height: 420rpx;
+  margin: 20rpx auto 12rpx;
+}
+
+.code-pop__hint {
+  display: block;
+  margin-bottom: 20rpx;
+  color: #72817b;
+  font-size: 22rpx;
 }
 </style>

@@ -1,9 +1,14 @@
-import type { CreateLandlordShareCodeOutput, ResolveLandlordShareOutput, ShenLeId } from '@/types/shenle'
+import type { CreateCommunityShareCodeOutput, CreateLandlordShareCodeOutput, ResolveLandlordShareOutput, ShenLeId } from '@/types/shenle'
 import { getApiBaseUrl, SHENLE_TOKEN_KEY } from '@/utils/shenle'
 import { post } from './request'
 
 export function createLandlordShareCode() {
   return post<CreateLandlordShareCodeOutput>('/api/slLandlordShare/createCode')
+}
+
+/** 生成单楼盘分享二维码；扫码后仅筛选出该楼盘 */
+export function createCommunityShareCode(communityId: ShenLeId) {
+  return post<CreateCommunityShareCodeOutput>('/api/slLandlordShare/createCommunityCode', { id: communityId })
 }
 
 export function resolveLandlordShare(shareToken: string) {

@@ -5,9 +5,9 @@ import { getRegionTree } from '@/api/region'
 import { getSupplyOperators } from '@/api/supply-activity'
 import { DISTANCE_OPTIONS } from '@/constants/shenle'
 import { getLocationOnceCached } from '@/utils/location-cache'
-import { clonePropertyFilters, sameId } from '@/utils/property-filter'
+import { clonePropertyFilters, hasLayoutFilter, layoutLabel, normalizeMulti, sameId } from '@/utils/property-filter'
 
-type DropdownName = 'location' | 'price' | 'type' | 'realtime' | 'special'
+type DropdownName = 'location' | 'price' | 'layout' | 'more'
 type RealtimeMode = NonNullable<PropertyFilterState['realtimeModes']>[number]
 type SpecialMode = NonNullable<PropertyFilterState['specialModes']>[number]
 
@@ -49,6 +49,43 @@ const SPECIAL_OPTIONS: Array<{ value: SpecialMode, label: string }> = [
   { value: 'dailyRent', label: '可日租' },
   { value: 'pet', label: '可养宠物' },
 ]
+const ORIENTATION_OPTIONS = [
+  { value: 'east', label: '东' },
+  { value: 'south', label: '南' },
+  { value: 'west', label: '西' },
+  { value: 'north', label: '北' },
+  { value: 'north-south', label: '南北' },
+  { value: 'southeast', label: '东南' },
+  { value: 'northeast', label: '东北' },
+  { value: 'southwest', label: '西南' },
+  { value: 'northwest', label: '西北' },
+] as const
+const DECORATION_OPTIONS = [
+  { value: 'rough', label: '毛坯' },
+  { value: 'simple', label: '简装' },
+  { value: 'fine', label: '精装' },
+  { value: 'luxury', label: '豪装' },
+] as const
+const RENTAL_TYPE_OPTIONS = [
+  { value: 'whole', label: '整租' },
+  { value: 'shared', label: '合租' },
+  { value: 'sublease', label: '转租' },
+] as const
+const DEPOSIT_RULE_OPTIONS = [
+  { value: '1-1', label: '押一付一' },
+  { value: '1-3', label: '押一付三' },
+  { value: '2-1', label: '押二付一' },
+  { value: '2-3', label: '押二付三' },
+  { value: 'half-year', label: '半年付' },
+  { value: 'yearly', label: '年付' },
+] as const
+const LAYOUT_ROOM_OPTIONS = [
+  { value: 1, label: '1' },
+  { value: 2, label: '2' },
+  { value: 3, label: '3' },
+  { value: 4, label: '4' },
+  { value: 5, label: '5+' },
+] as const
 const activeDropdown = ref<DropdownName | null>(null)
 const sheetVisible = ref(false)
 const draft = ref<PropertyFilterState>({})
@@ -80,9 +117,174 @@ const keywordActive = computed(() => !!props.keyword?.trim())
 const typeActive = computed(() => !!props.filters.communityTypes?.length)
 const realtimeActive = computed(() => !!props.filters.realtimeModes?.length)
 const specialActive = computed(() => !!props.filters.specialModes?.length)
+const layoutActive = computed(() => hasLayoutFilter(props.filters))
+const layoutTabLabel = computed(() => layoutActive.value ? layoutLabel(props.filters) : '户型')
+// 「筛选」总入口：类型/实时/特殊/朝向/装修/租赁/押付/面积 等任何一项激活即高亮
+const moreActive = computed(() =>
+  typeActive.value || realtimeActive.value || specialActive.value
+  || !!normalizeMulti(props.filters.orientations, props.filters.orientation)?.length
+  || !!normalizeMulti(props.filters.decorations, props.filters.decoration)?.length
+  || !!normalizeMulti(props.filters.rentalTypes, props.filters.rentalType)?.length
+  || !!normalizeMulti(props.filters.depositRules, props.filters.depositRule)?.length
+  || props.filters.minArea !== undefined || props.filters.maxArea !== undefined
+  || props.filters.communityId !== undefined
+  || props.filters.updatedWithinDays !== undefined
+  || !!props.filters.ownerUserId || !!props.filters.updaterUserId
+  || !!props.filters.sortBy,
+)
+const moreActiveCount = computed(() => {
+  let count = 0
+  if (typeActive.value) count++
+  if (realtimeActive.value) count++
+  if (specialActive.value) count++
+  if (normalizeMulti(props.filters.orientations, props.filters.orientation)?.length) count++
+  if (normalizeMulti(props.filters.decorations, props.filters.decoration)?.length) count++
+  if (normalizeMulti(props.filters.rentalTypes, props.filters.rentalType)?.length) count++
+  if (normalizeMulti(props.filters.depositRules, props.filters.depositRule)?.length) count++
+  if (props.filters.minArea !== undefined || props.filters.maxArea !== undefined) count++
+  if (props.filters.communityId) count++
+  return count
+})
 const typeLabel = computed(() => optionGroupLabel(props.filters.communityTypes, COMMUNITY_TYPE_OPTIONS, '类型'))
 const realtimeLabel = computed(() => optionGroupLabel(props.filters.realtimeModes, REALTIME_OPTIONS, '实时'))
 const specialLabel = computed(() => optionGroupLabel(props.filters.specialModes, SPECIAL_OPTIONS, '特殊'))
+
+/** 已选 chip 栏数据：所有激活条件 → 可删除标签 */
+interface ActiveChip {
+  key: string
+  label: string
+  remove: () => void
+}
+const activeChips = computed<ActiveChip[]>(() => {
+  const filters = props.filters
+  const chips: ActiveChip[] = []
+  const clone = () => clonePropertyFilters(filters)
+  if (filters.regionName || filters.regionId) {
+    chips.push({
+      key: 'region',
+      label: filters.regionName || '已选区域',
+      remove: () => { const next = clone(); next.regionId = undefined; next.regionName = undefined; applyChip(next) },
+    })
+  }
+  if (filters.distanceKm !== undefined) {
+    chips.push({
+      key: 'distance',
+      label: `附近${distanceLabel(filters.distanceKm)}`,
+      remove: () => { const next = clone(); next.distanceKm = undefined; applyChip(next) },
+    })
+  }
+  if (priceActive.value) {
+    chips.push({
+      key: 'price',
+      label: priceRangeLabel(filters, '租金'),
+      remove: () => { const next = clone(); next.minPrice = undefined; next.maxPrice = undefined; applyChip(next) },
+    })
+  }
+  if (layoutActive.value) {
+    chips.push({
+      key: 'layout',
+      label: layoutLabel(filters),
+      remove: () => {
+        const next = clone()
+        next.bedrooms = undefined
+        next.bedroomsList = undefined
+        next.livingRooms = undefined
+        next.bathrooms = undefined
+        applyChip(next)
+      },
+    })
+  }
+  const multiChip = (key: string, values: string[] | undefined, single: string | undefined, options: readonly { value: string, label: string }[], clear: (next: PropertyFilterState) => void) => {
+    const list = normalizeMulti(values, single)
+    if (!list?.length)
+      return
+    chips.push({
+      key,
+      label: list.map(value => options.find(item => item.value === value)?.label || value).join('/'),
+      remove: () => { const next = clone(); clear(next); applyChip(next) },
+    })
+  }
+  multiChip('orientation', filters.orientations, filters.orientation, ORIENTATION_OPTIONS,
+    next => { next.orientation = undefined; next.orientations = undefined })
+  multiChip('decoration', filters.decorations, filters.decoration, DECORATION_OPTIONS,
+    next => { next.decoration = undefined; next.decorations = undefined })
+  multiChip('rentalType', filters.rentalTypes, filters.rentalType, RENTAL_TYPE_OPTIONS,
+    next => { next.rentalType = undefined; next.rentalTypes = undefined })
+  multiChip('depositRule', filters.depositRules, filters.depositRule, DEPOSIT_RULE_OPTIONS,
+    next => { next.depositRule = undefined; next.depositRules = undefined })
+  if (filters.minArea !== undefined || filters.maxArea !== undefined) {
+    chips.push({
+      key: 'area',
+      label: rangeLabel(filters.minArea, filters.maxArea, '㎡'),
+      remove: () => { const next = clone(); next.minArea = undefined; next.maxArea = undefined; applyChip(next) },
+    })
+  }
+  if (filters.communityId) {
+    chips.push({
+      key: 'community',
+      label: filters.communityName || '已选楼盘',
+      remove: () => { const next = clone(); next.communityId = undefined; next.communityName = undefined; applyChip(next) },
+    })
+  }
+  if (typeActive.value) {
+    chips.push({
+      key: 'types',
+      label: optionGroupLabel(filters.communityTypes, COMMUNITY_TYPE_OPTIONS, '类型'),
+      remove: () => { const next = clone(); next.communityTypes = undefined; applyChip(next) },
+    })
+  }
+  if (realtimeActive.value) {
+    chips.push({
+      key: 'realtime',
+      label: optionGroupLabel(filters.realtimeModes, REALTIME_OPTIONS, '实时'),
+      remove: () => { const next = clone(); next.realtimeModes = undefined; applyChip(next) },
+    })
+  }
+  if (specialActive.value) {
+    chips.push({
+      key: 'special',
+      label: optionGroupLabel(filters.specialModes, SPECIAL_OPTIONS, '特殊'),
+      remove: () => { const next = clone(); next.specialModes = undefined; applyChip(next) },
+    })
+  }
+  if (filters.updatedWithinDays) {
+    chips.push({
+      key: 'updated',
+      label: `近${filters.updatedWithinDays}天更新`,
+      remove: () => { const next = clone(); next.updatedWithinDays = undefined; applyChip(next) },
+    })
+  }
+  if (filters.ownerUserId) {
+    chips.push({
+      key: 'owner',
+      label: `对接:${filters.ownerUserName || '已选'}`,
+      remove: () => { const next = clone(); next.ownerUserId = undefined; next.ownerUserName = undefined; applyChip(next) },
+    })
+  }
+  if (filters.updaterUserId) {
+    chips.push({
+      key: 'updater',
+      label: `更新:${filters.updaterUserName || '已选'}`,
+      remove: () => { const next = clone(); next.updaterUserId = undefined; next.updaterUserName = undefined; applyChip(next) },
+    })
+  }
+  if (filters.onlyContactedByMe) {
+    chips.push({ key: 'mineContact', label: '仅看我对接', remove: () => { const next = clone(); next.onlyContactedByMe = undefined; applyChip(next) } })
+  }
+  if (filters.onlyMaintainedByMe) {
+    chips.push({ key: 'mineMaintain', label: '仅看我维护', remove: () => { const next = clone(); next.onlyMaintainedByMe = undefined; applyChip(next) } })
+  }
+  return chips
+})
+
+function applyChip(next: PropertyFilterState) {
+  if (guardInteraction())
+    return
+  draft.value = clonePropertyFilters(next)
+  activeDropdown.value = null
+  sheetVisible.value = false
+  emit('confirm', clonePropertyFilters(next), props.keyword)
+}
 
 const locationLabel = computed(() => {
   const parts: string[] = []
@@ -325,6 +527,22 @@ function toggleArrayValue<T>(values: T[] | undefined, value: T) {
   return next.length ? next : undefined
 }
 
+/** 户型三段多选（室/厅/卫） */
+function toggleLayoutValue(key: 'bedroomsList' | 'livingRooms' | 'bathrooms', value: number) {
+  const next = toggleArrayValue(draft.value[key], value)
+  draft.value[key] = next
+  if (key === 'bedroomsList')
+    draft.value.bedrooms = next?.length === 1 ? next[0] : undefined
+}
+
+/** 多选开关（朝向/装修/租赁/押付）：写多选数组并清空旧单选 */
+function toggleMultiValue(key: 'orientations' | 'decorations' | 'rentalTypes' | 'depositRules', value: string) {
+  const singleKey = ({ orientations: 'orientation', decorations: 'decoration', rentalTypes: 'rentalType', depositRules: 'depositRule' })[key]
+  const next = toggleArrayValue(draft.value[key], value)
+  draft.value[key] = next
+  draft.value[singleKey] = next?.length === 1 ? next[0] : undefined
+}
+
 function toggleCommunityType(value: number) {
   draft.value.communityTypes = toggleArrayValue(draft.value.communityTypes, value)
 }
@@ -371,12 +589,27 @@ function resetCurrent() {
     clearLocation()
   if (activeDropdown.value === 'price')
     clearPrice()
-  if (activeDropdown.value === 'type')
+  if (activeDropdown.value === 'layout') {
+    draft.value.bedrooms = undefined
+    draft.value.bedroomsList = undefined
+    draft.value.livingRooms = undefined
+    draft.value.bathrooms = undefined
+  }
+  if (activeDropdown.value === 'more') {
     draft.value.communityTypes = undefined
-  if (activeDropdown.value === 'realtime')
     draft.value.realtimeModes = undefined
-  if (activeDropdown.value === 'special')
     draft.value.specialModes = undefined
+    draft.value.orientation = undefined
+    draft.value.orientations = undefined
+    draft.value.decoration = undefined
+    draft.value.decorations = undefined
+    draft.value.rentalType = undefined
+    draft.value.rentalTypes = undefined
+    draft.value.depositRule = undefined
+    draft.value.depositRules = undefined
+    draft.value.minArea = undefined
+    draft.value.maxArea = undefined
+  }
   confirmCurrent()
 }
 
@@ -418,6 +651,16 @@ function distanceLabel(value?: number) {
   if (value === undefined)
     return '不限'
   return DISTANCE_OPTIONS.find(item => item.value === value)?.label || (value < 1 ? `${Math.round(value * 1000)}m` : `${value}km`)
+}
+
+function rangeLabel(min?: number, max?: number, unit = '') {
+  if (min === undefined && max === undefined)
+    return ''
+  if (min !== undefined && max !== undefined)
+    return `${min}-${max}${unit}`
+  if (min !== undefined)
+    return `${min}${unit}以上`
+  return `${max}${unit}以下`
 }
 
 function priceBoundaryLabel(value: number) {
@@ -512,30 +755,21 @@ function onThumbTouchEnd() {
       </view>
       <view
         class="filter-tab"
-        :class="{ active: typeActive, open: activeDropdown === 'type' }"
-        @tap="toggleDropdown('type')"
+        :class="{ active: layoutActive, open: activeDropdown === 'layout' }"
+        @tap="toggleDropdown('layout')"
       >
-        <text class="filter-tab__label">{{ typeLabel }}</text>
+        <text class="filter-tab__label">{{ layoutTabLabel }}</text>
         <view class="filter-tab__arrow">
           <wd-icon name="arrow-down" size="12px" color="currentColor" />
         </view>
       </view>
       <view
         class="filter-tab"
-        :class="{ active: realtimeActive, open: activeDropdown === 'realtime' }"
-        @tap="toggleDropdown('realtime')"
+        :class="{ active: moreActive, open: activeDropdown === 'more' }"
+        @tap="toggleDropdown('more')"
       >
-        <text class="filter-tab__label">{{ realtimeLabel }}</text>
-        <view class="filter-tab__arrow">
-          <wd-icon name="arrow-down" size="12px" color="currentColor" />
-        </view>
-      </view>
-      <view
-        class="filter-tab"
-        :class="{ active: specialActive, open: activeDropdown === 'special' }"
-        @tap="toggleDropdown('special')"
-      >
-        <text class="filter-tab__label">{{ specialLabel }}</text>
+        <text class="filter-tab__label">筛选</text>
+        <view v-if="moreActiveCount > 0" class="filter-tab__badge">{{ moreActiveCount }}</view>
         <view class="filter-tab__arrow">
           <wd-icon name="arrow-down" size="12px" color="currentColor" />
         </view>
@@ -547,6 +781,18 @@ function onThumbTouchEnd() {
         <wd-icon name="search" size="18px" :color="keywordActive || sheetVisible ? '#2f66ee' : '#293241'" />
       </view>
     </view>
+
+    <!-- 已选条件 chip 栏：任何筛选激活时显示，点 × 即时移除 -->
+    <scroll-view v-if="activeChips.length" scroll-x class="active-chip-bar" enhanced :show-scrollbar="false">
+      <view class="active-chip-bar__inner">
+        <view v-for="chip in activeChips" :key="chip.key" class="active-chip" @tap="chip.remove()">
+          <text class="active-chip__label">{{ chip.label }}</text>
+          <view class="active-chip__close" aria-label="移除筛选条件">
+            <wd-icon name="close" size="11px" color="#126b4f" />
+          </view>
+        </view>
+      </view>
+    </scroll-view>
 
     <view v-if="showMineFilters && !guarded" class="mine-quick-row">
       <view
@@ -660,49 +906,148 @@ function onThumbTouchEnd() {
         </view>
       </view>
 
-      <view v-if="activeDropdown === 'realtime'" class="dropdown-section dropdown-section--short">
-        <text class="section-title">实时盘源</text>
-        <view class="option-row">
-          <view
-            v-for="item in REALTIME_OPTIONS"
-            :key="item.value"
-            class="filter-chip"
-            :class="{ active: draft.realtimeModes?.includes(item.value) }"
-            @tap="toggleRealtimeMode(item.value)"
-          >
-            <text>{{ item.label }}</text>
+      <view v-if="activeDropdown === 'layout'" class="dropdown-section dropdown-section--short">
+        <view class="layout-head">
+          <text class="section-title">选择户型</text>
+          <text class="layout-head__hint">可多选，同段为「或」关系</text>
+        </view>
+        <view class="layout-group">
+          <text class="layout-group__tag">室</text>
+          <view class="option-row option-row--tight">
+            <view
+              v-for="item in LAYOUT_ROOM_OPTIONS"
+              :key="`b${item.value}`"
+              class="filter-chip filter-chip--square"
+              :class="{ active: draft.bedroomsList?.includes(item.value) }"
+              @tap="toggleLayoutValue('bedroomsList', item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+        </view>
+        <view class="layout-group">
+          <text class="layout-group__tag">厅</text>
+          <view class="option-row option-row--tight">
+            <view
+              v-for="item in LAYOUT_ROOM_OPTIONS.slice(0, 4)"
+              :key="`l${item.value}`"
+              class="filter-chip filter-chip--square"
+              :class="{ active: draft.livingRooms?.includes(item.value) }"
+              @tap="toggleLayoutValue('livingRooms', item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+        </view>
+        <view class="layout-group">
+          <text class="layout-group__tag">卫</text>
+          <view class="option-row option-row--tight">
+            <view
+              v-for="item in LAYOUT_ROOM_OPTIONS.slice(0, 4)"
+              :key="`w${item.value}`"
+              class="filter-chip filter-chip--square"
+              :class="{ active: draft.bathrooms?.includes(item.value) }"
+              @tap="toggleLayoutValue('bathrooms', item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
           </view>
         </view>
       </view>
 
-      <view v-if="activeDropdown === 'type'" class="dropdown-section dropdown-section--short">
-        <text class="section-title">楼盘类型</text>
-        <view class="option-row">
-          <view
-            v-for="item in COMMUNITY_TYPE_OPTIONS"
-            :key="item.value"
-            class="filter-chip"
-            :class="{ active: draft.communityTypes?.includes(item.value) }"
-            @tap="toggleCommunityType(item.value)"
-          >
-            <text>{{ item.label }}</text>
+      <view v-if="activeDropdown === 'more'" class="dropdown-section dropdown-section--scroll">
+        <scroll-view scroll-y class="more-scroll">
+          <text class="section-title">楼盘类型</text>
+          <view class="option-row">
+            <view
+              v-for="item in COMMUNITY_TYPE_OPTIONS"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: draft.communityTypes?.includes(item.value) }"
+              @tap="toggleCommunityType(item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
           </view>
-        </view>
-      </view>
 
-      <view v-if="activeDropdown === 'special'" class="dropdown-section dropdown-section--short">
-        <text class="section-title">特殊条件</text>
-        <view class="option-row">
-          <view
-            v-for="item in SPECIAL_OPTIONS"
-            :key="item.value"
-            class="filter-chip"
-            :class="{ active: draft.specialModes?.includes(item.value) }"
-            @tap="toggleSpecialMode(item.value)"
-          >
-            <text>{{ item.label }}</text>
+          <text class="section-title">朝向</text>
+          <view class="option-row">
+            <view
+              v-for="item in ORIENTATION_OPTIONS"
+              :key="item.value"
+              class="filter-chip filter-chip--square"
+              :class="{ active: normalizeMulti(draft.orientations, draft.orientation)?.includes(item.value) }"
+              @tap="toggleMultiValue('orientations', item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
           </view>
-        </view>
+
+          <text class="section-title">装修</text>
+          <view class="option-row">
+            <view
+              v-for="item in DECORATION_OPTIONS"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: normalizeMulti(draft.decorations, draft.decoration)?.includes(item.value) }"
+              @tap="toggleMultiValue('decorations', item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+
+          <text class="section-title">租赁方式</text>
+          <view class="option-row">
+            <view
+              v-for="item in RENTAL_TYPE_OPTIONS"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: normalizeMulti(draft.rentalTypes, draft.rentalType)?.includes(item.value) }"
+              @tap="toggleMultiValue('rentalTypes', item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+
+          <text class="section-title">押付方式</text>
+          <view class="option-row">
+            <view
+              v-for="item in DEPOSIT_RULE_OPTIONS"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: normalizeMulti(draft.depositRules, draft.depositRule)?.includes(item.value) }"
+              @tap="toggleMultiValue('depositRules', item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+
+          <text class="section-title">实时盘源</text>
+          <view class="option-row">
+            <view
+              v-for="item in REALTIME_OPTIONS"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: draft.realtimeModes?.includes(item.value) }"
+              @tap="toggleRealtimeMode(item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+
+          <text class="section-title">特殊条件</text>
+          <view class="option-row">
+            <view
+              v-for="item in SPECIAL_OPTIONS"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: draft.specialModes?.includes(item.value) }"
+              @tap="toggleSpecialMode(item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+        </scroll-view>
       </view>
 
       <view class="panel-actions">
@@ -843,6 +1188,112 @@ function onThumbTouchEnd() {
                 class="filter-chip"
                 :class="{ active: draft.communityTypes?.includes(item.value) }"
                 @tap="toggleCommunityType(item.value)"
+              >
+                <text>{{ item.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">户型</text>
+            <view class="layout-group">
+              <text class="layout-group__tag">室</text>
+              <view class="option-row option-row--tight">
+                <view
+                  v-for="item in LAYOUT_ROOM_OPTIONS"
+                  :key="`sb${item.value}`"
+                  class="filter-chip filter-chip--square"
+                  :class="{ active: draft.bedroomsList?.includes(item.value) }"
+                  @tap="toggleLayoutValue('bedroomsList', item.value)"
+                >
+                  <text>{{ item.label }}</text>
+                </view>
+              </view>
+            </view>
+            <view class="layout-group">
+              <text class="layout-group__tag">厅</text>
+              <view class="option-row option-row--tight">
+                <view
+                  v-for="item in LAYOUT_ROOM_OPTIONS.slice(0, 4)"
+                  :key="`sl${item.value}`"
+                  class="filter-chip filter-chip--square"
+                  :class="{ active: draft.livingRooms?.includes(item.value) }"
+                  @tap="toggleLayoutValue('livingRooms', item.value)"
+                >
+                  <text>{{ item.label }}</text>
+                </view>
+              </view>
+            </view>
+            <view class="layout-group">
+              <text class="layout-group__tag">卫</text>
+              <view class="option-row option-row--tight">
+                <view
+                  v-for="item in LAYOUT_ROOM_OPTIONS.slice(0, 4)"
+                  :key="`sw${item.value}`"
+                  class="filter-chip filter-chip--square"
+                  :class="{ active: draft.bathrooms?.includes(item.value) }"
+                  @tap="toggleLayoutValue('bathrooms', item.value)"
+                >
+                  <text>{{ item.label }}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">朝向</text>
+            <view class="option-row">
+              <view
+                v-for="item in ORIENTATION_OPTIONS"
+                :key="item.value"
+                class="filter-chip filter-chip--square"
+                :class="{ active: normalizeMulti(draft.orientations, draft.orientation)?.includes(item.value) }"
+                @tap="toggleMultiValue('orientations', item.value)"
+              >
+                <text>{{ item.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">装修</text>
+            <view class="option-row">
+              <view
+                v-for="item in DECORATION_OPTIONS"
+                :key="item.value"
+                class="filter-chip"
+                :class="{ active: normalizeMulti(draft.decorations, draft.decoration)?.includes(item.value) }"
+                @tap="toggleMultiValue('decorations', item.value)"
+              >
+                <text>{{ item.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">租赁方式</text>
+            <view class="option-row">
+              <view
+                v-for="item in RENTAL_TYPE_OPTIONS"
+                :key="item.value"
+                class="filter-chip"
+                :class="{ active: normalizeMulti(draft.rentalTypes, draft.rentalType)?.includes(item.value) }"
+                @tap="toggleMultiValue('rentalTypes', item.value)"
+              >
+                <text>{{ item.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
+            <text class="sheet-block__title">押付方式</text>
+            <view class="option-row">
+              <view
+                v-for="item in DEPOSIT_RULE_OPTIONS"
+                :key="item.value"
+                class="filter-chip"
+                :class="{ active: normalizeMulti(draft.depositRules, draft.depositRule)?.includes(item.value) }"
+                @tap="toggleMultiValue('depositRules', item.value)"
               >
                 <text>{{ item.label }}</text>
               </view>
@@ -1423,5 +1874,132 @@ function onThumbTouchEnd() {
 
 .sheet-block {
   padding: 26rpx 0 6rpx;
+}
+
+/* ===== 已选条件 chip 栏 ===== */
+.active-chip-bar {
+  position: relative;
+  z-index: 84;
+  margin-top: 14rpx;
+  white-space: nowrap;
+}
+
+.active-chip-bar__inner {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 14rpx;
+  padding: 6rpx 2rpx;
+}
+
+.active-chip {
+  display: inline-flex;
+  height: 52rpx;
+  align-items: center;
+  gap: 10rpx;
+  box-sizing: border-box;
+  padding: 0 10rpx 0 20rpx;
+  border: 1rpx solid rgb(18 107 79 / 22%);
+  border-radius: 999rpx;
+  background: #eef7f1;
+  animation: chip-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes chip-in {
+  from {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.active-chip__label {
+  max-width: 240rpx;
+  overflow: hidden;
+  color: #126b4f;
+  font-size: 23rpx;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-chip__close {
+  display: flex;
+  width: 36rpx;
+  height: 36rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgb(18 107 79 / 10%);
+}
+
+/* ===== 顶部 tab 数量角标 ===== */
+.filter-tab__badge {
+  min-width: 30rpx;
+  height: 30rpx;
+  box-sizing: border-box;
+  padding: 0 8rpx;
+  border-radius: 999rpx;
+  background: #e4a11b;
+  color: #fff;
+  font-size: 19rpx;
+  font-weight: 800;
+  line-height: 30rpx;
+  text-align: center;
+}
+
+/* ===== 户型三段选择器 ===== */
+.layout-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.layout-head__hint {
+  color: #8b95a5;
+  font-size: 22rpx;
+}
+
+.layout-group {
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 14rpx 0;
+}
+
+.layout-group__tag {
+  flex: 0 0 44rpx;
+  color: #111827;
+  font-size: 26rpx;
+  font-weight: 800;
+  text-align: center;
+}
+
+.option-row--tight {
+  gap: 14rpx;
+}
+
+.filter-chip--square {
+  min-width: 84rpx;
+  padding: 16rpx 0;
+}
+
+/* ===== 「筛选」总下拉：可滚动 ===== */
+.dropdown-section--scroll {
+  padding: 28rpx 26rpx 0;
+}
+
+.more-scroll {
+  max-height: 620rpx;
+}
+
+.more-scroll .section-title {
+  margin-top: 22rpx;
+}
+
+.more-scroll .section-title:first-child {
+  margin-top: 0;
 }
 </style>

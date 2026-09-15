@@ -16,28 +16,74 @@ export function clonePropertyFilters(filters?: PropertyFilterState): PropertyFil
     communityTypes: filters?.communityTypes ? [...filters.communityTypes] : undefined,
     realtimeModes: filters?.realtimeModes ? [...filters.realtimeModes] : undefined,
     specialModes: filters?.specialModes ? [...filters.specialModes] : undefined,
+    bedroomsList: filters?.bedroomsList ? [...filters.bedroomsList] : undefined,
+    livingRooms: filters?.livingRooms ? [...filters.livingRooms] : undefined,
+    bathrooms: filters?.bathrooms ? [...filters.bathrooms] : undefined,
+    orientations: filters?.orientations ? [...filters.orientations] : undefined,
+    decorations: filters?.decorations ? [...filters.decorations] : undefined,
+    rentalTypes: filters?.rentalTypes ? [...filters.rentalTypes] : undefined,
+    depositRules: filters?.depositRules ? [...filters.depositRules] : undefined,
   }
+}
+
+/** 合并单选与多选（多选优先），生成统一多选集合 */
+export function normalizeMulti(values?: string[], single?: string): string[] | undefined {
+  const list = (values || []).filter(Boolean)
+  if (list.length > 0)
+    return [...new Set(list)]
+  return single ? [single] : undefined
+}
+
+/** 户型三段合并：返回室数统一集合（旧单选兜底） */
+export function normalizeBedrooms(filters: PropertyFilterState): number[] | undefined {
+  const list = filters.bedroomsList?.filter(value => value > 0) || []
+  if (list.length > 0)
+    return [...new Set(list)]
+  return filters.bedrooms ? [filters.bedrooms] : undefined
+}
+
+/** 户型标签：x室x厅x卫（按需省略未选段） */
+export function layoutLabel(filters: PropertyFilterState): string {
+  const parts: string[] = []
+  const bedrooms = normalizeBedrooms(filters)
+  if (bedrooms?.length === 1)
+    parts.push(`${bedrooms[0]}室`)
+  else if (bedrooms?.length)
+    parts.push(`${bedrooms.join('/')}室`)
+  if (filters.livingRooms?.length === 1)
+    parts.push(`${filters.livingRooms[0]}厅`)
+  else if (filters.livingRooms?.length)
+    parts.push(`${filters.livingRooms.join('/')}厅`)
+  if (filters.bathrooms?.length === 1)
+    parts.push(`${filters.bathrooms[0]}卫`)
+  else if (filters.bathrooms?.length)
+    parts.push(`${filters.bathrooms.join('/')}卫`)
+  return parts.join('')
+}
+
+export function hasLayoutFilter(filters: PropertyFilterState): boolean {
+  return !!(normalizeBedrooms(filters)?.length || filters.livingRooms?.length || filters.bathrooms?.length)
 }
 
 export function countPropertyFilters(filters: PropertyFilterState) {
   let count = 0
   if (filters.regionId || filters.distanceKm !== undefined)
     count += 1
-  if (filters.bedrooms)
+  if (hasLayoutFilter(filters))
     count += 1
   if (filters.minPrice !== undefined || filters.maxPrice !== undefined)
     count += 1
-  if (filters.orientation)
+  if (normalizeMulti(filters.orientations, filters.orientation))
     count += 1
-  if (filters.decoration)
+  if (normalizeMulti(filters.decorations, filters.decoration))
     count += 1
-  if (filters.rentalType)
+  if (normalizeMulti(filters.rentalTypes, filters.rentalType))
     count += 1
   if (filters.minArea !== undefined || filters.maxArea !== undefined)
     count += 1
   if (filters.communityId)
     count += 1
-  if (filters.depositRule)
+  if (normalizeMulti(filters.depositRules, filters.depositRule))
     count += 1
   return count
 }
@@ -87,25 +133,40 @@ export function hasPropertyFilter(filters: PropertyFilterState, key: string) {
 }
 
 export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<PageSlPropertyInput, 'page' | 'pageSize'> {
+  const bedrooms = normalizeBedrooms(filters)
+  const orientations = normalizeMulti(filters.orientations, filters.orientation)
+  const decorations = normalizeMulti(filters.decorations, filters.decoration)
+  const rentalTypes = normalizeMulti(filters.rentalTypes, filters.rentalType)
+  const depositRules = normalizeMulti(filters.depositRules, filters.depositRule)
   return {
     regionId: filters.regionId,
     userLng: filters.userLng,
     userLat: filters.userLat,
     distanceKm: filters.distanceKm,
     communityId: filters.communityId,
-    bedrooms: filters.bedrooms,
+    bedrooms: bedrooms?.length === 1 ? bedrooms[0] : undefined,
+    bedroomsList: bedrooms,
+    livingRooms: filters.livingRooms?.length === 1 ? filters.livingRooms[0] : undefined,
+    livingRoomsList: filters.livingRooms,
+    bathrooms: filters.bathrooms?.length === 1 ? filters.bathrooms[0] : undefined,
+    bathroomsList: filters.bathrooms,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
-    orientation: filters.orientation,
-    decoration: filters.decoration,
-    rentalType: filters.rentalType,
+    orientation: orientations?.length === 1 ? orientations[0] : undefined,
+    orientations,
+    decoration: decorations?.length === 1 ? decorations[0] : undefined,
+    decorations,
+    rentalType: rentalTypes?.length === 1 ? rentalTypes[0] : undefined,
+    rentalTypes,
     minArea: filters.minArea,
     maxArea: filters.maxArea,
-    depositRule: filters.depositRule,
+    depositRule: depositRules?.length === 1 ? depositRules[0] : undefined,
+    depositRules,
   }
 }
 
 export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<PageSlCommunityInput, 'page' | 'pageSize'> {
+  const bedrooms = normalizeBedrooms(filters)
   return {
     regionId: filters.regionId,
     userLng: filters.userLng,
@@ -113,6 +174,15 @@ export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<Pa
     distanceKm: filters.distanceKm,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
+    bedroomsList: bedrooms,
+    livingRooms: filters.livingRooms,
+    bathrooms: filters.bathrooms,
+    orientations: normalizeMulti(filters.orientations, filters.orientation),
+    decorations: normalizeMulti(filters.decorations, filters.decoration),
+    rentalTypes: normalizeMulti(filters.rentalTypes, filters.rentalType),
+    minArea: filters.minArea,
+    maxArea: filters.maxArea,
+    depositRules: normalizeMulti(filters.depositRules, filters.depositRule),
     updatedWithinDays: filters.updatedWithinDays,
     ownerUserId: filters.ownerUserId,
     updaterUserId: filters.updaterUserId,
@@ -166,22 +236,26 @@ export function getPropertyFilterLabels(filters: PropertyFilterState, maps: {
   }
   if (filters.communityId)
     labels.push(maps.communityName || filters.communityName || '已选楼盘')
-  if (filters.bedrooms)
-    labels.push(optionLabel(BEDROOM_OPTIONS, filters.bedrooms) || `${filters.bedrooms}室`)
+  if (hasLayoutFilter(filters))
+    labels.push(layoutLabel(filters))
   if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
     labels.push(PRICE_SEGMENTS.find(item => item.min === filters.minPrice && item.max === filters.maxPrice)?.label || rangeLabel(filters.minPrice, filters.maxPrice, '元'))
   }
-  if (filters.orientation)
-    labels.push(optionLabel(ORIENTATION_OPTIONS, filters.orientation) || filters.orientation)
-  if (filters.decoration)
-    labels.push(optionLabel(DECORATION_OPTIONS, filters.decoration) || filters.decoration)
-  if (filters.rentalType)
-    labels.push(optionLabel(RENTAL_TYPE_OPTIONS, filters.rentalType) || filters.rentalType)
+  const orientations = normalizeMulti(filters.orientations, filters.orientation)
+  if (orientations)
+    labels.push(orientations.map(value => optionLabel(ORIENTATION_OPTIONS, value) || value).join('/'))
+  const decorations = normalizeMulti(filters.decorations, filters.decoration)
+  if (decorations)
+    labels.push(decorations.map(value => optionLabel(DECORATION_OPTIONS, value) || value).join('/'))
+  const rentalTypes = normalizeMulti(filters.rentalTypes, filters.rentalType)
+  if (rentalTypes)
+    labels.push(rentalTypes.map(value => optionLabel(RENTAL_TYPE_OPTIONS, value) || value).join('/'))
   if (filters.minArea !== undefined || filters.maxArea !== undefined) {
     labels.push(AREA_SEGMENTS.find(item => item.min === filters.minArea && item.max === filters.maxArea)?.label || rangeLabel(filters.minArea, filters.maxArea, '㎡'))
   }
-  if (filters.depositRule)
-    labels.push(optionLabel(DEPOSIT_RULE_OPTIONS, filters.depositRule) || filters.depositRule)
+  const depositRules = normalizeMulti(filters.depositRules, filters.depositRule)
+  if (depositRules)
+    labels.push(depositRules.map(value => optionLabel(DEPOSIT_RULE_OPTIONS, value) || value).join('/'))
   return labels
 }
 

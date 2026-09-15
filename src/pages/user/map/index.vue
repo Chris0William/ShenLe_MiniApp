@@ -91,7 +91,6 @@ let leaderboardRequestVersion = 0
 let communityLoadVersion = 0
 let landlordFitTimer: ReturnType<typeof setTimeout> | null = null
 let shareActivationPromise: Promise<boolean> | null = null
-let shareApplyRedirected = false
 
 const leaderboardDayOptions = [1, 3, 7, 30]
 const allLeaderboardSortOptions = [
@@ -175,6 +174,8 @@ let markerMeta: MarkerMeta[] = []
 let regionTimer: ReturnType<typeof setTimeout> | null = null
 
 function rentText(item: SlCommunityOutput) {
+  if (item.rentMasked)
+    return '???'
   const min = Number(item.minRentPrice)
   const max = Number(item.maxRentPrice)
   if (min > 0 && max > 0 && max !== min)
@@ -219,6 +220,10 @@ function moneyText(value?: number | null, unit = '元') {
 }
 
 function showCommunityAnnouncement(item: SlCommunityOutput) {
+  if (item.announcementMasked) {
+    uni.showToast({ title: '该楼盘公告仅对审核通过的用户可见', icon: 'none' })
+    return
+  }
   const announcement = item.announcement?.trim()
   if (!announcement)
     return
@@ -230,7 +235,9 @@ function showCommunityAnnouncement(item: SlCommunityOutput) {
   })
 }
 
-function commissionText(item: { lowestHalfYearCommissionPercent?: number | null, highestHalfYearCommissionPercent?: number | null, lowestOneYearCommissionPercent?: number | null, highestOneYearCommissionPercent?: number | null }) {
+function commissionText(item: { commissionMasked?: boolean, lowestHalfYearCommissionPercent?: number | null, highestHalfYearCommissionPercent?: number | null, lowestOneYearCommissionPercent?: number | null, highestOneYearCommissionPercent?: number | null }) {
+  if (item.commissionMasked)
+    return '???'
   return `半年 ${formatCommissionRange(item.lowestHalfYearCommissionPercent, item.highestHalfYearCommissionPercent)} · 一年 ${formatCommissionRange(item.lowestOneYearCommissionPercent, item.highestOneYearCommissionPercent)}`
 }
 
@@ -351,20 +358,13 @@ async function activateLandlordShare() {
       requestLogin({ reason: '登录后查看房东分享的房源', redirect: '/pages/user/map/index' })
       return true
     }
+    // 有效令牌即临时授权：登录用户（含游客）直接筛选该房东楼盘，不再跳申请页
     const result = await landlordShare.resolvePending()
     if (!result) {
       uni.showToast({ title: '房东分享二维码已失效', icon: 'none' })
       landlordShare.clear()
       return false
     }
-    if (result.requiresApproval) {
-      if (!shareApplyRedirected) {
-        shareApplyRedirected = true
-        uni.navigateTo({ url: '/pages/common/apply/index' })
-      }
-      return true
-    }
-    shareApplyRedirected = false
     await loadCommunities(true)
     await loadCommunityTickerData()
     return true

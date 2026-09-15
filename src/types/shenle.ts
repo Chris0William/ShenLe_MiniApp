@@ -57,19 +57,26 @@ export interface PageSlPropertyInput extends BasePageInput {
   regionId?: ShenLeId
   status?: number
   rentalType?: string
+  rentalTypes?: string[]
   minPrice?: number
   maxPrice?: number
   bedrooms?: number
+  bedroomsList?: number[]
   livingRooms?: number
+  livingRoomsList?: number[]
   bathrooms?: number
+  bathroomsList?: number[]
   minFloor?: number
   maxFloor?: number
   roomNoSuffix?: string
   orientation?: string
+  orientations?: string[]
   decoration?: string
+  decorations?: string[]
   minArea?: number
   maxArea?: number
   depositRule?: string
+  depositRules?: string[]
   userLng?: number
   userLat?: number
   distanceKm?: number
@@ -95,16 +102,23 @@ export interface PropertyFilterState {
   userLat?: number
   distanceKm?: number
   bedrooms?: number
+  bedroomsList?: number[]
+  livingRooms?: number[]
+  bathrooms?: number[]
   minPrice?: number
   maxPrice?: number
   orientation?: string
+  orientations?: string[]
   decoration?: string
+  decorations?: string[]
   rentalType?: string
+  rentalTypes?: string[]
   minArea?: number
   maxArea?: number
   communityId?: ShenLeId
   communityName?: string
   depositRule?: string
+  depositRules?: string[]
   updatedWithinDays?: 1 | 3 | 7
   ownerUserId?: ShenLeId
   ownerUserName?: string
@@ -355,12 +369,19 @@ export interface PageSlCommunityInput extends BasePageInput {
   minPrice?: number
   maxPrice?: number
   bedrooms?: number
+  bedroomsList?: number[]
+  livingRooms?: number[]
+  bathrooms?: number[]
   orientation?: string
+  orientations?: string[]
   decoration?: string
+  decorations?: string[]
   rentalType?: string
+  rentalTypes?: string[]
   minArea?: number
   maxArea?: number
   depositRule?: string
+  depositRules?: string[]
   userLng?: number
   userLat?: number
   distanceKm?: number
@@ -459,6 +480,12 @@ export interface SlCommunityOutput {
   highestHalfYearCommissionPercent?: number | null
   highestOneYearCommissionPercent?: number | null
   highestCommissionPercent?: number | null
+  rentMasked?: boolean
+  commissionMasked?: boolean
+  announcementMasked?: boolean
+  hideRentToGuest?: boolean | null
+  hideCommissionToGuest?: boolean | null
+  hideAnnouncementToGuest?: boolean | null
   hotLevel?: number
   hotExpireTime?: string | null
   hasLandlord?: boolean
@@ -867,7 +894,15 @@ export interface CreateLandlordShareCodeOutput {
   expiresAt: string
 }
 
+export interface CreateCommunityShareCodeOutput {
+  shareToken: string
+  qrPngBase64: string
+  communityName: string
+  expiresAt: string
+}
+
 export interface ResolveLandlordShareOutput {
+  communityName?: string | null
   shareToken: string
   requiresApproval: boolean
   ownerName?: string | null
@@ -1159,6 +1194,9 @@ export interface SlCommunityOperationConfigOutput {
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
   petPolicy?: 1 | 2 | 3 | null
+  hideRentToGuest?: boolean | null
+  hideCommissionToGuest?: boolean | null
+  hideAnnouncementToGuest?: boolean | null
   remark?: string | null
   hotLevel: number
   hotExpireTime?: string | null
@@ -1178,6 +1216,9 @@ export interface SaveSlCommunityOperationConfigInput {
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
   petPolicy?: 1 | 2 | 3 | null
+  hideRentToGuest?: boolean | null
+  hideCommissionToGuest?: boolean | null
+  hideAnnouncementToGuest?: boolean | null
   applyToProperties?: boolean
   remark?: string | null
 }

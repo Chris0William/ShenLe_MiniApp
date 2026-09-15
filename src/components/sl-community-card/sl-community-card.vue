@@ -44,6 +44,8 @@ function mediaKind(fileType?: string | null, suffixOrUrl?: string | null) {
 }
 
 function rentRangeText(item: SlCommunityOutput) {
+  if (item.rentMasked)
+    return '租金 ???'
   const min = item.minRentPrice
   const max = item.maxRentPrice
   const hasMin = min !== null && min !== undefined

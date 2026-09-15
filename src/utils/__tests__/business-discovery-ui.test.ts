@@ -36,8 +36,10 @@ describe('business discovery experience', () => {
     expect(properties).toContain('<sl-property-list-filter')
     expect(promotion).toContain('<sl-property-list-filter')
     expect(roomFilter).toContain('按房号结尾匹配')
-    expect(communityFilter).toContain('\'type\' | \'realtime\'')
+    expect(communityFilter).toContain('\'location\' | \'price\' | \'layout\' | \'more\'')
     expect(communityFilter).toContain('{ value: \'pet\', label: \'可养宠物\' }')
+    expect(communityFilter).toContain('active-chip-bar')
+    expect(communityFilter).toContain('toggleLayoutValue')
   })
 
   it('renders every pet status through the shared styled component below commission', () => {
