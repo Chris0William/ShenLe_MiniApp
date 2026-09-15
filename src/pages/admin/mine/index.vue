@@ -8,6 +8,7 @@ import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { useSourceContactStore } from '@/store/source-contact'
 import { tabbarStore } from '@/tabbar/store'
+import { APP_VERSION } from '@/utils/app-info'
 import { requestLogin } from '@/utils/login-flow'
 
 definePage({
@@ -331,6 +332,11 @@ async function signOut() {
       </view>
     </wd-popup>
 
+    <view class="about-entry sl-card" @tap="go('/pages/common/about/index')">
+      <text class="about-entry__title">关于深乐租</text>
+      <text class="about-entry__version">v{{ APP_VERSION }}</text>
+    </view>
+
     <wd-button v-if="auth.isLogin" plain block type="danger" custom-class="logout" @click="signOut">
       退出登录
     </wd-button>
@@ -352,6 +358,25 @@ async function signOut() {
 <style scoped lang="scss">
 .mine-page {
   padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+.about-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24rpx 24rpx 0;
+  padding: 28rpx 32rpx;
+}
+
+.about-entry__title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--sl-ink);
+}
+
+.about-entry__version {
+  font-size: 26rpx;
+  color: var(--sl-muted);
 }
 
 .profile {

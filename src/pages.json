@@ -231,6 +231,15 @@
         "navigationBarTitleText": "角色与权限",
         "disableScroll": true
       }
+    },
+    // #endif
+    // #ifdef MP-WEIXIN
+    {
+      "path": "pages/common/about/index",
+      "type": "page",
+      "style": {
+        "navigationBarTitleText": "关于"
+      }
     }
     // #endif
   ],
