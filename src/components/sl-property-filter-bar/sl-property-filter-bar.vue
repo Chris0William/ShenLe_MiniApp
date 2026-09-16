@@ -5,9 +5,9 @@ import { getRegionTree } from '@/api/region'
 import { getSupplyOperators } from '@/api/supply-activity'
 import { DISTANCE_OPTIONS } from '@/constants/shenle'
 import { getLocationOnceCached } from '@/utils/location-cache'
-import { clonePropertyFilters, hasLayoutFilter, layoutLabel, normalizeMulti, sameId } from '@/utils/property-filter'
+import { clonePropertyFilters, combinationLabel, hasLayoutFilter, LAYOUT_PRESETS, layoutLabel, normalizeMulti, sameId } from '@/utils/property-filter'
 
-type DropdownName = 'location' | 'price' | 'layout' | 'more'
+type DropdownName = 'location' | 'price' | 'more'
 type RealtimeMode = NonNullable<PropertyFilterState['realtimeModes']>[number]
 type SpecialMode = NonNullable<PropertyFilterState['specialModes']>[number]
 
@@ -30,7 +30,13 @@ const emit = defineEmits<{
   confirm: [filters: PropertyFilterState, keyword?: string]
   reset: []
   guarded: [tip?: string]
+  /** 面板开合通知（含下拉与大弹层）；宿主可用它压制原生层穿透 */
+  'panel-change': [open: boolean]
 }>()
+
+function emitPanelState() {
+  emit('panel-change', !!activeDropdown.value || sheetVisible.value)
+}
 
 const PRICE_MAX = 10000
 const PRICE_STEP = 100
@@ -86,6 +92,52 @@ const LAYOUT_ROOM_OPTIONS = [
   { value: 4, label: '4' },
   { value: 5, label: '5+' },
 ] as const
+
+// “其他”自由组合草稿：0-5+室 / 0-3厅 / 0-3卫
+const CUSTOM_ROOM_RANGE = {
+  bedrooms: [0, 1, 2, 3, 4, 5] as const,
+  livingRooms: [0, 1, 2, 3] as const,
+  bathrooms: [0, 1, 2, 3] as const,
+}
+const customBedroom = ref<number | null>(null)
+const customLiving = ref<number | null>(null)
+const customBathroom = ref<number | null>(null)
+const customError = ref('')
+
+const customComboReady = computed(() => customBedroom.value !== null || customLiving.value !== null || customBathroom.value !== null)
+
+function customComboString(): string {
+  return `${customBedroom.value ?? '*'},${customLiving.value ?? '*'},${customBathroom.value ?? '*'}`
+}
+
+function confirmCustomCombo() {
+  if (!customComboReady.value) {
+    customError.value = '至少选择一段'
+    return
+  }
+  const combo = customComboString()
+  if (draft.value.layoutCombinations?.includes(combo)) {
+    customError.value = '该组合已添加'
+    return
+  }
+  customError.value = ''
+  draft.value.layoutCombinations = [...(draft.value.layoutCombinations || []), combo]
+  customBedroom.value = null
+  customLiving.value = null
+  customBathroom.value = null
+}
+
+function toggleLayoutCombo(combo: string) {
+  const next = toggleArrayValue(draft.value.layoutCombinations, combo)
+  draft.value.layoutCombinations = next
+  if (!next?.length) {
+    // 组合清空时同步清旧三段字段，避免混入旧语义
+    draft.value.bedrooms = undefined
+    draft.value.bedroomsList = undefined
+    draft.value.livingRooms = undefined
+    draft.value.bathrooms = undefined
+  }
+}
 const activeDropdown = ref<DropdownName | null>(null)
 const sheetVisible = ref(false)
 const draft = ref<PropertyFilterState>({})
@@ -107,6 +159,7 @@ function guardInteraction() {
     return false
   activeDropdown.value = null
   sheetVisible.value = false
+  emitPanelState()
   emit('guarded', props.guardTip)
   return true
 }
@@ -186,6 +239,7 @@ const activeChips = computed<ActiveChip[]>(() => {
       label: layoutLabel(filters),
       remove: () => {
         const next = clone()
+        next.layoutCombinations = undefined
         next.bedrooms = undefined
         next.bedroomsList = undefined
         next.livingRooms = undefined
@@ -389,12 +443,14 @@ function toggleDropdown(name: DropdownName) {
   activeDropdown.value = name
   sheetVisible.value = false
   loadRegions()
+  emitPanelState()
   nextTick(() => measureTrack())
 }
 
 function closeDropdown() {
   activeDropdown.value = null
   syncDraft()
+  emitPanelState()
 }
 
 function openSheet() {
@@ -403,6 +459,7 @@ function openSheet() {
   activeDropdown.value = null
   syncDraft()
   sheetVisible.value = true
+  emitPanelState()
   loadRegions()
   loadOperators()
   nextTick(() => measureTrack())
@@ -411,6 +468,7 @@ function openSheet() {
 function closeSheet() {
   sheetVisible.value = false
   syncDraft()
+  emitPanelState()
 }
 
 function clearLocation() {
@@ -589,13 +647,16 @@ function resetCurrent() {
     clearLocation()
   if (activeDropdown.value === 'price')
     clearPrice()
-  if (activeDropdown.value === 'layout') {
+  if (activeDropdown.value === 'more') {
+    draft.value.layoutCombinations = undefined
+    customBedroom.value = null
+    customLiving.value = null
+    customBathroom.value = null
+    customError.value = ''
     draft.value.bedrooms = undefined
     draft.value.bedroomsList = undefined
     draft.value.livingRooms = undefined
     draft.value.bathrooms = undefined
-  }
-  if (activeDropdown.value === 'more') {
     draft.value.communityTypes = undefined
     draft.value.realtimeModes = undefined
     draft.value.specialModes = undefined
@@ -617,6 +678,7 @@ async function confirmCurrent() {
   if ((draft.value.distanceKm !== undefined || draft.value.sortBy === 'distance') && !await ensureReferencePoint())
     return
   activeDropdown.value = null
+  emitPanelState()
   emit('confirm', clonePropertyFilters(draft.value), props.keyword)
 }
 
@@ -633,6 +695,7 @@ async function confirmSheet() {
   if ((draft.value.distanceKm !== undefined || draft.value.sortBy === 'distance') && !await ensureReferencePoint())
     return
   sheetVisible.value = false
+  emitPanelState()
   emit('confirm', clonePropertyFilters(draft.value), draftKeyword.value.trim())
 }
 
@@ -749,16 +812,6 @@ function onThumbTouchEnd() {
         @tap="toggleDropdown('price')"
       >
         <text class="filter-tab__label">{{ priceLabel }}</text>
-        <view class="filter-tab__arrow">
-          <wd-icon name="arrow-down" size="12px" color="currentColor" />
-        </view>
-      </view>
-      <view
-        class="filter-tab"
-        :class="{ active: layoutActive, open: activeDropdown === 'layout' }"
-        @tap="toggleDropdown('layout')"
-      >
-        <text class="filter-tab__label">{{ layoutTabLabel }}</text>
         <view class="filter-tab__arrow">
           <wd-icon name="arrow-down" size="12px" color="currentColor" />
         </view>
@@ -906,57 +959,85 @@ function onThumbTouchEnd() {
         </view>
       </view>
 
-      <view v-if="activeDropdown === 'layout'" class="dropdown-section dropdown-section--short">
-        <view class="layout-head">
-          <text class="section-title">选择户型</text>
-          <text class="layout-head__hint">可多选，同段为「或」关系</text>
-        </view>
-        <view class="layout-group">
-          <text class="layout-group__tag">室</text>
-          <view class="option-row option-row--tight">
-            <view
-              v-for="item in LAYOUT_ROOM_OPTIONS"
-              :key="`b${item.value}`"
-              class="filter-chip filter-chip--square"
-              :class="{ active: draft.bedroomsList?.includes(item.value) }"
-              @tap="toggleLayoutValue('bedroomsList', item.value)"
-            >
-              <text>{{ item.label }}</text>
-            </view>
-          </view>
-        </view>
-        <view class="layout-group">
-          <text class="layout-group__tag">厅</text>
-          <view class="option-row option-row--tight">
-            <view
-              v-for="item in LAYOUT_ROOM_OPTIONS.slice(0, 4)"
-              :key="`l${item.value}`"
-              class="filter-chip filter-chip--square"
-              :class="{ active: draft.livingRooms?.includes(item.value) }"
-              @tap="toggleLayoutValue('livingRooms', item.value)"
-            >
-              <text>{{ item.label }}</text>
-            </view>
-          </view>
-        </view>
-        <view class="layout-group">
-          <text class="layout-group__tag">卫</text>
-          <view class="option-row option-row--tight">
-            <view
-              v-for="item in LAYOUT_ROOM_OPTIONS.slice(0, 4)"
-              :key="`w${item.value}`"
-              class="filter-chip filter-chip--square"
-              :class="{ active: draft.bathrooms?.includes(item.value) }"
-              @tap="toggleLayoutValue('bathrooms', item.value)"
-            >
-              <text>{{ item.label }}</text>
-            </view>
-          </view>
-        </view>
-      </view>
-
       <view v-if="activeDropdown === 'more'" class="dropdown-section dropdown-section--scroll">
         <scroll-view scroll-y class="more-scroll">
+          <text class="section-title">户型</text>
+          <view class="option-row">
+            <view
+              v-for="preset in LAYOUT_PRESETS"
+              :key="preset.key"
+              class="filter-chip"
+              :class="{ active: draft.layoutCombinations?.includes(preset.combo) }"
+              @tap="toggleLayoutCombo(preset.combo)"
+            >
+              <text>{{ preset.label }}</text>
+            </view>
+            <view
+              v-for="combo in (draft.layoutCombinations || []).filter(item => !LAYOUT_PRESETS.some(preset => preset.combo === item))"
+              :key="combo"
+              class="filter-chip filter-chip--custom"
+              :class="{ active: true }"
+              @tap="toggleLayoutCombo(combo)"
+            >
+              <text>{{ combinationLabel(combo) }}</text>
+              <view class="filter-chip__remove" aria-label="移除该户型" @tap.stop="toggleLayoutCombo(combo)">
+                <wd-icon name="close" size="10px" color="#126b4f" />
+              </view>
+            </view>
+          </view>
+          <view class="custom-combo">
+            <view class="custom-combo__title">其他 · 自由组合</view>
+            <view class="custom-combo__row">
+              <text class="custom-combo__tag">室</text>
+              <view class="option-row option-row--tight custom-combo__opts">
+                <view
+                  v-for="v in CUSTOM_ROOM_RANGE.bedrooms"
+                  :key="`cb${v}`"
+                  class="filter-chip filter-chip--square"
+                  :class="{ active: customBedroom === v }"
+                  @tap="customBedroom = customBedroom === v ? null : v"
+                >
+                  <text>{{ v }}</text>
+                </view>
+              </view>
+            </view>
+            <view class="custom-combo__row">
+              <text class="custom-combo__tag">厅</text>
+              <view class="option-row option-row--tight custom-combo__opts">
+                <view
+                  v-for="v in CUSTOM_ROOM_RANGE.livingRooms"
+                  :key="`cl${v}`"
+                  class="filter-chip filter-chip--square"
+                  :class="{ active: customLiving === v }"
+                  @tap="customLiving = customLiving === v ? null : v"
+                >
+                  <text>{{ v }}</text>
+                </view>
+              </view>
+            </view>
+            <view class="custom-combo__row">
+              <text class="custom-combo__tag">卫</text>
+              <view class="option-row option-row--tight custom-combo__opts">
+                <view
+                  v-for="v in CUSTOM_ROOM_RANGE.bathrooms"
+                  :key="`cw${v}`"
+                  class="filter-chip filter-chip--square"
+                  :class="{ active: customBathroom === v }"
+                  @tap="customBathroom = customBathroom === v ? null : v"
+                >
+                  <text>{{ v }}</text>
+                </view>
+              </view>
+            </view>
+            <view class="custom-combo__foot">
+              <text v-if="customError" class="custom-combo__error">{{ customError }}</text>
+              <text v-else class="custom-combo__preview">{{ customComboReady ? combinationLabel(customComboString()) : '选择后生成组合标签' }}</text>
+              <wd-button size="small" plain type="primary" @click="confirmCustomCombo">
+                添加组合
+              </wd-button>
+            </view>
+          </view>
+
           <text class="section-title">楼盘类型</text>
           <view class="option-row">
             <view
@@ -1333,11 +1414,14 @@ function onThumbTouchEnd() {
           <view class="sheet-block">
             <text class="sheet-block__title">排序方式</text>
             <view class="option-row">
-              <view class="filter-chip" :class="{ active: draft.sortBy !== 'distance' }" @tap="selectSort('latest')">
+              <view class="filter-chip" :class="{ active: !draft.sortBy }" @tap="selectSort('latest')">
                 <text>更新时间优先</text>
               </view>
               <view class="filter-chip" :class="{ active: draft.sortBy === 'distance' }" @tap="selectSort('distance')">
                 <text>距离优先</text>
+              </view>
+              <view class="filter-chip" :class="{ active: draft.sortBy === 'commissionDesc' }" @tap="draft.sortBy = 'commissionDesc'">
+                <text>佣金优先</text>
               </view>
             </view>
           </view>
@@ -1990,6 +2074,77 @@ function onThumbTouchEnd() {
 .filter-chip--square {
   min-width: 84rpx;
   padding: 16rpx 0;
+}
+
+/* ===== 户型预设与自由组合 ===== */
+.filter-chip--custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.filter-chip__remove {
+  display: flex;
+  width: 32rpx;
+  height: 32rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: rgb(255 255 255 / 45%);
+}
+
+.custom-combo {
+  margin-top: 16rpx;
+  padding: 20rpx;
+  border: 1rpx dashed rgb(18 107 79 / 30%);
+  border-radius: 16rpx;
+  background: #f7faf5;
+}
+
+.custom-combo__title {
+  color: #126b4f;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.custom-combo__row {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+  margin-top: 12rpx;
+}
+
+.custom-combo__tag {
+  flex: 0 0 36rpx;
+  color: #111827;
+  font-size: 24rpx;
+  font-weight: 800;
+  text-align: center;
+}
+
+.custom-combo__opts {
+  flex: 1;
+}
+
+.custom-combo__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14rpx;
+  margin-top: 16rpx;
+}
+
+.custom-combo__preview {
+  flex: 1;
+  color: #126b4f;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.custom-combo__error {
+  flex: 1;
+  color: #c94832;
+  font-size: 22rpx;
 }
 
 /* ===== 「筛选」总下拉：可滚动 ===== */

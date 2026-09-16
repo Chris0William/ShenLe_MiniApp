@@ -66,6 +66,7 @@ export interface PageSlPropertyInput extends BasePageInput {
   livingRoomsList?: number[]
   bathrooms?: number
   bathroomsList?: number[]
+  layoutCombinations?: string[]
   minFloor?: number
   maxFloor?: number
   roomNoSuffix?: string
@@ -105,6 +106,8 @@ export interface PropertyFilterState {
   bedroomsList?: number[]
   livingRooms?: number[]
   bathrooms?: number[]
+  /** 户型组合："室,厅,卫"（* 不限）；预设与自定义标签统一编译成它 */
+  layoutCombinations?: string[]
   minPrice?: number
   maxPrice?: number
   orientation?: string
@@ -131,7 +134,7 @@ export interface PropertyFilterState {
   specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent' | 'pet'>
   onlyContactedByMe?: boolean
   onlyMaintainedByMe?: boolean
-  sortBy?: 'latest' | 'distance'
+  sortBy?: 'latest' | 'distance' | 'commissionDesc'
   landlordShareToken?: string
 }
 
@@ -146,6 +149,10 @@ export interface SlPropertyListOutput {
   title: string
   communityName?: string | null
   houseType: string
+  depositRule?: string | null
+  supportsShortRent?: boolean | null
+  supportsDailyRent?: boolean | null
+  supportsMonthlyPayment?: boolean | null
   area?: number | null
   floor?: number | null
   roomNo?: string | null
@@ -372,6 +379,7 @@ export interface PageSlCommunityInput extends BasePageInput {
   bedroomsList?: number[]
   livingRooms?: number[]
   bathrooms?: number[]
+  layoutCombinations?: string[]
   orientation?: string
   orientations?: string[]
   decoration?: string
@@ -395,7 +403,7 @@ export interface PageSlCommunityInput extends BasePageInput {
   specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent' | 'pet'>
   onlyContactedByMe?: boolean
   onlyMaintainedByMe?: boolean
-  sortBy?: 'latest' | 'distance'
+  sortBy?: 'latest' | 'distance' | 'commissionDesc'
   landlordShareToken?: string
   availableOnly?: boolean
 }
@@ -486,6 +494,9 @@ export interface SlCommunityOutput {
   hideRentToGuest?: boolean | null
   hideCommissionToGuest?: boolean | null
   hideAnnouncementToGuest?: boolean | null
+  defaultSupportsShortRent?: boolean | null
+  defaultSupportsDailyRent?: boolean | null
+  defaultSupportsMonthlyPayment?: boolean | null
   hotLevel?: number
   hotExpireTime?: string | null
   hasLandlord?: boolean

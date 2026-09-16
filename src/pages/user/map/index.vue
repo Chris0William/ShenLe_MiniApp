@@ -6,7 +6,9 @@ import { getCommunityDetail, getCommunityMapPoints, getCommunityTickers, setComm
 import { getPublicRegionMap } from '@/api/public-preview'
 import { getRecentSupplyActivity, getSupplyLeaderboard, getSupplyLeaderboardDetails } from '@/api/supply-activity'
 import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
+import SlUnifiedCommunityCard from '@/components/sl-unified-community-card/sl-unified-community-card.vue'
 import { useShenleAuthStore } from '@/store/auth'
+import { useLandlordAnnouncementStore } from '@/store/landlord-announcement'
 import { useLandlordShareStore } from '@/store/landlord-share'
 import { modeStore } from '@/store/mode'
 import { useSourceContactStore } from '@/store/source-contact'
@@ -35,6 +37,7 @@ const mapId = 'property-map'
 const safeTop = useSafeTopStyle()
 const auth = useShenleAuthStore()
 const landlordShare = useLandlordShareStore()
+const landlordAnnouncement = useLandlordAnnouncementStore()
 const shareOwnerName = landlordShare.ownerName
 const shareCommunityCount = landlordShare.communityCount
 const sourceContact = useSourceContactStore()
@@ -56,6 +59,11 @@ const mapLat = ref(DEFAULT_CENTER.latitude)
 const mapLng = ref(DEFAULT_CENTER.longitude)
 const mapScale = ref(13)
 const communities = ref<SlCommunityOutput[]>([])
+// 原生层穿透控制：筛选面板/榜单弹层打开时，隐藏 cover-view 徽标并清空 marker，防止原生层盖不住
+const overlayActive = ref(false)
+function onFilterPanelChange(open: boolean) {
+  overlayActive.value = open
+}
 const mapPoints = ref<SlCommunityMapPointOutput[]>([])
 const previewRegions = ref<SlPublicRegionPreviewOutput[]>([])
 const loading = ref(false)
@@ -166,10 +174,40 @@ const landlordMarkers = computed(() => landlordCoordinateCommunities.value.map((
 // ===== marker 体系 =====
 type MarkerMeta = { type: 'single', point: SlCommunityMapPointOutput } | { type: 'preview', region: SlPublicRegionPreviewOutput }
 const markers = ref<any[]>([])
-const activeMarkers = computed(() => isLandlordView.value ? landlordMarkers.value : markers.value)
+// 面板打开时清空 marker，防止原生 callout 穿透面板
+const activeMarkers = computed(() => overlayActive.value ? [] : (isLandlordView.value ? landlordMarkers.value : markers.value))
 const selected = ref<SlCommunityOutput | null>(null)
 const selectedPreview = ref<SlPublicRegionPreviewOutput | null>(null)
 const landlordSelected = ref<SlSourceContactCommunityOutput | null>(null)
+
+// 房东端选中项 → 统一卡片数据适配
+const landlordSelectedAsCommunity = computed<SlCommunityOutput | null>(() => {
+  const item = landlordSelected.value
+  if (!item)
+    return null
+  return {
+    id: item.id,
+    name: item.name,
+    buildingCount: item.buildingCount ?? 0,
+    availableCount: item.availableCount ?? 0,
+    rentedCount: item.rentedCount ?? 0,
+    minRentPrice: item.minRentPrice ?? null,
+    maxRentPrice: item.maxRentPrice ?? null,
+    waterFee: item.waterFee ?? null,
+    electricityFee: item.electricityFee ?? null,
+    managementFee: item.managementFee ?? null,
+    networkFee: item.networkFee ?? null,
+    lowestHalfYearCommissionPercent: item.lowestHalfYearCommissionPercent ?? null,
+    highestHalfYearCommissionPercent: item.highestHalfYearCommissionPercent ?? null,
+    lowestOneYearCommissionPercent: item.lowestOneYearCommissionPercent ?? null,
+    highestOneYearCommissionPercent: item.highestOneYearCommissionPercent ?? null,
+    petPolicy: item.petPolicy ?? null,
+    announcement: item.announcement ?? null,
+    coverImage: landlordCoverUrl(item),
+    coverFileType: item.coverFileType ?? null,
+    supplyUpdateTime: item.supplyUpdateTime ?? null,
+  } as SlCommunityOutput
+})
 let markerMeta: MarkerMeta[] = []
 let regionTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -479,33 +517,18 @@ function chooseCommunityHotLevel(item: SlCommunityOutput) {
   })
 }
 
-async function focusHotCommunity(item: SlCommunityTickerOutput, clearHidden = false) {
-  let target = communities.value.find(community => String(community.id) === String(item.communityId)) || null
+async function focusHotCommunity(item: SlCommunityTickerOutput, _clearHidden = false) {
+  // 地图轻量化后 communities 恒为空数组；直接拉详情定位（拉不到再回退清筛选）
+  let target: SlCommunityOutput | null = null
+  try {
+    target = await getCommunityDetail(item.communityId, isBusinessMode.value)
+  }
+  catch {
+    target = null
+  }
   if (!target) {
-    if (!clearHidden) {
-      uni.showModal({
-        title: '当前筛选已隐藏该楼盘',
-        content: '清除当前筛选后定位到该楼盘？',
-        confirmText: '清除并定位',
-        success: (result) => {
-          if (result.confirm)
-            void focusHotCommunity(item, true)
-        },
-      })
-      return
-    }
-    await resetFilters()
-    target = communities.value.find(community => String(community.id) === String(item.communityId)) || null
-    try {
-      if (!target) {
-        target = await getCommunityDetail(item.communityId, isBusinessMode.value)
-        communities.value = [target]
-        rebuildMarkers()
-      }
-    }
-    catch {
-      return
-    }
+    uni.showToast({ title: '楼盘信息加载失败，请重试', icon: 'none' })
+    return
   }
   selectedPreview.value = null
   selected.value = target
@@ -807,6 +830,39 @@ async function selectMapPoint(point: SlCommunityMapPointOutput) {
   }
 }
 
+/** 房源级筛选贯通：把当前筛选状态编译成房源列表入口上下文（仅保留房源级字段） */
+function buildEntryFilterContext() {
+  const f = filters.value
+  const context: Record<string, unknown> = {}
+  if (f.layoutCombinations?.length)
+    context.layoutCombinations = f.layoutCombinations
+  const orientations = f.orientations?.length ? f.orientations : (f.orientation ? [f.orientation] : undefined)
+  if (orientations?.length)
+    context.orientations = orientations
+  const decorations = f.decorations?.length ? f.decorations : (f.decoration ? [f.decoration] : undefined)
+  if (decorations?.length)
+    context.decorations = decorations
+  const rentalTypes = f.rentalTypes?.length ? f.rentalTypes : (f.rentalType ? [f.rentalType] : undefined)
+  if (rentalTypes?.length)
+    context.rentalTypes = rentalTypes
+  const depositRules = f.depositRules?.length ? f.depositRules : (f.depositRule ? [f.depositRule] : undefined)
+  if (depositRules?.length)
+    context.depositRules = depositRules
+  if (f.minPrice !== undefined)
+    context.minPrice = f.minPrice
+  if (f.maxPrice !== undefined)
+    context.maxPrice = f.maxPrice
+  if (f.minArea !== undefined)
+    context.minArea = f.minArea
+  if (f.maxArea !== undefined)
+    context.maxArea = f.maxArea
+  return context
+}
+
+function onOpenAnnouncement() {
+  void landlordAnnouncement.openFromButton()
+}
+
 function editSelected() {
   if (!selected.value)
     return
@@ -819,7 +875,7 @@ function goProperties(item: SlCommunityOutput | null) {
   if (!canManage.value && !ensureCanUse('登录并通过审核后可查看具体楼盘与房源'))
     return
   uni.navigateTo({
-    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}&distance=${encodeURIComponent(String(item.distance ?? ''))}`,
+    url: `/pages/common/community-properties/index?communityId=${idToQuery(item.id)}&communityName=${encodeURIComponent(item.name)}&distance=${encodeURIComponent(String(item.distance ?? ''))}&filterContext=${encodeURIComponent(JSON.stringify(buildEntryFilterContext()))}`,
   })
 }
 
@@ -1163,7 +1219,7 @@ onUnload(() => {
 <template>
   <view class="map-page" :class="{ 'map-page--landlord': isLandlordView }" :style="safeTop">
     <template v-if="isLandlordView">
-      <sl-source-contact-header title="我的楼盘" refresh :refreshing="pageRefreshing || sourceContact.loading" @refresh="refreshMapPage" />
+      <sl-source-contact-header title="我的楼盘" refresh announcement :refreshing="pageRefreshing || sourceContact.loading" @refresh="refreshMapPage" @open-announcement="onOpenAnnouncement" />
 
       <view class="landlord-stats-strip">
         <view v-for="item in landlordProfileStats" :key="item.label" class="landlord-stats-strip__item">
@@ -1194,6 +1250,7 @@ onUnload(() => {
         @confirm="onFilterConfirm"
         @reset="resetFilters"
         @guarded="onFilterGuarded"
+        @panel-change="onFilterPanelChange"
       />
 
       <sl-landlord-share-scope
@@ -1229,7 +1286,7 @@ onUnload(() => {
         @callouttap="onMapMarkerTap"
         @regionchange="onRegionChange"
       >
-        <cover-view v-if="!isLandlordView" class="map-badge" :class="{ 'map-badge--below-hot': showHotCommunityTicker }">
+        <cover-view v-if="!isLandlordView && !overlayActive" class="map-badge" :class="{ 'map-badge--below-hot': showHotCommunityTicker }">
           <cover-view class="map-badge__text">{{ mapBadgeText }}</cover-view>
         </cover-view>
       </map>
@@ -1250,51 +1307,38 @@ onUnload(() => {
           <text class="landlord-map-empty__sub">请联系管理员完善楼盘位置</text>
         </view>
 
-        <view v-if="landlordSelected" class="landlord-community-preview">
-          <view class="landlord-community-preview__media">
-            <image v-if="landlordCoverUrl(landlordSelected)" class="landlord-community-preview__image" :src="landlordCoverUrl(landlordSelected) || ''" mode="aspectFill" />
-            <view v-else class="landlord-community-preview__placeholder">
-              <wd-icon name="home" size="30px" color="#126b4f" />
-            </view>
-            <view v-if="landlordSelected.promotedCount" class="landlord-promotion-mark">
-              推广 {{ landlordSelected.promotedCount }} 套
-            </view>
+        <!-- 房东公告弹窗：关闭时缩小收回右上角公告按钮 -->
+        <view v-if="landlordAnnouncement.shouldRender.value" class="ann-mask" :class="{ 'ann-mask--closing': landlordAnnouncement.closing.value }" @tap="landlordAnnouncement.closeOnce()" @touchmove.stop.prevent />
+        <view
+          v-if="landlordAnnouncement.shouldRender.value"
+          class="ann-pop"
+          :class="{ 'ann-pop--closing': landlordAnnouncement.closing.value }"
+          @touchmove.stop
+        >
+          <view class="ann-pop__head">
+            <text class="ann-pop__title">{{ landlordAnnouncement.announcement.value?.title || '房东公告' }}</text>
           </view>
-          <view class="landlord-community-preview__body">
-            <view class="landlord-community-preview__head">
-              <text class="landlord-community-preview__name">{{ landlordSelected.name }}</text>
-              <view class="landlord-community-preview__close" @tap.stop="landlordSelected = null">
-                <wd-icon name="close" size="16px" color="#7a8780" />
-              </view>
-            </view>
-            <text class="landlord-community-preview__rent">{{ landlordRentText(landlordSelected) }}</text>
-            <view class="landlord-community-preview__fees">
-              <text class="landlord-community-preview__fee">水 {{ moneyText(landlordSelected.waterFee, '元/吨') }}</text>
-              <text class="landlord-community-preview__fee">电 {{ moneyText(landlordSelected.electricityFee, '元/度') }}</text>
-              <text class="landlord-community-preview__fee">管理 {{ managementFeeText(landlordSelected) }}</text>
-              <text class="landlord-community-preview__fee">网络 {{ networkFeeText(landlordSelected) }}</text>
-            </view>
-            <view class="landlord-community-preview__commission">
-              <view class="landlord-community-preview__commission-main">
-                <text>佣金条件</text>
-                <text>{{ commissionText(landlordSelected) }}</text>
-              </view>
-              <sl-pet-policy-text v-if="landlordSelected.petPolicy" :value="landlordSelected.petPolicy" class="landlord-community-preview__pet" />
-            </view>
-            <text class="landlord-community-preview__meta">
-              {{ landlordSelected.buildingCount }} 栋 · {{ landlordSelected.availableCount }} 套可用 · {{ landlordSelected.rentedCount }} 套已租
-            </text>
-            <view class="landlord-community-preview__foot">
-              <text class="landlord-community-preview__time">更新 {{ formatCommunityUpdateTime(landlordSelected.supplyUpdateTime) }}</text>
-              <wd-button size="small" plain @click="openLandlordNavigation(landlordSelected)">
-                导航
-              </wd-button>
-              <wd-button type="primary" size="small" @click="openLandlordRoomState(landlordSelected)">
-                查看楼盘
-              </wd-button>
-            </view>
+          <scroll-view scroll-y class="ann-pop__body">
+            <rich-text :nodes="landlordAnnouncement.announcement.value?.content || ''" class="ann-pop__rich" />
+          </scroll-view>
+          <view class="ann-pop__actions">
+            <wd-button size="large" plain block @click="landlordAnnouncement.dismissForever()">
+              不再提醒
+            </wd-button>
+            <wd-button size="large" type="primary" block @click="landlordAnnouncement.closeOnce()">
+              关闭
+            </wd-button>
           </view>
         </view>
+
+        <sl-unified-community-card
+          v-if="landlordSelected"
+          :community="landlordSelectedAsCommunity"
+          :show-distance="false"
+          @close="landlordSelected = null"
+          @enter="openLandlordRoomState($event as unknown as SlSourceContactCommunityOutput)"
+          @navigate="openLandlordNavigation($event as unknown as SlSourceContactCommunityOutput)"
+        />
       </template>
 
       <template v-else>
@@ -1372,43 +1416,15 @@ onUnload(() => {
         </view>
 
         <view v-if="selected" class="map-card" :class="{ 'map-card--with-ticker': showBottomTicker }">
-          <view class="map-card__close" @tap="selected = null">
-            <wd-icon name="close" size="16px" color="#9aa3af" />
-          </view>
-          <view class="map-card__main" @tap="goProperties(selected)">
-            <view class="map-card__title-row">
-              <text class="map-card__name">{{ selected.name }}</text>
-              <view v-if="hotLevelCount(selected.hotLevel, selected.hotExpireTime)" class="map-card__hot">
-                <view v-for="level in hotLevelCount(selected.hotLevel, selected.hotExpireTime)" :key="level" class="i-carbon-fire map-card__hot-icon" />
-              </view>
-            </view>
-            <view class="map-card__meta">
-              <wd-tag v-if="selected.regionName" plain type="success">
-                {{ selected.regionName }}
-              </wd-tag>
-              <text v-if="isBusinessMode ? selected.availableCount : selected.propertyCount">{{ isBusinessMode ? selected.availableCount : selected.propertyCount }} 套{{ isBusinessMode ? '可租房源' : '房源' }}</text>
-              <text v-if="rentText(selected)">{{ rentText(selected) }}</text>
-              <text v-if="selected.distance !== null && selected.distance !== undefined">距 {{ selected.distance }}km</text>
-            </view>
-            <view class="map-card__fees">
-              <text>水 {{ moneyText(selected.waterFee, '元/吨') }}</text>
-              <text>电 {{ moneyText(selected.electricityFee, '元/度') }}</text>
-              <text>管理 {{ managementFeeText(selected) }}</text>
-              <text>网络 {{ networkFeeText(selected) }}</text>
-            </view>
-            <view class="map-card__commission">
-              <view class="map-card__commission-main">
-                <text>佣金条件</text>
-                <text>{{ commissionText(selected) }}</text>
-              </view>
-              <sl-pet-policy-text v-if="selected.petPolicy" :value="selected.petPolicy" class="map-card__pet" />
-            </view>
-            <text class="map-card__update">更新 {{ formatCommunityUpdateTime(selected.supplyUpdateTime) }}</text>
-          </view>
-          <view class="map-card__actions">
-            <wd-button v-if="isBusinessMode && selected.announcement" class="map-card__announcement" size="small" plain icon="notification" @click.stop="showCommunityAnnouncement(selected)">
-              公告
-            </wd-button>
+          <sl-unified-community-card
+            :community="selected"
+            :guest-mode="isPreviewMode"
+            @close="selected = null"
+            @enter="goProperties($event)"
+            @navigate="openNavigation($event)"
+            @announcement="showCommunityAnnouncement($event)"
+          />
+          <view v-if="canSetHotLevel || canManage" class="map-card__actions">
             <wd-button
               v-if="canSetHotLevel && selected.hasLandlord"
               size="small"
@@ -1417,16 +1433,9 @@ onUnload(() => {
               @click.stop="chooseCommunityHotLevel(selected)"
             >
               火热 {{ hotLevelCount(selected.hotLevel, selected.hotExpireTime) || '未设' }}
-              <text v-if="hotLevelCount(selected.hotLevel, selected.hotExpireTime)"> · {{ hotExpireText(selected.hotExpireTime) }}</text>
             </wd-button>
             <wd-button v-if="canManage" size="small" plain @click="editSelected">
               编辑楼盘
-            </wd-button>
-            <wd-button size="small" plain @click.stop="openNavigation(selected)">
-              导航
-            </wd-button>
-            <wd-button size="small" type="primary" @click="goProperties(selected)">
-              查看房源
             </wd-button>
           </view>
         </view>
@@ -2620,5 +2629,102 @@ onUnload(() => {
     transform: scale(1.22);
     opacity: 0.7;
   }
+}
+
+/* ===== 房东公告弹窗（缩小收回右上角公告按钮） ===== */
+.ann-mask {
+  position: fixed;
+  z-index: 2600;
+  inset: 0;
+  background: rgb(17 24 39 / 55%);
+  animation: ann-mask-in 0.2s ease both;
+}
+
+.ann-mask--closing {
+  animation: ann-mask-out 0.28s ease both;
+}
+
+@keyframes ann-mask-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ann-mask-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.ann-pop {
+  position: fixed;
+  z-index: 2601;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  box-sizing: border-box;
+  width: 640rpx;
+  max-height: 76vh;
+  flex-direction: column;
+  padding: 34rpx 30rpx 26rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  transform: translate(-50%, -50%);
+  animation: ann-pop-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.ann-pop--closing {
+  /* 收束退场：缩小 + 位移到右上角公告按钮处 */
+  animation: ann-pop-collapse 0.28s cubic-bezier(0.4, 0, 0.6, 1) both;
+}
+
+@keyframes ann-pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ann-pop-collapse {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(240%, -420%) scale(0.05);
+  }
+}
+
+.ann-pop__head {
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #eef1ec;
+}
+
+.ann-pop__title {
+  color: #1e2f27;
+  font-size: 32rpx;
+  font-weight: 850;
+  text-align: center;
+}
+
+.ann-pop__body {
+  min-height: 0;
+  flex: 1;
+  max-height: 46vh;
+  margin-top: 8rpx;
+}
+
+.ann-pop__rich {
+  padding: 16rpx 8rpx;
+}
+
+.ann-pop__actions {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 18rpx;
+  padding-top: 20rpx;
 }
 </style>

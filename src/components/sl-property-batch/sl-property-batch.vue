@@ -1431,12 +1431,12 @@ defineExpose({ openAdd, openEdit, requestDelete })
             <view class="edit-row">
               <view class="edit-row__head">
                 <text>房源描述</text><wd-switch v-model="enabled.description" size="22px" />
-              </view><textarea v-if="enabled.description" v-model="editValues.description" class="edit-textarea" placeholder="可清空" />
+              </view><textarea v-if="enabled.description" v-model="editValues.description" class="edit-textarea" placeholder="可清空"  :cursor-spacing="24" :adjust-position="true"/>
             </view>
             <view class="edit-row">
               <view class="edit-row__head">
                 <text>内部备注</text><wd-switch v-model="enabled.remark" size="22px" />
-              </view><textarea v-if="enabled.remark" v-model="editValues.remark" class="edit-textarea" placeholder="可清空" />
+              </view><textarea v-if="enabled.remark" v-model="editValues.remark" class="edit-textarea" placeholder="可清空"  :cursor-spacing="24" :adjust-position="true"/>
             </view>
           </view>
 

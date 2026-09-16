@@ -10,6 +10,27 @@ const props = defineProps<{
   compact?: boolean
 }>()
 
+const DEPOSIT_LABELS: Record<string, string> = {
+  '1-1': '押一付一',
+  '1-3': '押一付三',
+  '2-1': '押二付一',
+  '2-3': '押二付三',
+  'half-year': '半年付',
+  yearly: '年付',
+}
+const featureTags = computed(() => {
+  const tags: string[] = []
+  if (props.item.depositRule)
+    tags.push(DEPOSIT_LABELS[props.item.depositRule] || props.item.depositRule)
+  if (props.item.supportsMonthlyPayment)
+    tags.push('可押一付一')
+  if (props.item.supportsShortRent)
+    tags.push('可短租')
+  if (props.item.supportsDailyRent)
+    tags.push('可日租')
+  return tags
+})
+
 // 注意：自定义事件不能叫 tap——mp-weixin 上会被原生 tap 事件遮蔽，handler 收到 TouchEvent 而非 item
 const emit = defineEmits<{
   select: [item: SlPropertyListOutput]
@@ -132,6 +153,9 @@ watch(
       <text class="property__community">{{ item.communityName || '深租宝典房源' }}</text>
       <view class="property__meta">
         <text class="property__meta-item">{{ item.houseType }}</text>
+        <view v-if="featureTags.length" class="property__tags">
+          <text v-for="tag in featureTags" :key="tag" class="property__tag">{{ tag }}</text>
+        </view>
         <text class="property__meta-item">{{ formatArea(item.area) }}</text>
         <text class="property__meta-item">{{ item.floorInfo || '楼层待补充' }}</text>
       </view>
@@ -308,5 +332,22 @@ watch(
   width: 680rpx;
   height: 420rpx;
   background: #10261f;
+}
+
+.property__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 6rpx;
+}
+
+.property__tag {
+  padding: 4rpx 14rpx;
+  border: 1rpx solid rgb(18 107 79 / 24%);
+  border-radius: 999rpx;
+  background: #eef7f1;
+  color: #126b4f;
+  font-size: 20rpx;
+  font-weight: 700;
 }
 </style>

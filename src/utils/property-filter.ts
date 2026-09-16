@@ -19,6 +19,7 @@ export function clonePropertyFilters(filters?: PropertyFilterState): PropertyFil
     bedroomsList: filters?.bedroomsList ? [...filters.bedroomsList] : undefined,
     livingRooms: filters?.livingRooms ? [...filters.livingRooms] : undefined,
     bathrooms: filters?.bathrooms ? [...filters.bathrooms] : undefined,
+    layoutCombinations: filters?.layoutCombinations ? [...filters.layoutCombinations] : undefined,
     orientations: filters?.orientations ? [...filters.orientations] : undefined,
     decorations: filters?.decorations ? [...filters.decorations] : undefined,
     rentalTypes: filters?.rentalTypes ? [...filters.rentalTypes] : undefined,
@@ -42,8 +43,37 @@ export function normalizeBedrooms(filters: PropertyFilterState): number[] | unde
   return filters.bedrooms ? [filters.bedrooms] : undefined
 }
 
+/** 户型预设：编译为组合串（卫不限） */
+export const LAYOUT_PRESETS = [
+  { key: 'studio', label: '单间', combo: '1,0,*' },
+  { key: 'oneOne', label: '一室一厅', combo: '1,1,*' },
+  { key: 'twoOne', label: '两室一厅', combo: '2,1,*' },
+  { key: 'threeOne', label: '三室一厅', combo: '3,1,*' },
+] as const
+
+export type LayoutPresetKey = typeof LAYOUT_PRESETS[number]['key']
+
+/** 组合串 → 展示标签："1,0,*"→"单间"（命中预设）或 "2室2厅1卫" */
+export function combinationLabel(combo: string): string {
+  const preset = LAYOUT_PRESETS.find(item => item.combo === combo)
+  if (preset)
+    return preset.label
+  const [b, l, w] = combo.split(',')
+  const parts: string[] = []
+  if (b !== '*')
+    parts.push(`${b}室`)
+  if (l !== '*')
+    parts.push(`${l}厅`)
+  if (w !== '*')
+    parts.push(`${w}卫`)
+  return parts.join('') || combo
+}
+
 /** 户型标签：x室x厅x卫（按需省略未选段） */
 export function layoutLabel(filters: PropertyFilterState): string {
+  const combos = filters.layoutCombinations || []
+  if (combos.length)
+    return combos.map(combinationLabel).join('/')
   const parts: string[] = []
   const bedrooms = normalizeBedrooms(filters)
   if (bedrooms?.length === 1)
@@ -62,7 +92,12 @@ export function layoutLabel(filters: PropertyFilterState): string {
 }
 
 export function hasLayoutFilter(filters: PropertyFilterState): boolean {
-  return !!(normalizeBedrooms(filters)?.length || filters.livingRooms?.length || filters.bathrooms?.length)
+  return !!(filters.layoutCombinations?.length || normalizeBedrooms(filters)?.length || filters.livingRooms?.length || filters.bathrooms?.length)
+}
+
+/** 户型条件标签列表（chip 栏用）：预设名或 x室x厅x卫 */
+export function layoutComboLabels(filters: PropertyFilterState): string[] {
+  return (filters.layoutCombinations || []).map(combinationLabel)
 }
 
 export function countPropertyFilters(filters: PropertyFilterState) {
@@ -134,6 +169,7 @@ export function hasPropertyFilter(filters: PropertyFilterState, key: string) {
 
 export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<PageSlPropertyInput, 'page' | 'pageSize'> {
   const bedrooms = normalizeBedrooms(filters)
+  const combos = filters.layoutCombinations?.length ? [...filters.layoutCombinations] : undefined
   const orientations = normalizeMulti(filters.orientations, filters.orientation)
   const decorations = normalizeMulti(filters.decorations, filters.decoration)
   const rentalTypes = normalizeMulti(filters.rentalTypes, filters.rentalType)
@@ -144,12 +180,13 @@ export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<Pag
     userLat: filters.userLat,
     distanceKm: filters.distanceKm,
     communityId: filters.communityId,
-    bedrooms: bedrooms?.length === 1 ? bedrooms[0] : undefined,
-    bedroomsList: bedrooms,
-    livingRooms: filters.livingRooms?.length === 1 ? filters.livingRooms[0] : undefined,
-    livingRoomsList: filters.livingRooms,
-    bathrooms: filters.bathrooms?.length === 1 ? filters.bathrooms[0] : undefined,
-    bathroomsList: filters.bathrooms,
+    bedrooms: !combos && bedrooms?.length === 1 ? bedrooms[0] : undefined,
+    bedroomsList: combos ? undefined : bedrooms,
+    livingRooms: !combos && filters.livingRooms?.length === 1 ? filters.livingRooms[0] : undefined,
+    livingRoomsList: combos ? undefined : filters.livingRooms,
+    bathrooms: !combos && filters.bathrooms?.length === 1 ? filters.bathrooms[0] : undefined,
+    bathroomsList: combos ? undefined : filters.bathrooms,
+    layoutCombinations: combos,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
     orientation: orientations?.length === 1 ? orientations[0] : undefined,
@@ -167,6 +204,7 @@ export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<Pag
 
 export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<PageSlCommunityInput, 'page' | 'pageSize'> {
   const bedrooms = normalizeBedrooms(filters)
+  const combos = filters.layoutCombinations?.length ? [...filters.layoutCombinations] : undefined
   return {
     regionId: filters.regionId,
     userLng: filters.userLng,
@@ -174,9 +212,10 @@ export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<Pa
     distanceKm: filters.distanceKm,
     minPrice: filters.minPrice,
     maxPrice: filters.maxPrice,
-    bedroomsList: bedrooms,
-    livingRooms: filters.livingRooms,
-    bathrooms: filters.bathrooms,
+    bedroomsList: combos ? undefined : bedrooms,
+    livingRooms: combos ? undefined : filters.livingRooms,
+    bathrooms: combos ? undefined : filters.bathrooms,
+    layoutCombinations: combos,
     orientations: normalizeMulti(filters.orientations, filters.orientation),
     decorations: normalizeMulti(filters.decorations, filters.decoration),
     rentalTypes: normalizeMulti(filters.rentalTypes, filters.rentalType),

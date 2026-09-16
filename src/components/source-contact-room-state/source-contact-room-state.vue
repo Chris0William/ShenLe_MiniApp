@@ -53,6 +53,9 @@ interface OperationDraft {
   hideRentToGuest: boolean | null
   hideCommissionToGuest: boolean | null
   hideAnnouncementToGuest: boolean | null
+  supportsShortRent: boolean
+  supportsDailyRent: boolean
+  supportsMonthlyPayment: boolean
   remark: string
 }
 
@@ -103,6 +106,9 @@ const draft = reactive<OperationDraft>({
   hideRentToGuest: null,
   hideCommissionToGuest: null,
   hideAnnouncementToGuest: null,
+  supportsShortRent: false,
+  supportsDailyRent: false,
+  supportsMonthlyPayment: false,
   remark: '',
 })
 
@@ -473,8 +479,11 @@ function buildOperationInput() {
     networkFeeMode: draft.networkFeeMode,
     petPolicy: draft.petPolicy,
     hideRentToGuest: draft.hideRentToGuest,
-    hideCommissionToGuest: draft.hideCommissionToGuest,
+    hideCommissionToGuest: null, // 佣金已固定对游客隐藏，开关废弃
     hideAnnouncementToGuest: draft.hideAnnouncementToGuest,
+    defaultSupportsShortRent: draft.supportsShortRent,
+    defaultSupportsDailyRent: draft.supportsDailyRent,
+    defaultSupportsMonthlyPayment: draft.supportsMonthlyPayment,
   }
 }
 
@@ -1033,17 +1042,34 @@ defineExpose({ refresh, activate })
         </view>
 
         <view v-if="screen === 'community-config'" class="setting-group guest-visibility">
-          <text class="form-section__title">租客可见性</text>
-          <text class="form-section__hint">打开后，游客扫码查看本楼盘时该项显示为 ???，业务员不受影响</text>
-          <view class="guest-switch-row" @tap="draft.hideRentToGuest = draft.hideRentToGuest === true ? null : true">
-            <text>租客可以看到租金</text>
-            <view class="guest-switch" :class="{ on: draft.hideRentToGuest === true }">
+          <text class="form-section__title">经营标签（楼盘默认）</text>
+          <text class="form-section__hint">保存时随「同步到全部房源」一起写入每套房源，业务员端筛选与房源标签即用这些开关</text>
+          <view class="guest-switch-row" @tap="draft.supportsMonthlyPayment = !draft.supportsMonthlyPayment">
+            <text>可押一付一</text>
+            <view class="guest-switch" :class="{ on: draft.supportsMonthlyPayment }">
               <view class="guest-switch__knob" />
             </view>
           </view>
-          <view class="guest-switch-row" @tap="draft.hideCommissionToGuest = draft.hideCommissionToGuest === true ? null : true">
-            <text>租客可以看到佣金</text>
-            <view class="guest-switch" :class="{ on: draft.hideCommissionToGuest === true }">
+          <view class="guest-switch-row" @tap="draft.supportsShortRent = !draft.supportsShortRent">
+            <text>可短租</text>
+            <view class="guest-switch" :class="{ on: draft.supportsShortRent }">
+              <view class="guest-switch__knob" />
+            </view>
+          </view>
+          <view class="guest-switch-row" @tap="draft.supportsDailyRent = !draft.supportsDailyRent">
+            <text>可日租</text>
+            <view class="guest-switch" :class="{ on: draft.supportsDailyRent }">
+              <view class="guest-switch__knob" />
+            </view>
+          </view>
+        </view>
+
+        <view v-if="screen === 'community-config'" class="setting-group guest-visibility">
+          <text class="form-section__title">租客可见性</text>
+          <text class="form-section__hint">打开后，游客扫码查看本楼盘时租金/公告显示为 ???；佣金固定仅业务员可见</text>
+          <view class="guest-switch-row" @tap="draft.hideRentToGuest = draft.hideRentToGuest === true ? null : true">
+            <text>租客可以看到租金</text>
+            <view class="guest-switch" :class="{ on: draft.hideRentToGuest === true }">
               <view class="guest-switch__knob" />
             </view>
           </view>
@@ -1057,7 +1083,7 @@ defineExpose({ refresh, activate })
 
         <view v-if="screen === 'community-config'" class="form-section">
           <text class="form-section__title">公告</text>
-          <textarea v-model="draft.remark" class="remark-input" :maxlength="500" placeholder="填写后将在业务员端展示" />
+          <textarea v-model="draft.remark" class="remark-input" :maxlength="500" placeholder="填写后将在业务员端展示"  :cursor-spacing="24" :adjust-position="true"/>
         </view>
       </scroll-view>
       <view class="editor-footer">

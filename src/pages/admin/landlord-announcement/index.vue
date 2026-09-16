@@ -334,7 +334,7 @@ function previewBlockStyle(block: TextBlock) {
               placeholder="输入文字，支持换行与表情"
               :maxlength="2000"
               auto-height
-            />
+             :cursor-spacing="24" :adjust-position="true"/>
             <view class="block-preview" :style="previewBlockStyle(block)">{{ block.text || '预览效果' }}</view>
           </template>
           <template v-else>

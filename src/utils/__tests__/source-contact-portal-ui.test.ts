@@ -77,7 +77,8 @@ describe('landlord portal behavior', () => {
   it('reuses the original property map for landlord markers and overlays', () => {
     expect(mapPage.match(/<map\b/g)).toHaveLength(1)
     expect(mapPage).toContain('mapContext = uni.createMapContext(mapId)')
-    expect(mapPage).toContain('const activeMarkers = computed(() => isLandlordView.value ? landlordMarkers.value : markers.value)')
+    expect(mapPage).toContain('overlayActive.value ? [] : (isLandlordView.value ? landlordMarkers.value : markers.value)')
+    expect(mapPage).toContain('onFilterPanelChange')
     expect(mapPage).toContain('<template v-if="isLandlordView">')
     expect(mapPage).not.toContain('source-contact-map')
   })

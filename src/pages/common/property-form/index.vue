@@ -981,7 +981,7 @@ onLoad(async (query) => {
         </view>
         <view class="form-item">
           <text class="form-label">描述</text>
-          <textarea v-model="form.description" class="form-textarea" placeholder="填写采光、交通、家具等亮点" />
+          <textarea v-model="form.description" class="form-textarea" placeholder="填写采光、交通、家具等亮点"  :cursor-spacing="24" :adjust-position="true"/>
         </view>
       </view>
 
@@ -1057,7 +1057,7 @@ onLoad(async (query) => {
         </view>
         <view class="form-item">
           <text class="form-label">内部备注</text>
-          <textarea v-model="form.remark" class="form-textarea" placeholder="仅管理端可见" />
+          <textarea v-model="form.remark" class="form-textarea" placeholder="仅管理端可见"  :cursor-spacing="24" :adjust-position="true"/>
         </view>
       </view>
     </view>

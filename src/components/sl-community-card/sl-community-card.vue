@@ -43,6 +43,18 @@ function mediaKind(fileType?: string | null, suffixOrUrl?: string | null) {
   return 'image'
 }
 
+const commissionLabel = computed(() => {
+  if (props.item.commissionMasked)
+    return '???'
+  const low = props.item.lowestOneYearCommissionPercent
+  const high = props.item.highestOneYearCommissionPercent
+  if (low == null && high == null)
+    return ''
+  if (low != null && high != null && low !== high)
+    return `一年 ${low}%-${high}%`
+  return `一年 ${low ?? high}%`
+})
+
 function rentRangeText(item: SlCommunityOutput) {
   if (item.rentMasked)
     return '租金 ???'
@@ -134,6 +146,10 @@ watch(
       <view class="community__meta">
         <text class="community__rent">{{ rentRangeText(item) }}</text>
         <text v-if="distanceText(item)" class="community__distance">距 {{ distanceText(item) }}</text>
+      </view>
+      <view v-if="commissionLabel" class="community__commission">
+        <text>佣金</text>
+        <text>{{ commissionLabel }}</text>
       </view>
       <view class="community__bottom">
         <text>{{ availableOnly ? (item.availableCount || 0) : (item.propertyCount || 0) }} 套房源符合要求</text>
@@ -234,6 +250,26 @@ watch(
   font-size: 23rpx;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.community__commission {
+  display: flex;
+  gap: 10rpx;
+  margin-top: 8rpx;
+  padding: 8rpx 14rpx;
+  border-radius: 10rpx;
+  background: #f7faf5;
+}
+
+.community__commission text:first-child {
+  color: #72817b;
+  font-size: 20rpx;
+}
+
+.community__commission text:last-child {
+  color: #bf7412;
+  font-size: 22rpx;
+  font-weight: 700;
 }
 
 .community__meta {

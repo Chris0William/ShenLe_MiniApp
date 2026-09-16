@@ -9,17 +9,20 @@ const props = withDefaults(defineProps<{
   showSupport?: boolean
   refresh?: boolean
   refreshing?: boolean
+  announcement?: boolean
 }>(), {
   subtitle: '',
   back: false,
   showSupport: true,
   refresh: false,
   refreshing: false,
+  announcement: false,
 })
 
 const emit = defineEmits<{
   back: []
   refresh: []
+  openAnnouncement: []
 }>()
 
 const sourceContact = useSourceContactStore()
@@ -49,6 +52,10 @@ function callSupport() {
       <view class="source-head__text">
         <text class="source-head__title">{{ props.title }}</text>
         <text v-if="props.subtitle" class="source-head__subtitle">{{ props.subtitle }}</text>
+      </view>
+      <view v-if="props.announcement" id="announcement-entry" class="source-head__ann" aria-label="公告" @tap="emit('openAnnouncement')">
+        <wd-icon name="notification" size="15px" color="#126b4f" />
+        <text>公告</text>
       </view>
       <view v-if="props.refresh" class="source-head__icon" aria-label="刷新" @tap="emit('refresh')">
         <wd-icon name="refresh" size="20px" color="#126b4f" :class="{ 'source-head__refresh--loading': props.refreshing }" />
@@ -119,6 +126,23 @@ function callSupport() {
   border: 1rpx solid rgb(18 107 79 / 14%);
   border-radius: 8rpx;
   background: #fff;
+}
+
+/* 公告按钮：图标+文字胶囊 */
+.source-head__ann {
+  display: flex;
+  height: 68rpx;
+  flex: none;
+  align-items: center;
+  gap: 6rpx;
+  box-sizing: border-box;
+  padding: 0 20rpx;
+  border: 1rpx solid rgb(18 107 79 / 14%);
+  border-radius: 999rpx;
+  background: #fff;
+  color: #126b4f;
+  font-size: 24rpx;
+  font-weight: 700;
 }
 
 .source-head__refresh--loading {

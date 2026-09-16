@@ -203,7 +203,7 @@ onLoad((query) => {
           </view>
         </view>
         <text class="reject-sheet__hint">拒绝原因可选，用户可重新提交申请。</text>
-        <textarea v-model="rejectReason" class="reject-sheet__input" :maxlength="500" placeholder="填写拒绝原因（可选）" auto-height />
+        <textarea v-model="rejectReason" class="reject-sheet__input" :maxlength="500" placeholder="填写拒绝原因（可选）" auto-height  :cursor-spacing="24" :adjust-position="true"/>
         <view class="reject-sheet__actions">
           <wd-button plain :disabled="acting" @click="rejectVisible = false">
             取消

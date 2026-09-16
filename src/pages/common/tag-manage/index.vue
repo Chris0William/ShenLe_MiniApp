@@ -343,7 +343,7 @@ onReachBottom(() => loadData())
           </view>
           <view class="form-row form-row--textarea">
             <text>备注</text>
-            <textarea v-model="form.remark" placeholder="内部管理备注" />
+            <textarea v-model="form.remark" placeholder="内部管理备注"  :cursor-spacing="24" :adjust-position="true"/>
           </view>
         </view>
 

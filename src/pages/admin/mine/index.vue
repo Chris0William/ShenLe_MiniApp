@@ -113,6 +113,10 @@ function go(url: string) {
   uni.navigateTo({ url })
 }
 
+function callContactPhone() {
+  uni.makePhoneCall({ phoneNumber: '15700651720', fail: () => {} })
+}
+
 function callSupport() {
   const phone = sourceContact.profile?.supportUserPhone
   if (!phone) {
@@ -332,8 +336,13 @@ async function signOut() {
       </view>
     </wd-popup>
 
-    <view v-if="isLandlordView" class="contact-line">
-      房源合作 · 推广投放 · 入驻洽谈 · 业务咨询，请联系我们
+    <view v-if="isLandlordView" class="contact-block">
+      <view class="contact-line">
+        商务合作-推广投放-入驻介绍-业务咨询-更多合作-请联系我们
+      </view>
+      <view class="contact-phone" @tap="callContactPhone">
+        15700651720
+      </view>
     </view>
 
     <wd-button v-if="auth.isLogin" plain block type="danger" custom-class="logout" @click="signOut">
@@ -344,24 +353,7 @@ async function signOut() {
       关于深乐租 v{{ APP_VERSION }}
     </view>
 
-    <!-- 房东公告弹窗：仅房东端、每次会话至多一次 -->
-    <view v-if="landlordAnnouncement.shouldRender.value" class="ann-mask" @tap="landlordAnnouncement.closeOnce()" @touchmove.stop.prevent />
-    <view v-if="landlordAnnouncement.shouldRender.value" class="ann-pop" :class="{ 'ann-pop--closing': landlordAnnouncement.closing.value }" @touchmove.stop>
-      <view class="ann-pop__head">
-        <text class="ann-pop__title">{{ landlordAnnouncement.announcement.value?.title || '房东公告' }}</text>
-      </view>
-      <scroll-view scroll-y class="ann-pop__body">
-        <rich-text :nodes="landlordAnnouncement.announcement.value?.content || ''" class="ann-pop__rich" />
-      </scroll-view>
-      <view class="ann-pop__actions">
-        <wd-button size="large" plain block @click="landlordAnnouncement.dismissForToday()">
-          今日不再显示
-        </wd-button>
-        <wd-button size="large" type="primary" block @click="landlordAnnouncement.closeOnce()">
-          关闭
-        </wd-button>
-      </view>
-    </view>
+
     <sl-login-consent ref="loginConsentRef" />
     <wd-popup v-model="enrollmentCodeVisible" position="center" closable custom-style="width: 620rpx; padding: 40rpx; box-sizing: border-box; border-radius: 8px;">
       <view style="display: flex; flex-direction: column; align-items: center; gap: 24rpx;">
@@ -382,12 +374,23 @@ async function signOut() {
   padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
 }
 
-.contact-line {
+.contact-block {
   margin: 28rpx 32rpx 8rpx;
+  text-align: center;
+}
+
+.contact-line {
   color: var(--sl-brand);
   font-size: 24rpx;
   letter-spacing: 1rpx;
-  text-align: center;
+}
+
+.contact-phone {
+  margin-top: 8rpx;
+  color: var(--sl-brand);
+  font-size: 30rpx;
+  font-weight: 800;
+  text-decoration: underline;
 }
 
 .about-line {

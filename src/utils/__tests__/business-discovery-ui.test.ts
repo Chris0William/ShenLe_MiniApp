@@ -18,8 +18,8 @@ describe('business discovery experience', () => {
     expect(map).toContain('filters.value.distanceKm !== undefined || filters.value.sortBy === \'distance\'')
     expect(propertyList).toContain('filters.value.distanceKm !== undefined || filters.value.sortBy === \'distance\'')
     expect(propertyList).toContain('const pageSize = 20')
-    expect(map).toContain('selected.availableCount')
-    expect(map).toContain('selected.announcement')
+    expect(map).toContain('<sl-unified-community-card')
+    expect(map).toContain('@announcement=')
     expect(map).not.toContain('landlord-map-tools')
     expect(properties).toContain('availableOnly: isBusinessView.value || undefined')
     expect(properties).toContain('mediaList.length && !isBusinessView')
@@ -36,10 +36,11 @@ describe('business discovery experience', () => {
     expect(properties).toContain('<sl-property-list-filter')
     expect(promotion).toContain('<sl-property-list-filter')
     expect(roomFilter).toContain('按房号结尾匹配')
-    expect(communityFilter).toContain('\'location\' | \'price\' | \'layout\' | \'more\'')
+    expect(communityFilter).toContain('\'location\' | \'price\' | \'more\'')
+    expect(communityFilter).toContain('LAYOUT_PRESETS')
     expect(communityFilter).toContain('{ value: \'pet\', label: \'可养宠物\' }')
     expect(communityFilter).toContain('active-chip-bar')
-    expect(communityFilter).toContain('toggleLayoutValue')
+    expect(communityFilter).toContain('toggleLayoutCombo')
   })
 
   it('renders every pet status through the shared styled component below commission', () => {
@@ -48,7 +49,7 @@ describe('business discovery experience', () => {
     const rooms = source('src/components/source-contact-room-state/source-contact-room-state.vue')
     const pet = source('src/components/sl-pet-policy-text/sl-pet-policy-text.vue')
 
-    expect(map).toContain('<sl-pet-policy-text')
+    expect(map).toContain('sl-unified-community-card')
     expect(properties).toContain('<sl-pet-policy-text')
     expect(rooms).toContain('<sl-pet-policy-text')
     expect(map.indexOf('map-card__commission')).toBeLessThan(map.indexOf('map-card__pet'))

@@ -37,6 +37,18 @@ definePage({
 const communityId = ref<ShenLeId>('')
 const communityName = ref('')
 const buildingId = ref<ShenLeId>('')
+// 入口携带的房源级筛选上下文（地图筛选贯通）：JSON 编码的 PropertyFilterState 子集
+const entryFilter = ref<{
+  layoutCombinations?: string[]
+  orientations?: string[]
+  decorations?: string[]
+  rentalTypes?: string[]
+  depositRules?: string[]
+  minPrice?: number
+  maxPrice?: number
+  minArea?: number
+  maxArea?: number
+} | null>(null)
 const buildingName = ref('')
 const buildingTotalFloors = ref<number | null>(null)
 const communityDistance = ref<number | null>(null)
@@ -137,6 +149,15 @@ function buildQuery(): PageSlPropertyInput {
     bedrooms: bedrooms.value,
     livingRooms: livingRooms.value,
     bathrooms: bathrooms.value,
+    layoutCombinations: entryFilter.value?.layoutCombinations,
+    orientations: entryFilter.value?.orientations,
+    decorations: entryFilter.value?.decorations,
+    rentalTypes: entryFilter.value?.rentalTypes,
+    depositRules: entryFilter.value?.depositRules,
+    minPrice: entryFilter.value?.minPrice,
+    maxPrice: entryFilter.value?.maxPrice,
+    minArea: entryFilter.value?.minArea,
+    maxArea: entryFilter.value?.maxArea,
     landlordShareToken: landlordShare.active.value ? landlordShare.shareToken.value : undefined,
     availableOnly: isBusinessView.value || undefined,
   }
@@ -712,6 +733,14 @@ onLoad((query) => {
   buildingTotalFloors.value = Number.isFinite(totalFloors) && totalFloors > 0 ? totalFloors : null
   const distance = Number(query?.distance)
   communityDistance.value = Number.isFinite(distance) && distance >= 0 ? distance : null
+  if (query?.filterContext) {
+    try {
+      entryFilter.value = JSON.parse(decodeURIComponent(String(query.filterContext)))
+    }
+    catch {
+      entryFilter.value = null
+    }
+  }
   if (communityName.value || buildingName.value)
     uni.setNavigationBarTitle({ title: buildingName.value || communityName.value })
   void initializePage()
