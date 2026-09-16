@@ -134,3 +134,147 @@ page {
 .sl-safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
+
+/* ===== 全局动效 token 与基础工具类（时长: 微反馈150ms / 入场240ms / 面板300ms） ===== */
+
+/* 列表卡片错峰上滑入场：容器加 .sl-stagger，子项自动错峰（前 12 项） */
+@keyframes sl-fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(24rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sl-stagger > .sl-card {
+  animation: sl-fade-in-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@for $i from 1 through 12 {
+  .sl-stagger > .sl-card:nth-child(#{$i}) {
+    animation-delay: #{$i * 30}ms;
+  }
+}
+
+/* 卡片/行按压反馈 */
+.sl-press {
+  transition: transform 0.15s ease;
+}
+
+.sl-press:active {
+  transform: scale(0.97);
+}
+
+/* 骨架屏呼吸 */
+@keyframes sl-skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.sl-skeleton {
+  border-radius: 12rpx;
+  background: #e8ede9;
+  animation: sl-skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+/* 层级推进滑入（前进=右侧进入，后退=左侧进入） */
+@keyframes sl-slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(36rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes sl-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-36rpx);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.sl-hier-in {
+  animation: sl-slide-in-right 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.sl-hier-back {
+  animation: sl-slide-in-left 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* 弹窗弹性入场（zoom-bounce）与收束退场 */
+@keyframes sl-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sl-pop-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+.sl-pop {
+  animation: sl-pop-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* tab 图标选中弹跳 */
+@keyframes sl-tab-bounce {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* 图片加载完成 模糊→清晰 */
+@keyframes sl-blur-in {
+  from {
+    filter: blur(12rpx);
+    opacity: 0.4;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
+}
+
+/* 信号灯脉冲 */
+@keyframes sl-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.65;
+  }
+}

@@ -894,6 +894,25 @@ export interface CreateLandlordShareCodeOutput {
   expiresAt: string
 }
 
+export interface SlLandlordAnnouncementListOutput {
+  id: ShenLeId
+  title?: string | null
+  content?: string | null
+  blocksJson?: string | null
+  version: number
+  isDisplayed: boolean
+  publisherName?: string | null
+  updateTime?: string | null
+}
+
+export interface SlLandlordAnnouncementDisplayedOutput {
+  id: ShenLeId
+  title?: string | null
+  content?: string | null
+  version: number
+  updateTime?: string | null
+}
+
 export interface CreateCommunityShareCodeOutput {
   shareToken: string
   qrPngBase64: string

@@ -5,6 +5,7 @@ import { setMyNickName } from '@/api/auth'
 import { getEnrollmentCode } from '@/api/landlord-enrollment'
 import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
+import { useLandlordAnnouncementStore } from '@/store/landlord-announcement'
 import { modeStore } from '@/store/mode'
 import { useSourceContactStore } from '@/store/source-contact'
 import { tabbarStore } from '@/tabbar/store'
@@ -19,6 +20,7 @@ definePage({
 
 const auth = useShenleAuthStore()
 const sourceContact = useSourceContactStore()
+const landlordAnnouncement = useLandlordAnnouncementStore()
 const isAdminView = computed(() => modeStore.mode === 'admin')
 const isLandlordView = computed(() => modeStore.mode === 'landlord')
 const pendingCount = ref(0)
@@ -51,14 +53,10 @@ const sourceStats = computed(() => [
 ])
 
 const adminMenus = computed(() => {
-  const base = [
-    { title: '楼盘管理', desc: '楼盘地址、坐标、楼栋入口', icon: 'home', tone: 'green', url: '/pages/common/community-manage/index', badge: 0 },
-    { title: '楼栋管理', desc: '选择楼盘后维护楼栋', icon: 'view-list', tone: 'green', url: '/pages/common/building-manage/index', badge: 0 },
-    { title: '销控表', desc: '楼盘 -> 楼栋 -> 房间', icon: 'chart', tone: 'gold', url: '/pages/admin/sales-control/index', badge: 0 },
-  ]
-  if (auth.canManageDictionaries) {
-    base.splice(2, 0, { title: '区域管理', desc: '片区层级与地图中心点', icon: 'location', tone: 'gold', url: '/pages/common/region-manage/index', badge: 0 }, { title: '标签管理', desc: '房源标签与配套设施字典', icon: 'discount', tone: 'green', url: '/pages/common/tag-manage/index', badge: 0 })
-  }
+  // 盘源类入口（楼盘/楼栋/区域/标签/销控）统一在工作台与销控 label，此处只保留管理配置类入口
+  const base: Array<{ title: string, desc: string, icon: string, tone: string, url: string, badge: number }> = []
+  if (auth.isSuperAdmin)
+    base.push({ title: '房东公告', desc: '编辑富文本公告，指定房东端显示', icon: 'notification', tone: 'green', url: '/pages/admin/landlord-announcement/index', badge: 0 })
   if (auth.user?.canManageSourceContacts)
     base.push({ title: '盘源对接人管理', desc: '设置盘源对接人、分配楼盘', icon: 'usergroup', tone: 'gold', url: '/pages/admin/landlord-manage/index', badge: 0 })
   if (auth.canManageLandlords)
@@ -135,8 +133,10 @@ onShow(async () => {
       return
     }
   }
-  if (isLandlordView.value)
+  if (isLandlordView.value) {
     void sourceContact.load()
+    void landlordAnnouncement.checkAndShow()
+  }
   if (isAdminView.value && auth.user?.canManageUsers)
     getPendingUsers().then((list) => { pendingCount.value = list.length }).catch(() => {})
 })
@@ -197,7 +197,7 @@ async function signOut() {
         </text>
         <text v-if="auth.isLogin" class="nickname-edit" @tap="openNicknameEditor">修改昵称</text>
       </view>
-      <button v-if="auth.isSuperAdmin" class="enrollment-code-trigger" aria-label="房东入驻二维码" @tap.stop="openEnrollmentCode">
+      <button v-if="isAdminView && auth.isSuperAdmin" class="enrollment-code-trigger" aria-label="房东入驻二维码" @tap.stop="openEnrollmentCode">
         <view class="i-lucide-qr-code share-code-icon" />
       </button>
       <view v-if="isLandlordView && auth.user?.isLandlord" class="share-code-trigger" role="button" aria-label="打开楼盘分享二维码" @tap.stop="landlordShareCodeRef?.open()">
@@ -332,14 +332,36 @@ async function signOut() {
       </view>
     </wd-popup>
 
-    <view class="about-entry sl-card" @tap="go('/pages/common/about/index')">
-      <text class="about-entry__title">关于深乐租</text>
-      <text class="about-entry__version">v{{ APP_VERSION }}</text>
+    <view v-if="isLandlordView" class="contact-line">
+      房源合作 · 推广投放 · 入驻洽谈 · 业务咨询，请联系我们
     </view>
 
     <wd-button v-if="auth.isLogin" plain block type="danger" custom-class="logout" @click="signOut">
       退出登录
     </wd-button>
+
+    <view class="about-line" @tap="go('/pages/common/about/index')">
+      关于深乐租 v{{ APP_VERSION }}
+    </view>
+
+    <!-- 房东公告弹窗：仅房东端、每次会话至多一次 -->
+    <view v-if="landlordAnnouncement.shouldRender.value" class="ann-mask" @tap="landlordAnnouncement.closeOnce()" @touchmove.stop.prevent />
+    <view v-if="landlordAnnouncement.shouldRender.value" class="ann-pop" @touchmove.stop>
+      <view class="ann-pop__head">
+        <text class="ann-pop__title">{{ landlordAnnouncement.announcement.value?.title || '房东公告' }}</text>
+      </view>
+      <scroll-view scroll-y class="ann-pop__body">
+        <rich-text :nodes="landlordAnnouncement.announcement.value?.content || ''" class="ann-pop__rich" />
+      </scroll-view>
+      <view class="ann-pop__actions">
+        <wd-button size="large" plain block @click="landlordAnnouncement.dismissForToday()">
+          今日不再显示
+        </wd-button>
+        <wd-button size="large" type="primary" block @click="landlordAnnouncement.closeOnce()">
+          关闭
+        </wd-button>
+      </view>
+    </view>
     <sl-login-consent ref="loginConsentRef" />
     <wd-popup v-model="enrollmentCodeVisible" position="center" closable custom-style="width: 620rpx; padding: 40rpx; box-sizing: border-box; border-radius: 8px;">
       <view style="display: flex; flex-direction: column; align-items: center; gap: 24rpx;">
@@ -360,23 +382,20 @@ async function signOut() {
   padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
 }
 
-.about-entry {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 24rpx 24rpx 0;
-  padding: 28rpx 32rpx;
+.contact-line {
+  margin: 28rpx 32rpx 8rpx;
+  color: var(--sl-brand);
+  font-size: 24rpx;
+  letter-spacing: 1rpx;
+  text-align: center;
 }
 
-.about-entry__title {
-  font-size: 28rpx;
-  font-weight: 600;
-  color: var(--sl-ink);
-}
-
-.about-entry__version {
-  font-size: 26rpx;
+.about-line {
+  margin: 20rpx 32rpx calc(24rpx + env(safe-area-inset-bottom));
   color: var(--sl-muted);
+  font-size: 22rpx;
+  opacity: 0.75;
+  text-align: center;
 }
 
 .profile {
@@ -688,5 +707,59 @@ async function signOut() {
   justify-content: flex-end;
   gap: 16rpx;
   margin-top: 24rpx;
+}
+
+/* 房东公告弹窗 */
+.ann-mask {
+  position: fixed;
+  z-index: 2600;
+  inset: 0;
+  background: rgb(17 24 39 / 55%);
+}
+
+.ann-pop {
+  position: fixed;
+  z-index: 2601;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  box-sizing: border-box;
+  width: 640rpx;
+  max-height: 76vh;
+  flex-direction: column;
+  padding: 34rpx 30rpx 26rpx;
+  border-radius: 20rpx;
+  background: #fff;
+  transform: translate(-50%, -50%);
+}
+
+.ann-pop__head {
+  padding-bottom: 16rpx;
+  border-bottom: 1rpx solid #eef1ec;
+}
+
+.ann-pop__title {
+  color: #1e2f27;
+  font-size: 32rpx;
+  font-weight: 850;
+  text-align: center;
+}
+
+.ann-pop__body {
+  min-height: 0;
+  flex: 1;
+  max-height: 46vh;
+  margin-top: 8rpx;
+}
+
+.ann-pop__rich {
+  padding: 16rpx 8rpx;
+}
+
+.ann-pop__actions {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 18rpx;
+  padding-top: 20rpx;
 }
 </style>

@@ -235,6 +235,17 @@
     // #endif
     // #ifdef MP-WEIXIN
     {
+      "path": "pages/admin/landlord-announcement/index",
+      "type": "page",
+      "style": {
+        "navigationStyle": "custom",
+        "navigationBarTitleText": "房东公告",
+        "disableScroll": true
+      }
+    },
+    // #endif
+    // #ifdef MP-WEIXIN
+    {
       "path": "pages/common/about/index",
       "type": "page",
       "style": {
