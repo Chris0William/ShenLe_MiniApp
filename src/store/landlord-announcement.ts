@@ -53,18 +53,32 @@ async function checkAndShow() {
   }
 }
 
-function dismissForToday() {
-  if (announcement.value) {
+const closing = ref(false)
+let closingTimer: ReturnType<typeof setTimeout> | null = null
+
+/** 带退场动画的关闭：先播 0.2s scale-out 再真正隐藏 */
+function animateClose(persistDismiss: boolean) {
+  if (closing.value)
+    return
+  closing.value = true
+  if (announcement.value)
     uni.setStorageSync(READ_VERSION_KEY, announcement.value.version)
+  if (persistDismiss && announcement.value)
     uni.setStorageSync(DISMISS_UNTIL_KEY, todayKey())
-  }
-  visible.value = false
+  if (closingTimer)
+    clearTimeout(closingTimer)
+  closingTimer = setTimeout(() => {
+    closing.value = false
+    visible.value = false
+  }, 200)
+}
+
+function dismissForToday() {
+  animateClose(true)
 }
 
 function closeOnce() {
-  if (announcement.value)
-    uni.setStorageSync(READ_VERSION_KEY, announcement.value.version)
-  visible.value = false
+  animateClose(false)
 }
 
 // 离开房东端时关闭弹窗
@@ -75,5 +89,5 @@ onModeChange((next) => {
 
 export function useLandlordAnnouncementStore() {
   const shouldRender = computed(() => modeStore.mode === 'landlord' && visible.value && !!announcement.value)
-  return { announcement, visible, shouldRender, checkAndShow, dismissForToday, closeOnce }
+  return { announcement, visible, closing, shouldRender, checkAndShow, dismissForToday, closeOnce }
 }

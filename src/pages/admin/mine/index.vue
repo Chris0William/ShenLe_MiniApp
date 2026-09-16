@@ -346,7 +346,7 @@ async function signOut() {
 
     <!-- 房东公告弹窗：仅房东端、每次会话至多一次 -->
     <view v-if="landlordAnnouncement.shouldRender.value" class="ann-mask" @tap="landlordAnnouncement.closeOnce()" @touchmove.stop.prevent />
-    <view v-if="landlordAnnouncement.shouldRender.value" class="ann-pop" @touchmove.stop>
+    <view v-if="landlordAnnouncement.shouldRender.value" class="ann-pop" :class="{ 'ann-pop--closing': landlordAnnouncement.closing.value }" @touchmove.stop>
       <view class="ann-pop__head">
         <text class="ann-pop__title">{{ landlordAnnouncement.announcement.value?.title || '房东公告' }}</text>
       </view>
@@ -715,6 +715,16 @@ async function signOut() {
   z-index: 2600;
   inset: 0;
   background: rgb(17 24 39 / 55%);
+  animation: ann-mask-in 0.2s ease both;
+}
+
+@keyframes ann-mask-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .ann-pop {
@@ -731,6 +741,33 @@ async function signOut() {
   border-radius: 20rpx;
   background: #fff;
   transform: translate(-50%, -50%);
+  animation: ann-pop-in 0.26s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.ann-pop--closing {
+  animation: ann-pop-out 0.2s ease both;
+}
+
+@keyframes ann-pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes ann-pop-out {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
 }
 
 .ann-pop__head {

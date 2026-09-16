@@ -26,5 +26,6 @@ export function deleteLandlordAnnouncement(id: ShenLeId) {
 }
 
 export function getDisplayedLandlordAnnouncement() {
-  return get<SlLandlordAnnouncementDisplayedOutput | null>('/api/slLandlordAnnouncement/displayed')
+  // 弹窗预取：静默失败，不弹全局错误提示（silent 透传 request 层）
+  return get<SlLandlordAnnouncementDisplayedOutput | null>('/api/slLandlordAnnouncement/displayed', undefined, { silent: true })
 }

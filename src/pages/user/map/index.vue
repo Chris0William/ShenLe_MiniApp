@@ -2147,6 +2147,7 @@ onUnload(() => {
   justify-self: center;
   border-radius: 50%;
   background: #d46d12;
+  animation: ticker-pulse 1.6s ease-in-out infinite;
 }
 
 .community-ticker__signal-icon {
@@ -2608,5 +2609,16 @@ onUnload(() => {
   color: var(--sl-muted);
   font-size: 24rpx;
   text-align: center;
+}
+
+@keyframes ticker-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0.7;
+  }
 }
 </style>

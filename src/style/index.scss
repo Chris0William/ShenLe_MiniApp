@@ -149,12 +149,14 @@ page {
   }
 }
 
-.sl-stagger > .sl-card {
+.sl-stagger > .sl-card,
+.sl-stagger.sl-press {
   animation: sl-fade-in-up 0.24s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 @for $i from 1 through 12 {
-  .sl-stagger > .sl-card:nth-child(#{$i}) {
+  .sl-stagger > .sl-card:nth-child(#{$i}),
+  .sl-stagger.sl-press:nth-child(#{$i}) {
     animation-delay: #{$i * 30}ms;
   }
 }

@@ -111,9 +111,9 @@ watch(
 
 <template>
   <view class="community sl-card" :class="{ 'community--compact': compact }" @tap="emit('select', item)">
-    <image v-if="coverKind === 'image' && cover" class="community__cover" :src="cover" mode="aspectFill" />
+    <image v-if="coverKind === 'image' && cover" class="community__cover community__cover--fade" :src="cover" mode="aspectFill" />
     <view v-else-if="coverKind === 'video'" class="community__cover community__cover--video" @tap.stop="emit('previewVideo', item)">
-      <image v-if="cover" class="community__poster" :src="cover" mode="aspectFill" />
+      <image v-if="cover" class="community__poster community__cover--fade" :src="cover" mode="aspectFill" />
       <view class="community__play">
         <wd-icon name="play-circle" size="28px" color="#fff" />
         <text>视频</text>
@@ -304,5 +304,21 @@ watch(
   width: 132rpx;
   height: 132rpx;
   flex-basis: 132rpx;
+}
+
+/* 封面图加载完成：模糊→清晰 */
+.community__cover--fade {
+  animation: cover-blur-in 0.4s ease-out both;
+}
+
+@keyframes cover-blur-in {
+  from {
+    filter: blur(12rpx);
+    opacity: 0.4;
+  }
+  to {
+    filter: blur(0);
+    opacity: 1;
+  }
 }
 </style>

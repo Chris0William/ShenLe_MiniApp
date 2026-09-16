@@ -126,6 +126,8 @@ async function load(reset = false) {
   finally {
     loading.value = false
     uni.stopPullDownRefresh()
+    if (reset)
+      setTimeout(() => uni.showToast({ title: '已刷新', icon: 'none', duration: 600 }), 200)
   }
 }
 
@@ -393,7 +395,7 @@ onReachBottom(() => {
         </view>
       </view>
       <template v-else>
-        <view v-for="item in items" :key="String(item.id)" class="community-wrap">
+        <view v-for="item in items" :key="String(item.id)" class="community-wrap sl-press sl-stagger">
           <sl-community-card
             :item="item"
             :available-only="isBusinessMode"
@@ -421,9 +423,15 @@ onReachBottom(() => {
       </view>
     </wd-popup>
 
-    <view v-if="loading" class="loading sl-card">
-      <wd-icon name="loading" size="18px" color="#126b4f" />
-      <text>加载中...</text>
+    <view v-if="loading" class="skeleton-list">
+      <view v-for="n in 4" :key="n" class="skeleton-card sl-card">
+        <view class="sl-skeleton skeleton-cover" />
+        <view class="skeleton-lines">
+          <view class="sl-skeleton skeleton-line skeleton-line--title" />
+          <view class="sl-skeleton skeleton-line" />
+          <view class="sl-skeleton skeleton-line skeleton-line--short" />
+        </view>
+      </view>
     </view>
     <view v-else-if="hasLoaded && !currentCount" class="empty sl-card">
       <wd-icon name="home" size="42px" color="#8ea099" />
@@ -671,5 +679,46 @@ onReachBottom(() => {
 
 .community-wrap {
   position: relative;
+}
+
+/* 加载骨架屏 */
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.skeleton-card {
+  display: flex;
+  gap: 20rpx;
+  padding: 22rpx;
+}
+
+.skeleton-cover {
+  width: 160rpx;
+  height: 160rpx;
+  flex: 0 0 160rpx;
+}
+
+.skeleton-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 8rpx 0;
+}
+
+.skeleton-line {
+  height: 26rpx;
+  width: 70%;
+}
+
+.skeleton-line--title {
+  height: 32rpx;
+  width: 90%;
+}
+
+.skeleton-line--short {
+  width: 45%;
 }
 </style>

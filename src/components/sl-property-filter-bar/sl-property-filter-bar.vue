@@ -1902,6 +1902,12 @@ function onThumbTouchEnd() {
   border-radius: 999rpx;
   background: #eef7f1;
   animation: chip-in 0.24s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.active-chip:active {
+  opacity: 0.4;
+  transform: scale(0.9);
 }
 
 @keyframes chip-in {

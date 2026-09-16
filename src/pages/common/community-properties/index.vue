@@ -859,8 +859,8 @@ onShow(async () => {
             <text>{{ selectingAll ? '处理中...' : (allFilteredSelected ? '已全选筛选结果' : '全选筛选结果') }}</text>
           </view>
 
-          <view class="list">
-            <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card" :class="{ 'property-wrap--selected': isSelected(item.id) }">
+          <view class="list sl-stagger">
+            <view v-for="item in items" :key="String(item.id)" class="property-wrap sl-card sl-press" :class="{ 'property-wrap--selected': isSelected(item.id) }">
               <view class="property-select-row">
                 <view v-if="selectionMode" class="selection-checkbox" :class="{ selected: isSelected(item.id) }" @tap.stop="toggleSelected(item)">
                   <wd-icon v-if="isSelected(item.id)" name="check" size="14px" color="#fff" />

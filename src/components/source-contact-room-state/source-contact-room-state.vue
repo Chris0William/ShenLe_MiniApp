@@ -11,7 +11,7 @@ import type {
   SlPropertyOperationConfigOutput,
   SlSourceContactCommunityOutput,
 } from '@/types/shenle'
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { getBuildingStats } from '@/api/building'
 import { createCommunityShareCode } from '@/api/landlord-share'
 import { getPropertyList, updatePropertyStatus } from '@/api/property'
@@ -59,6 +59,23 @@ interface OperationDraft {
 const safeTop = useSafeTopStyle()
 const sourceContact = useSourceContactStore()
 const screen = ref<Screen>('communities')
+// 层级动画方向：进入更深=右侧滑入，返回=左侧滑入
+const navDirection = ref<'forward' | 'back'>('forward')
+watch(screen, (_next, prev) => {
+  const depth: Record<Screen, number> = {
+    communities: 0,
+    buildings: 1,
+    rooms: 2,
+    'property-action': 3,
+    'community-config': 2,
+    'property-config': 3,
+    'batch-commission': 3,
+  }
+  const nextDepth = depth[_next as Screen] ?? 0
+  const prevDepth = depth[prev as Screen] ?? 0
+  navDirection.value = nextDepth >= prevDepth ? 'forward' : 'back'
+})
+const hierClass = computed(() => navDirection.value === 'forward' ? 'sl-hier-in' : 'sl-hier-back')
 const selectedCommunity = ref<SlSourceContactCommunityOutput | null>(null)
 const selectedBuilding = ref<SlBuildingStatsOutput | null>(null)
 const activeRoom = ref<RoomRow | null>(null)
@@ -664,18 +681,20 @@ defineExpose({ refresh, activate })
       @refresh="refresh"
     />
 
-    <view v-if="screen === 'communities'" class="content-area">
+    <view v-if="screen === 'communities'" class="content-area" :class="hierClass">
       <scroll-view :scroll-top="communityScrollTop" scroll-y class="content-scroll" @scrolltolower="changeCommunityPage(communityPage + 1)">
-        <view v-if="sourceContact.loading && !sourceContact.communities.length" class="empty-state">
-          <wd-loading color="#126b4f" />
-          <text>正在加载盘源</text>
+        <view v-if="sourceContact.loading && !sourceContact.communities.length" class="skeleton-rows">
+          <view v-for="n in 5" :key="n" class="skeleton-row">
+            <view class="sl-skeleton skeleton-row__line skeleton-row__line--title" />
+            <view class="sl-skeleton skeleton-row__line" />
+          </view>
         </view>
         <view v-else-if="!sourceContact.communities.length" class="empty-state">
           <wd-icon name="home" size="34px" color="#8fa098" />
           <text>暂未分配楼盘</text>
         </view>
         <view v-else class="community-list">
-          <view v-for="item in visibleCommunities" :key="String(item.id)" class="community-row" @tap="openCommunity(item)">
+          <view v-for="item in visibleCommunities" :key="String(item.id)" class="community-row sl-press sl-stagger" @tap="openCommunity(item)">
             <view class="community-row__main">
               <view class="community-row__title-line">
                 <text class="community-row__name">{{ item.name }}</text>
@@ -743,7 +762,7 @@ defineExpose({ refresh, activate })
       </scroll-view>
     </view>
 
-    <view v-else-if="screen === 'buildings'" class="content-area">
+    <view v-else-if="screen === 'buildings'" class="content-area" :class="hierClass">
       <scroll-view scroll-y class="content-scroll">
         <view v-if="loading" class="empty-state">
           <wd-loading color="#126b4f" />
@@ -772,7 +791,7 @@ defineExpose({ refresh, activate })
       </scroll-view>
     </view>
 
-    <view v-else-if="screen === 'rooms'" class="content-area">
+    <view v-else-if="screen === 'rooms'" class="content-area" :class="hierClass">
       <view class="room-toolbar">
         <view v-if="selecting" class="select-all" @tap="toggleAll">
           <view class="check-box" :class="{ 'check-box--active': selectedAll }">
@@ -826,7 +845,7 @@ defineExpose({ refresh, activate })
       </view>
     </view>
 
-    <scroll-view v-else-if="screen === 'property-action' && activeRoom" scroll-y class="editor-scroll">
+    <scroll-view v-else-if="screen === 'property-action' && activeRoom" scroll-y class="editor-scroll" :class="hierClass">
       <view class="room-summary">
         <view>
           <text class="room-summary__name">{{ activeRoom.roomNo || activeRoom.title }}</text>
@@ -900,7 +919,7 @@ defineExpose({ refresh, activate })
       </view>
     </scroll-view>
 
-    <view v-else-if="screen === 'community-config' || screen === 'property-config'" class="editor-page">
+    <view v-else-if="screen === 'community-config' || screen === 'property-config'" class="editor-page" :class="hierClass">
       <scroll-view scroll-y class="editor-scroll">
         <view class="form-section">
           <text class="form-section__title">费用设置</text>
@@ -1942,5 +1961,32 @@ defineExpose({ refresh, activate })
   margin-bottom: 20rpx;
   color: #72817b;
   font-size: 22rpx;
+}
+
+/* 列表骨架行 */
+.skeleton-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+  padding: 10rpx 0;
+}
+
+.skeleton-row {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #f7faf5;
+}
+
+.skeleton-row__line {
+  height: 26rpx;
+  width: 75%;
+}
+
+.skeleton-row__line--title {
+  height: 32rpx;
+  width: 55%;
 }
 </style>
