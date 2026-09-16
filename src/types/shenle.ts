@@ -494,9 +494,6 @@ export interface SlCommunityOutput {
   hideRentToGuest?: boolean | null
   hideCommissionToGuest?: boolean | null
   hideAnnouncementToGuest?: boolean | null
-  defaultSupportsShortRent?: boolean | null
-  defaultSupportsDailyRent?: boolean | null
-  defaultSupportsMonthlyPayment?: boolean | null
   hotLevel?: number
   hotExpireTime?: string | null
   hasLandlord?: boolean

@@ -53,9 +53,6 @@ interface OperationDraft {
   hideRentToGuest: boolean | null
   hideCommissionToGuest: boolean | null
   hideAnnouncementToGuest: boolean | null
-  supportsShortRent: boolean
-  supportsDailyRent: boolean
-  supportsMonthlyPayment: boolean
   remark: string
 }
 
@@ -106,9 +103,6 @@ const draft = reactive<OperationDraft>({
   hideRentToGuest: null,
   hideCommissionToGuest: null,
   hideAnnouncementToGuest: null,
-  supportsShortRent: false,
-  supportsDailyRent: false,
-  supportsMonthlyPayment: false,
   remark: '',
 })
 
@@ -481,9 +475,6 @@ function buildOperationInput() {
     hideRentToGuest: draft.hideRentToGuest,
     hideCommissionToGuest: null, // 佣金已固定对游客隐藏，开关废弃
     hideAnnouncementToGuest: draft.hideAnnouncementToGuest,
-    defaultSupportsShortRent: draft.supportsShortRent,
-    defaultSupportsDailyRent: draft.supportsDailyRent,
-    defaultSupportsMonthlyPayment: draft.supportsMonthlyPayment,
   }
 }
 
@@ -1037,29 +1028,6 @@ defineExpose({ refresh, activate })
               <view class="mode-option mode-option--pet-negotiable" :class="{ 'mode-option--active': draft.petPolicy === 3 }" @tap="draft.petPolicy = draft.petPolicy === 3 ? null : 3">
                 可沟通养宠物
               </view>
-            </view>
-          </view>
-        </view>
-
-        <view v-if="screen === 'community-config'" class="setting-group guest-visibility">
-          <text class="form-section__title">经营标签（楼盘默认）</text>
-          <text class="form-section__hint">保存时随「同步到全部房源」一起写入每套房源，业务员端筛选与房源标签即用这些开关</text>
-          <view class="guest-switch-row" @tap="draft.supportsMonthlyPayment = !draft.supportsMonthlyPayment">
-            <text>可押一付一</text>
-            <view class="guest-switch" :class="{ on: draft.supportsMonthlyPayment }">
-              <view class="guest-switch__knob" />
-            </view>
-          </view>
-          <view class="guest-switch-row" @tap="draft.supportsShortRent = !draft.supportsShortRent">
-            <text>可短租</text>
-            <view class="guest-switch" :class="{ on: draft.supportsShortRent }">
-              <view class="guest-switch__knob" />
-            </view>
-          </view>
-          <view class="guest-switch-row" @tap="draft.supportsDailyRent = !draft.supportsDailyRent">
-            <text>可日租</text>
-            <view class="guest-switch" :class="{ on: draft.supportsDailyRent }">
-              <view class="guest-switch__knob" />
             </view>
           </view>
         </view>
