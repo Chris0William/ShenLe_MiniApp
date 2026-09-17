@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { downloadFile } from '@/api/file'
 import { formatMoney, resolveAssetUrl } from '@/utils/shenle'
 import { formatSupplyTime } from '@/utils/supply-activity'
+import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
 
 const props = defineProps<{
   item: SlCommunityOutput
@@ -43,16 +44,33 @@ function mediaKind(fileType?: string | null, suffixOrUrl?: string | null) {
   return 'image'
 }
 
-const commissionLabel = computed(() => {
-  if (props.item.commissionMasked)
-    return '???'
-  const low = props.item.lowestOneYearCommissionPercent
-  const high = props.item.highestOneYearCommissionPercent
+function commissionRangeLabel(low?: number | null, high?: number | null) {
   if (low == null && high == null)
     return ''
   if (low != null && high != null && low !== high)
-    return `一年 ${low}%-${high}%`
-  return `一年 ${low ?? high}%`
+    return `${low}%-${high}%`
+  return `${low ?? high}%`
+}
+
+/** 佣金双档：半年 + 一年并列展示；任一档缺失时只展示已有档 */
+const commissionLabel = computed(() => {
+  if (props.item.commissionMasked)
+    return '???'
+  const half = commissionRangeLabel(props.item.lowestHalfYearCommissionPercent, props.item.highestHalfYearCommissionPercent)
+  const one = commissionRangeLabel(props.item.lowestOneYearCommissionPercent, props.item.highestOneYearCommissionPercent)
+  const parts: string[] = []
+  if (half)
+    parts.push(`半年 ${half}`)
+  if (one)
+    parts.push(`一年 ${one}`)
+  return parts.join(' · ')
+})
+
+/** 楼盘属性标签：电梯/楼梯、宠物；电梯未设置默认视为电梯 */
+const attributeTags = computed(() => {
+  const tags: Array<{ key: string, label: string }> = []
+  tags.push({ key: 'elevator', label: props.item.elevatorMode === 2 ? '楼梯' : '电梯' })
+  return tags
 })
 
 function rentRangeText(item: SlCommunityOutput) {
@@ -143,6 +161,12 @@ watch(
         </wd-tag>
       </view>
       <text class="community__types">{{ item.houseTypes || '暂无户型信息' }}</text>
+      <view class="community__attr-tags">
+        <view v-for="tag in attributeTags" :key="tag.key" class="attr-tag">
+          <text>{{ tag.label }}</text>
+        </view>
+        <SlPetPolicyText v-if="item.petPolicy" :value="item.petPolicy" class="attr-tag attr-tag--pet" />
+      </view>
       <view class="community__meta">
         <text class="community__rent">{{ rentRangeText(item) }}</text>
         <text v-if="distanceText(item)" class="community__distance">距 {{ distanceText(item) }}</text>
@@ -250,6 +274,27 @@ watch(
   font-size: 23rpx;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 楼盘属性标签行：电梯/楼梯、宠物等，品牌绿描边胶囊，不与佣金争夺焦点 */
+.community__attr-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 10rpx;
+}
+
+.attr-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4rpx 14rpx;
+  border: 1rpx solid rgb(18 107 79 / 22%);
+  border-radius: 999rpx;
+  background: #f2f8f4;
+  color: #126b4f;
+  font-size: 20rpx;
+  font-weight: 700;
+  line-height: 1.4;
 }
 
 .community__commission {

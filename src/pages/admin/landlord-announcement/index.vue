@@ -11,6 +11,7 @@ import {
 import { uploadFile } from '@/api/file'
 import { useShenleAuthStore } from '@/store/auth'
 import { useSafeTopStyle } from '@/utils/safe-area'
+import { resolveAssetUrl, resolveRichTextImages } from '@/utils/shenle'
 
 definePage({ style: { navigationStyle: 'custom', navigationBarTitleText: '房东公告', disableScroll: true } })
 
@@ -44,12 +45,12 @@ const editTitle = ref('')
 const blocks = ref<Block[]>([])
 const editingId = ref<ShenLeId | null>(null)
 
-const previewHtml = computed(() => blocksToHtml(blocks.value))
+const previewHtml = computed(() => resolveRichTextImages(blocksToHtml(blocks.value)))
 
 function blocksToHtml(items: Block[]) {
   return items.map((block) => {
     if (block.type === 'image')
-      return `<img src="${block.url}" style="width:100%;border-radius:8px;margin:8px 0;display:block;" />`
+      return `<img src="${resolveAssetUrl(block.url)}" style="width:100%;border-radius:8px;margin:8px 0;display:block;" />`
     const style = [
       `font-size:${FONT_SIZES[block.size]}`,
       `color:${block.color}`,
@@ -230,13 +231,26 @@ function previewBlockStyle(block: TextBlock) {
     textAlign: block.align,
   }
 }
+
+/** 头部返回：编辑/预览态先回列表，列表态退出页面 */
+function goBack() {
+  if (screen.value !== 'list') {
+    screen.value = 'list'
+    return
+  }
+  const pages = getCurrentPages()
+  if (pages.length > 1)
+    uni.navigateBack()
+  else
+    uni.switchTab({ url: '/pages/admin/mine/index' })
+}
 </script>
 
 <template>
   <view class="page" :style="safeTop">
     <view class="nav-head">
-      <view class="nav-back" @tap="screen = 'list'">
-        <wd-icon v-if="screen !== 'list'" name="arrow-left" size="20px" color="#1e2f27" />
+      <view class="nav-back" aria-label="返回" @tap="goBack">
+        <wd-icon name="arrow-left" size="20px" color="#1e2f27" />
       </view>
       <text class="nav-title">{{ screen === 'edit' ? (editingId ? '编辑公告' : '新建公告') : '房东公告' }}</text>
       <view class="nav-spacer" />

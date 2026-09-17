@@ -345,12 +345,14 @@ async function signOut() {
       </view>
     </view>
 
-    <wd-button v-if="auth.isLogin" plain block type="danger" custom-class="logout" @click="signOut">
-      退出登录
-    </wd-button>
-
-    <view class="about-line" @tap="go('/pages/common/about/index')">
-      关于深乐租 v{{ APP_VERSION }}
+    <!-- 页尾区：退出登录贴近底部，版本号固定为最后一行 -->
+    <view class="mine-footer">
+      <wd-button v-if="auth.isLogin" plain block type="danger" custom-class="logout" @click="signOut">
+        退出登录
+      </wd-button>
+      <view class="about-line" @tap="go('/pages/common/about/index')">
+        关于深乐租 v{{ APP_VERSION }}
+      </view>
     </view>
 
 
@@ -371,7 +373,20 @@ async function signOut() {
 
 <style scoped lang="scss">
 .mine-page {
+  display: flex;
+  min-height: 100vh;
+  box-sizing: border-box;
+  flex-direction: column;
   padding-bottom: calc(120rpx + env(safe-area-inset-bottom));
+}
+
+/* 页尾区：退出登录贴近页面底部，版本号固定最后一行 */
+.mine-footer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding-top: 48rpx;
 }
 
 .contact-block {

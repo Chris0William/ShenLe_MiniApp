@@ -3,7 +3,6 @@ import {
   AREA_SEGMENTS,
   BEDROOM_OPTIONS,
   DECORATION_OPTIONS,
-  DEPOSIT_RULE_OPTIONS,
   DISTANCE_OPTIONS,
   ORIENTATION_OPTIONS,
   PRICE_SEGMENTS,
@@ -16,6 +15,7 @@ export function clonePropertyFilters(filters?: PropertyFilterState): PropertyFil
     communityTypes: filters?.communityTypes ? [...filters.communityTypes] : undefined,
     realtimeModes: filters?.realtimeModes ? [...filters.realtimeModes] : undefined,
     specialModes: filters?.specialModes ? [...filters.specialModes] : undefined,
+    elevatorModes: filters?.elevatorModes ? [...filters.elevatorModes] : undefined,
     bedroomsList: filters?.bedroomsList ? [...filters.bedroomsList] : undefined,
     livingRooms: filters?.livingRooms ? [...filters.livingRooms] : undefined,
     bathrooms: filters?.bathrooms ? [...filters.bathrooms] : undefined,
@@ -23,7 +23,6 @@ export function clonePropertyFilters(filters?: PropertyFilterState): PropertyFil
     orientations: filters?.orientations ? [...filters.orientations] : undefined,
     decorations: filters?.decorations ? [...filters.decorations] : undefined,
     rentalTypes: filters?.rentalTypes ? [...filters.rentalTypes] : undefined,
-    depositRules: filters?.depositRules ? [...filters.depositRules] : undefined,
   }
 }
 
@@ -118,8 +117,6 @@ export function countPropertyFilters(filters: PropertyFilterState) {
     count += 1
   if (filters.communityId)
     count += 1
-  if (normalizeMulti(filters.depositRules, filters.depositRule))
-    count += 1
   return count
 }
 
@@ -147,6 +144,8 @@ export function countCommunityFilters(filters: PropertyFilterState) {
     count += 1
   if (filters.specialModes?.length)
     count += 1
+  if (filters.elevatorModes?.length)
+    count += 1
   if (filters.onlyContactedByMe || filters.onlyMaintainedByMe)
     count += 1
   if (filters.sortBy === 'distance')
@@ -162,7 +161,7 @@ export function hasPropertyFilter(filters: PropertyFilterState, key: string) {
     case 'orientation': return !!filters.orientation
     case 'decoration': return !!filters.decoration
     case 'rentalType': return !!filters.rentalType
-    case 'more': return filters.minArea !== undefined || filters.maxArea !== undefined || !!filters.communityId || !!filters.depositRule
+    case 'more': return filters.minArea !== undefined || filters.maxArea !== undefined || !!filters.communityId
     default: return false
   }
 }
@@ -173,7 +172,6 @@ export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<Pag
   const orientations = normalizeMulti(filters.orientations, filters.orientation)
   const decorations = normalizeMulti(filters.decorations, filters.decoration)
   const rentalTypes = normalizeMulti(filters.rentalTypes, filters.rentalType)
-  const depositRules = normalizeMulti(filters.depositRules, filters.depositRule)
   return {
     regionId: filters.regionId,
     userLng: filters.userLng,
@@ -197,8 +195,6 @@ export function buildPropertyFilterQuery(filters: PropertyFilterState): Omit<Pag
     rentalTypes,
     minArea: filters.minArea,
     maxArea: filters.maxArea,
-    depositRule: depositRules?.length === 1 ? depositRules[0] : undefined,
-    depositRules,
   }
 }
 
@@ -221,7 +217,7 @@ export function buildCommunityFilterQuery(filters: PropertyFilterState): Omit<Pa
     rentalTypes: normalizeMulti(filters.rentalTypes, filters.rentalType),
     minArea: filters.minArea,
     maxArea: filters.maxArea,
-    depositRules: normalizeMulti(filters.depositRules, filters.depositRule),
+    elevatorModes: filters.elevatorModes,
     updatedWithinDays: filters.updatedWithinDays,
     ownerUserId: filters.ownerUserId,
     updaterUserId: filters.updaterUserId,
@@ -292,9 +288,6 @@ export function getPropertyFilterLabels(filters: PropertyFilterState, maps: {
   if (filters.minArea !== undefined || filters.maxArea !== undefined) {
     labels.push(AREA_SEGMENTS.find(item => item.min === filters.minArea && item.max === filters.maxArea)?.label || rangeLabel(filters.minArea, filters.maxArea, '㎡'))
   }
-  const depositRules = normalizeMulti(filters.depositRules, filters.depositRule)
-  if (depositRules)
-    labels.push(depositRules.map(value => optionLabel(DEPOSIT_RULE_OPTIONS, value) || value).join('/'))
   return labels
 }
 
@@ -336,6 +329,10 @@ export function getCommunityFilterLabels(filters: PropertyFilterState, maps: {
   if (filters.specialModes?.length) {
     const modeMap = { monthlyPayment: '可押一付一', shortRent: '可短租', dailyRent: '可日租', pet: '可养宠物' } as const
     labels.push(filters.specialModes.map(mode => modeMap[mode]).join('、'))
+  }
+  if (filters.elevatorModes?.length) {
+    const modeMap: Record<number, string> = { 1: '电梯', 2: '楼梯' }
+    labels.push(filters.elevatorModes.map(mode => modeMap[mode] || `电梯${mode}`).join('、'))
   }
   if (filters.onlyContactedByMe)
     labels.push('仅看我对接')

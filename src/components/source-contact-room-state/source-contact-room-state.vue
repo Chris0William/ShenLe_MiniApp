@@ -50,6 +50,7 @@ interface OperationDraft {
   managementPackageMode: 1 | 2 | null
   networkPackageMode: 1 | 2 | 3 | 4 | null
   petPolicy: 1 | 2 | 3 | null
+  elevatorMode: 1 | 2
   hideRentToGuest: boolean | null
   hideCommissionToGuest: boolean | null
   hideAnnouncementToGuest: boolean | null
@@ -100,6 +101,7 @@ const draft = reactive<OperationDraft>({
   managementPackageMode: null,
   networkPackageMode: null,
   petPolicy: null,
+  elevatorMode: 1,
   hideRentToGuest: null,
   hideCommissionToGuest: null,
   hideAnnouncementToGuest: null,
@@ -358,6 +360,7 @@ function resetDraft(config?: SlCommunityOperationConfigOutput | SlPropertyOperat
   draft.managementPackageMode = propertyConfig?.effectiveManagementPackageMode ?? propertyConfig?.managementPackageMode ?? communityConfigValue?.managementPackageMode ?? null
   draft.networkPackageMode = propertyConfig?.effectiveNetworkPackageMode ?? propertyConfig?.networkPackageMode ?? communityConfigValue?.networkPackageMode ?? null
   draft.petPolicy = communityConfigValue?.petPolicy ?? null
+  draft.elevatorMode = communityConfigValue?.elevatorMode ?? 1
   draft.hideRentToGuest = communityConfigValue?.hideRentToGuest ?? null
   draft.hideCommissionToGuest = communityConfigValue?.hideCommissionToGuest ?? null
   draft.hideAnnouncementToGuest = communityConfigValue?.hideAnnouncementToGuest ?? null
@@ -472,6 +475,7 @@ function buildOperationInput() {
     ...commissionFields,
     networkFeeMode: draft.networkFeeMode,
     petPolicy: draft.petPolicy,
+    elevatorMode: draft.elevatorMode,
     hideRentToGuest: draft.hideRentToGuest,
     hideCommissionToGuest: null, // 佣金已固定对游客隐藏，开关废弃
     hideAnnouncementToGuest: draft.hideAnnouncementToGuest,
@@ -1013,6 +1017,17 @@ defineExpose({ refresh, activate })
                 @tap="draft.networkPackageMode = draft.networkPackageMode === 4 ? null : 4"
               >
                 必开
+              </view>
+            </view>
+          </view>
+          <view v-if="screen === 'community-config'" class="setting-group">
+            <text class="form-section__title">电梯属性</text>
+            <view class="mode-grid mode-grid--two">
+              <view class="mode-option" :class="{ 'mode-option--active': draft.elevatorMode === 1 }" @tap="draft.elevatorMode = 1">
+                电梯
+              </view>
+              <view class="mode-option" :class="{ 'mode-option--active': draft.elevatorMode === 2 }" @tap="draft.elevatorMode = 2">
+                楼梯
               </view>
             </view>
           </view>

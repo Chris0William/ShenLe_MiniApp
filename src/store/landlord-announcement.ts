@@ -2,6 +2,7 @@ import type { ShenLeId } from '@/types/shenle'
 import { computed, ref } from 'vue'
 import { getDisplayedLandlordAnnouncement } from '@/api/landlord-announcement'
 import { modeStore, onModeChange } from '@/store/mode'
+import { resolveRichTextImages } from '@/utils/shenle'
 
 // 房东公告状态：本地记「已永久忽略的版本」；新版本号大于它时重新弹出
 const DISMISSED_VERSION_KEY = 'shenle_announcement_dismissed_version'
@@ -99,5 +100,7 @@ onModeChange((next) => {
 
 export function useLandlordAnnouncementStore() {
   const shouldRender = computed(() => modeStore.mode === 'landlord' && visible.value && !!announcement.value)
-  return { announcement, visible, closing, loading, shouldRender, checkAndShow, openFromButton, dismissForever, closeOnce }
+  // rich-text 不解析相对路径；存量内容图片 src 是 COS 对象键，渲染前补全
+  const contentHtml = computed(() => resolveRichTextImages(announcement.value?.content))
+  return { announcement, contentHtml, visible, closing, loading, shouldRender, checkAndShow, openFromButton, dismissForever, closeOnce }
 }

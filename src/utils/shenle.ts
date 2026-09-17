@@ -17,6 +17,19 @@ export function resolveAssetUrl(url?: string | null) {
   return `${getApiBaseUrl()}${url.startsWith('/') ? url : `/${url}`}`
 }
 
+/**
+ * 富文本 HTML 内的图片 src 补全：rich-text 不解析相对路径，
+ * 存量内容的 src 是 COS 对象键（如 test-upload/...png），需拼成完整可访问 URL。
+ */
+export function resolveRichTextImages(html?: string | null) {
+  if (!html)
+    return ''
+  return html.replace(/<img\s[^>]*src=["']([^"']+)["'][^>]*>/gi, (match, src: string) =>
+    src && !/^(https?:)?\/\//i.test(src) && !src.startsWith('data:') && !src.startsWith('/')
+      ? match.replace(src, `${getApiBaseUrl()}/${src.replace(/^\//, '')}`)
+      : match)
+}
+
 export function formatMoney(value?: number | null) {
   if (value === null || value === undefined)
     return '--'

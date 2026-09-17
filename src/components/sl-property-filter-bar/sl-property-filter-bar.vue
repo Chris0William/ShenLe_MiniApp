@@ -55,6 +55,10 @@ const SPECIAL_OPTIONS: Array<{ value: SpecialMode, label: string }> = [
   { value: 'dailyRent', label: '可日租' },
   { value: 'pet', label: '可养宠物' },
 ]
+const ELEVATOR_OPTIONS = [
+  { value: 1, label: '电梯' },
+  { value: 2, label: '楼梯' },
+] as const
 const ORIENTATION_OPTIONS = [
   { value: 'east', label: '东' },
   { value: 'south', label: '南' },
@@ -76,14 +80,6 @@ const RENTAL_TYPE_OPTIONS = [
   { value: 'whole', label: '整租' },
   { value: 'shared', label: '合租' },
   { value: 'sublease', label: '转租' },
-] as const
-const DEPOSIT_RULE_OPTIONS = [
-  { value: '1-1', label: '押一付一' },
-  { value: '1-3', label: '押一付三' },
-  { value: '2-1', label: '押二付一' },
-  { value: '2-3', label: '押二付三' },
-  { value: 'half-year', label: '半年付' },
-  { value: 'yearly', label: '年付' },
 ] as const
 const LAYOUT_ROOM_OPTIONS = [
   { value: 1, label: '1' },
@@ -170,15 +166,15 @@ const keywordActive = computed(() => !!props.keyword?.trim())
 const typeActive = computed(() => !!props.filters.communityTypes?.length)
 const realtimeActive = computed(() => !!props.filters.realtimeModes?.length)
 const specialActive = computed(() => !!props.filters.specialModes?.length)
+const elevatorActive = computed(() => !!props.filters.elevatorModes?.length)
 const layoutActive = computed(() => hasLayoutFilter(props.filters))
 const layoutTabLabel = computed(() => layoutActive.value ? layoutLabel(props.filters) : '户型')
-// 「筛选」总入口：类型/实时/特殊/朝向/装修/租赁/押付/面积 等任何一项激活即高亮
+// 「筛选」总入口：类型/实时/特殊/电梯/朝向/装修/租赁/面积 等任何一项激活即高亮
 const moreActive = computed(() =>
-  typeActive.value || realtimeActive.value || specialActive.value
+  typeActive.value || realtimeActive.value || specialActive.value || elevatorActive.value
   || !!normalizeMulti(props.filters.orientations, props.filters.orientation)?.length
   || !!normalizeMulti(props.filters.decorations, props.filters.decoration)?.length
   || !!normalizeMulti(props.filters.rentalTypes, props.filters.rentalType)?.length
-  || !!normalizeMulti(props.filters.depositRules, props.filters.depositRule)?.length
   || props.filters.minArea !== undefined || props.filters.maxArea !== undefined
   || props.filters.communityId !== undefined
   || props.filters.updatedWithinDays !== undefined
@@ -190,10 +186,10 @@ const moreActiveCount = computed(() => {
   if (typeActive.value) count++
   if (realtimeActive.value) count++
   if (specialActive.value) count++
+  if (elevatorActive.value) count++
   if (normalizeMulti(props.filters.orientations, props.filters.orientation)?.length) count++
   if (normalizeMulti(props.filters.decorations, props.filters.decoration)?.length) count++
   if (normalizeMulti(props.filters.rentalTypes, props.filters.rentalType)?.length) count++
-  if (normalizeMulti(props.filters.depositRules, props.filters.depositRule)?.length) count++
   if (props.filters.minArea !== undefined || props.filters.maxArea !== undefined) count++
   if (props.filters.communityId) count++
   return count
@@ -201,6 +197,7 @@ const moreActiveCount = computed(() => {
 const typeLabel = computed(() => optionGroupLabel(props.filters.communityTypes, COMMUNITY_TYPE_OPTIONS, '类型'))
 const realtimeLabel = computed(() => optionGroupLabel(props.filters.realtimeModes, REALTIME_OPTIONS, '实时'))
 const specialLabel = computed(() => optionGroupLabel(props.filters.specialModes, SPECIAL_OPTIONS, '特殊'))
+const elevatorLabel = computed(() => optionGroupLabel(props.filters.elevatorModes, ELEVATOR_OPTIONS, '电梯'))
 
 /** 已选 chip 栏数据：所有激活条件 → 可删除标签 */
 interface ActiveChip {
@@ -264,8 +261,6 @@ const activeChips = computed<ActiveChip[]>(() => {
     next => { next.decoration = undefined; next.decorations = undefined })
   multiChip('rentalType', filters.rentalTypes, filters.rentalType, RENTAL_TYPE_OPTIONS,
     next => { next.rentalType = undefined; next.rentalTypes = undefined })
-  multiChip('depositRule', filters.depositRules, filters.depositRule, DEPOSIT_RULE_OPTIONS,
-    next => { next.depositRule = undefined; next.depositRules = undefined })
   if (filters.minArea !== undefined || filters.maxArea !== undefined) {
     chips.push({
       key: 'area',
@@ -299,6 +294,13 @@ const activeChips = computed<ActiveChip[]>(() => {
       key: 'special',
       label: optionGroupLabel(filters.specialModes, SPECIAL_OPTIONS, '特殊'),
       remove: () => { const next = clone(); next.specialModes = undefined; applyChip(next) },
+    })
+  }
+  if (elevatorActive.value) {
+    chips.push({
+      key: 'elevator',
+      label: optionGroupLabel(filters.elevatorModes, ELEVATOR_OPTIONS, '电梯'),
+      remove: () => { const next = clone(); next.elevatorModes = undefined; applyChip(next) },
     })
   }
   if (filters.updatedWithinDays) {
@@ -593,9 +595,9 @@ function toggleLayoutValue(key: 'bedroomsList' | 'livingRooms' | 'bathrooms', va
     draft.value.bedrooms = next?.length === 1 ? next[0] : undefined
 }
 
-/** 多选开关（朝向/装修/租赁/押付）：写多选数组并清空旧单选 */
-function toggleMultiValue(key: 'orientations' | 'decorations' | 'rentalTypes' | 'depositRules', value: string) {
-  const singleKey = ({ orientations: 'orientation', decorations: 'decoration', rentalTypes: 'rentalType', depositRules: 'depositRule' })[key]
+/** 多选开关（朝向/装修/租赁）：写多选数组并清空旧单选 */
+function toggleMultiValue(key: 'orientations' | 'decorations' | 'rentalTypes', value: string) {
+  const singleKey = ({ orientations: 'orientation', decorations: 'decoration', rentalTypes: 'rentalType' })[key]
   const next = toggleArrayValue(draft.value[key], value)
   draft.value[key] = next
   draft.value[singleKey] = next?.length === 1 ? next[0] : undefined
@@ -603,6 +605,10 @@ function toggleMultiValue(key: 'orientations' | 'decorations' | 'rentalTypes' | 
 
 function toggleCommunityType(value: number) {
   draft.value.communityTypes = toggleArrayValue(draft.value.communityTypes, value)
+}
+
+function toggleElevatorMode(value: number) {
+  draft.value.elevatorModes = toggleArrayValue(draft.value.elevatorModes, value)
 }
 
 function toggleRealtimeMode(value: RealtimeMode) {
@@ -660,14 +666,13 @@ function resetCurrent() {
     draft.value.communityTypes = undefined
     draft.value.realtimeModes = undefined
     draft.value.specialModes = undefined
+    draft.value.elevatorModes = undefined
     draft.value.orientation = undefined
     draft.value.orientations = undefined
     draft.value.decoration = undefined
     draft.value.decorations = undefined
     draft.value.rentalType = undefined
     draft.value.rentalTypes = undefined
-    draft.value.depositRule = undefined
-    draft.value.depositRules = undefined
     draft.value.minArea = undefined
     draft.value.maxArea = undefined
   }
@@ -707,6 +712,8 @@ function resetAll() {
   regionParentId.value = undefined
   activeDropdown.value = null
   sheetVisible.value = false
+  // 面板从打开到关闭也要通知宿主，否则地图 overlayActive 永久卡在 true，marker 不会再渲染
+  emitPanelState()
   emit('reset')
 }
 
@@ -1038,6 +1045,19 @@ function onThumbTouchEnd() {
             </view>
           </view>
 
+          <text class="section-title">电梯</text>
+          <view class="option-row">
+            <view
+              v-for="item in ELEVATOR_OPTIONS"
+              :key="item.value"
+              class="filter-chip"
+              :class="{ active: draft.elevatorModes?.includes(item.value) }"
+              @tap="toggleElevatorMode(item.value)"
+            >
+              <text>{{ item.label }}</text>
+            </view>
+          </view>
+
           <text class="section-title">楼盘类型</text>
           <view class="option-row">
             <view
@@ -1090,19 +1110,6 @@ function onThumbTouchEnd() {
             </view>
           </view>
 
-          <text class="section-title">押付方式</text>
-          <view class="option-row">
-            <view
-              v-for="item in DEPOSIT_RULE_OPTIONS"
-              :key="item.value"
-              class="filter-chip"
-              :class="{ active: normalizeMulti(draft.depositRules, draft.depositRule)?.includes(item.value) }"
-              @tap="toggleMultiValue('depositRules', item.value)"
-            >
-              <text>{{ item.label }}</text>
-            </view>
-          </view>
-
           <text class="section-title">实时盘源</text>
           <view class="option-row">
             <view
@@ -1116,7 +1123,10 @@ function onThumbTouchEnd() {
             </view>
           </view>
 
-          <text class="section-title">特殊条件</text>
+          <view class="section-head">
+            <text class="section-title">特殊条件</text>
+            <text class="section-head__hint">部分房源：</text>
+          </view>
           <view class="option-row">
             <view
               v-for="item in SPECIAL_OPTIONS"
@@ -1261,6 +1271,21 @@ function onThumbTouchEnd() {
           </view>
 
           <view class="sheet-block">
+            <text class="sheet-block__title">电梯</text>
+            <view class="option-row">
+              <view
+                v-for="item in ELEVATOR_OPTIONS"
+                :key="item.value"
+                class="filter-chip"
+                :class="{ active: draft.elevatorModes?.includes(item.value) }"
+                @tap="toggleElevatorMode(item.value)"
+              >
+                <text>{{ item.label }}</text>
+              </view>
+            </view>
+          </view>
+
+          <view class="sheet-block">
             <text class="sheet-block__title">楼盘类型</text>
             <view class="option-row">
               <view
@@ -1367,21 +1392,6 @@ function onThumbTouchEnd() {
           </view>
 
           <view class="sheet-block">
-            <text class="sheet-block__title">押付方式</text>
-            <view class="option-row">
-              <view
-                v-for="item in DEPOSIT_RULE_OPTIONS"
-                :key="item.value"
-                class="filter-chip"
-                :class="{ active: normalizeMulti(draft.depositRules, draft.depositRule)?.includes(item.value) }"
-                @tap="toggleMultiValue('depositRules', item.value)"
-              >
-                <text>{{ item.label }}</text>
-              </view>
-            </view>
-          </view>
-
-          <view class="sheet-block">
             <text class="sheet-block__title">实时</text>
             <view class="option-row">
               <view
@@ -1397,7 +1407,10 @@ function onThumbTouchEnd() {
           </view>
 
           <view class="sheet-block">
-            <text class="sheet-block__title">特殊</text>
+            <view class="section-head">
+              <text class="sheet-block__title">特殊</text>
+              <text class="section-head__hint">部分房源：</text>
+            </view>
             <view class="option-row">
               <view
                 v-for="item in SPECIAL_OPTIONS"
@@ -1673,6 +1686,24 @@ function onThumbTouchEnd() {
   color: #111827;
   font-size: 28rpx;
   font-weight: 800;
+}
+
+/* 区块标题行：标题 + 右侧固定说明（如"部分房源："） */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.section-head .section-title,
+.section-head .sheet-block__title {
+  margin-bottom: 18rpx;
+}
+
+.section-head__hint {
+  color: #8b95a5;
+  font-size: 22rpx;
+  font-weight: 500;
 }
 
 .chip-row,

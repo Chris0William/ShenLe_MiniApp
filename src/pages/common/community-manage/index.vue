@@ -58,6 +58,8 @@ interface CommunityForm {
   coverImageId: string
   ownerId: string
   ownerName: string
+  /** 楼盘电梯属性，1=电梯，2=楼梯；默认电梯 */
+  elevatorMode: 1 | 2
 }
 
 interface LocalUploadMedia {
@@ -141,6 +143,7 @@ const form = reactive<CommunityForm>({
   coverImageId: '',
   ownerId: '',
   ownerName: '',
+  elevatorMode: 1,
 })
 
 const typeOptions = [
@@ -428,6 +431,7 @@ function resetForm(item?: SlCommunityOutput) {
   form.coverImageId = item?.coverImageId ? String(item.coverImageId) : String(form.media[0]?.id || '')
   form.ownerId = item?.ownerId ? String(item.ownerId) : ''
   form.ownerName = item?.ownerName || ''
+  form.elevatorMode = item?.elevatorMode === 2 ? 2 : 1
   originalOwnerId.value = form.ownerId
 }
 
@@ -798,6 +802,7 @@ function buildPayload(): AddSlCommunityInput {
     remark: form.remark.trim() || undefined,
     coverImageId: effectiveCoverId.value || null,
     imageIds: mediaIds,
+    elevatorMode: form.elevatorMode,
   }
 }
 
@@ -1073,6 +1078,17 @@ onReachBottom(() => loadData())
               </view>
               <view :class="{ active: form.type === 3 }" @tap="form.type = 3">
                 小产权
+              </view>
+            </view>
+          </view>
+          <view class="form-row">
+            <text>电梯属性</text>
+            <view class="segmented">
+              <view :class="{ active: form.elevatorMode === 1 }" @tap="form.elevatorMode = 1">
+                电梯
+              </view>
+              <view :class="{ active: form.elevatorMode === 2 }" @tap="form.elevatorMode = 2">
+                楼梯
               </view>
             </view>
           </view>

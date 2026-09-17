@@ -6,14 +6,13 @@ import { getCommunityDetail, getCommunityMapPoints, getCommunityTickers, setComm
 import { getPublicRegionMap } from '@/api/public-preview'
 import { getRecentSupplyActivity, getSupplyLeaderboard, getSupplyLeaderboardDetails } from '@/api/supply-activity'
 import SlPetPolicyText from '@/components/sl-pet-policy-text/sl-pet-policy-text.vue'
-import SlUnifiedCommunityCard from '@/components/sl-unified-community-card/sl-unified-community-card.vue'
+import SlLandlordMapCard from '@/components/sl-landlord-map-card/sl-landlord-map-card.vue'
 import { useShenleAuthStore } from '@/store/auth'
 import { useLandlordAnnouncementStore } from '@/store/landlord-announcement'
 import { useLandlordShareStore } from '@/store/landlord-share'
 import { modeStore } from '@/store/mode'
 import { useSourceContactStore } from '@/store/source-contact'
 import { ensureCanUse } from '@/utils/auth-guard'
-import { formatCommissionRange } from '@/utils/commission'
 import { managementFeeText, networkFeeText } from '@/utils/community-business'
 import { getLocationOnceCached, setCachedLocation } from '@/utils/location-cache'
 import { requestLogin } from '@/utils/login-flow'
@@ -179,65 +178,8 @@ const activeMarkers = computed(() => overlayActive.value ? [] : (isLandlordView.
 const selected = ref<SlCommunityOutput | null>(null)
 const selectedPreview = ref<SlPublicRegionPreviewOutput | null>(null)
 const landlordSelected = ref<SlSourceContactCommunityOutput | null>(null)
-
-// 房东端选中项 → 统一卡片数据适配
-const landlordSelectedAsCommunity = computed<SlCommunityOutput | null>(() => {
-  const item = landlordSelected.value
-  if (!item)
-    return null
-  return {
-    id: item.id,
-    name: item.name,
-    buildingCount: item.buildingCount ?? 0,
-    availableCount: item.availableCount ?? 0,
-    rentedCount: item.rentedCount ?? 0,
-    minRentPrice: item.minRentPrice ?? null,
-    maxRentPrice: item.maxRentPrice ?? null,
-    waterFee: item.waterFee ?? null,
-    electricityFee: item.electricityFee ?? null,
-    managementFee: item.managementFee ?? null,
-    networkFee: item.networkFee ?? null,
-    lowestHalfYearCommissionPercent: item.lowestHalfYearCommissionPercent ?? null,
-    highestHalfYearCommissionPercent: item.highestHalfYearCommissionPercent ?? null,
-    lowestOneYearCommissionPercent: item.lowestOneYearCommissionPercent ?? null,
-    highestOneYearCommissionPercent: item.highestOneYearCommissionPercent ?? null,
-    petPolicy: item.petPolicy ?? null,
-    announcement: item.announcement ?? null,
-    coverImage: landlordCoverUrl(item),
-    coverFileType: item.coverFileType ?? null,
-    supplyUpdateTime: item.supplyUpdateTime ?? null,
-  } as SlCommunityOutput
-})
 let markerMeta: MarkerMeta[] = []
 let regionTimer: ReturnType<typeof setTimeout> | null = null
-
-function rentText(item: SlCommunityOutput) {
-  if (item.rentMasked)
-    return '???'
-  const min = Number(item.minRentPrice)
-  const max = Number(item.maxRentPrice)
-  if (min > 0 && max > 0 && max !== min)
-    return `¥${min}-${max}`
-  if (min > 0)
-    return `¥${min}起`
-  return ''
-}
-
-function landlordRentText(item: SlSourceContactCommunityOutput) {
-  const min = Number(item.minRentPrice || 0)
-  const max = Number(item.maxRentPrice || 0)
-  if (min > 0 && max > 0 && max !== min)
-    return `¥${min}-${max}/月`
-  if (min > 0)
-    return `¥${min}/月起`
-  return '租金待完善'
-}
-
-function landlordCoverUrl(item: SlSourceContactCommunityOutput) {
-  const isVideo = item.coverFileType?.startsWith('video')
-    || ['.mp4', '.mov', '.m4v', '.avi', '.webm'].includes((item.coverSuffix || '').toLowerCase())
-  return isVideo ? item.coverPosterUrl : item.coverImage
-}
 
 function hasLandlordCoordinate(item: SlSourceContactCommunityOutput) {
   if (item.lat === null || item.lat === undefined || item.lng === null || item.lng === undefined)
@@ -251,10 +193,6 @@ function hasLandlordCoordinate(item: SlSourceContactCommunityOutput) {
     && longitude >= -180
     && longitude <= 180
     && (latitude !== 0 || longitude !== 0)
-}
-
-function moneyText(value?: number | null, unit = '元') {
-  return value === null || value === undefined ? '未设置' : `${value}${unit}`
 }
 
 function showCommunityAnnouncement(item: SlCommunityOutput) {
@@ -271,12 +209,6 @@ function showCommunityAnnouncement(item: SlCommunityOutput) {
     showCancel: false,
     confirmText: '知道了',
   })
-}
-
-function commissionText(item: { commissionMasked?: boolean, lowestHalfYearCommissionPercent?: number | null, highestHalfYearCommissionPercent?: number | null, lowestOneYearCommissionPercent?: number | null, highestOneYearCommissionPercent?: number | null }) {
-  if (item.commissionMasked)
-    return '???'
-  return `半年 ${formatCommissionRange(item.lowestHalfYearCommissionPercent, item.highestHalfYearCommissionPercent)} · 一年 ${formatCommissionRange(item.lowestOneYearCommissionPercent, item.highestOneYearCommissionPercent)}`
 }
 
 function hotLevelCount(level?: number | null, expireTime?: string | null) {
@@ -718,7 +650,7 @@ function applyReferencePoint(longitude: number, latitude: number, label: string,
   mapContext?.moveToLocation({ latitude, longitude, fail: () => {} })
 }
 
-async function getLocation(showTip = false) {
+async function getLocation() {
   if (locating.value)
     return
   const requestVersion = referencePointVersion
@@ -728,16 +660,13 @@ async function getLocation(showTip = false) {
     if (requestVersion !== referencePointVersion)
       return
     applyReferencePoint(res.longitude, res.latitude, res.label)
-    if (showTip)
-      uni.showToast({ title: '已更新当前位置', icon: 'success' })
     if (filters.value.distanceKm !== undefined || filters.value.sortBy === 'distance')
       await loadCommunities()
   }
   catch {
     if (requestVersion !== referencePointVersion)
       return
-    if (showTip)
-      uni.showToast({ title: '定位失败，请手动选点', icon: 'none' })
+    uni.showToast({ title: '定位失败，请手动选点', icon: 'none' })
   }
   finally {
     if (requestVersion === referencePointVersion)
@@ -845,9 +774,6 @@ function buildEntryFilterContext() {
   const rentalTypes = f.rentalTypes?.length ? f.rentalTypes : (f.rentalType ? [f.rentalType] : undefined)
   if (rentalTypes?.length)
     context.rentalTypes = rentalTypes
-  const depositRules = f.depositRules?.length ? f.depositRules : (f.depositRule ? [f.depositRule] : undefined)
-  if (depositRules?.length)
-    context.depositRules = depositRules
   if (f.minPrice !== undefined)
     context.minPrice = f.minPrice
   if (f.maxPrice !== undefined)
@@ -1173,7 +1099,7 @@ onLoad((query) => {
   }
   // 微信合规：打开即可匿名浏览地图/楼盘，不强制登录；搜索/详情/联系等动作再触发登录
   loadCommunities()
-  getLocation(false)
+  getLocation()
 
   // 仅开发者工具：暴露调试桥，供自动化测试驱动 marker 点击链路（真机不生效）
   try {
@@ -1319,7 +1245,7 @@ onUnload(() => {
             <text class="ann-pop__title">{{ landlordAnnouncement.announcement.value?.title || '房东公告' }}</text>
           </view>
           <scroll-view scroll-y class="ann-pop__body">
-            <rich-text :nodes="landlordAnnouncement.announcement.value?.content || ''" class="ann-pop__rich" />
+            <rich-text :nodes="landlordAnnouncement.contentHtml.value || ''" class="ann-pop__rich" />
           </scroll-view>
           <view class="ann-pop__actions">
             <wd-button size="large" plain block @click="landlordAnnouncement.dismissForever()">
@@ -1331,14 +1257,15 @@ onUnload(() => {
           </view>
         </view>
 
-        <sl-unified-community-card
-          v-if="landlordSelected"
-          :community="landlordSelectedAsCommunity"
-          :show-distance="false"
-          @close="landlordSelected = null"
-          @enter="openLandlordRoomState($event as unknown as SlSourceContactCommunityOutput)"
-          @navigate="openLandlordNavigation($event as unknown as SlSourceContactCommunityOutput)"
-        />
+        <!-- 房东端卡片：master 版式（带封面），宿主提供 .map-card 定位容器 -->
+        <view v-if="landlordSelected" class="map-card">
+          <sl-landlord-map-card
+            :community="landlordSelected"
+            @close="landlordSelected = null"
+            @enter="openLandlordRoomState($event)"
+            @navigate="openLandlordNavigation($event)"
+          />
+        </view>
       </template>
 
       <template v-else>
@@ -1416,28 +1343,21 @@ onUnload(() => {
         </view>
 
         <view v-if="selected" class="map-card" :class="{ 'map-card--with-ticker': showBottomTicker }">
-          <sl-unified-community-card
+          <sl-map-community-card
             :community="selected"
             :guest-mode="isPreviewMode"
+            :available-only="isBusinessMode"
+            :can-set-hot-level="canSetHotLevel"
+            :can-manage="canManage"
+            :hot-level-saving="hotLevelSavingId === String(selected.id)"
             @close="selected = null"
+            @open="goProperties($event)"
             @enter="goProperties($event)"
             @navigate="openNavigation($event)"
             @announcement="showCommunityAnnouncement($event)"
+            @set-hot-level="chooseCommunityHotLevel($event)"
+            @edit="editSelected()"
           />
-          <view v-if="canSetHotLevel || canManage" class="map-card__actions">
-            <wd-button
-              v-if="canSetHotLevel && selected.hasLandlord"
-              size="small"
-              plain
-              :loading="hotLevelSavingId === String(selected.id)"
-              @click.stop="chooseCommunityHotLevel(selected)"
-            >
-              火热 {{ hotLevelCount(selected.hotLevel, selected.hotExpireTime) || '未设' }}
-            </wd-button>
-            <wd-button v-if="canManage" size="small" plain @click="editSelected">
-              编辑楼盘
-            </wd-button>
-          </view>
         </view>
       </template>
     </view>

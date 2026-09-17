@@ -132,6 +132,8 @@ export interface PropertyFilterState {
   communityTypes?: number[]
   realtimeModes?: Array<'realtime' | 'hot'>
   specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent' | 'pet'>
+  /** 楼盘电梯属性多选：1=电梯，2=楼梯 */
+  elevatorModes?: number[]
   onlyContactedByMe?: boolean
   onlyMaintainedByMe?: boolean
   sortBy?: 'latest' | 'distance' | 'commissionDesc'
@@ -401,6 +403,8 @@ export interface PageSlCommunityInput extends BasePageInput {
   onlyUpdatedByMe?: boolean
   realtimeModes?: Array<'realtime' | 'hot'>
   specialModes?: Array<'monthlyPayment' | 'shortRent' | 'dailyRent' | 'pet'>
+  /** 楼盘电梯属性多选：1=电梯，2=楼梯 */
+  elevatorModes?: number[]
   onlyContactedByMe?: boolean
   onlyMaintainedByMe?: boolean
   sortBy?: 'latest' | 'distance' | 'commissionDesc'
@@ -427,6 +431,8 @@ export interface AddSlCommunityInput {
   remark?: string
   coverImageId?: ShenLeId | null
   imageIds?: ShenLeId[]
+  /** 电梯属性，1=电梯，2=楼梯 */
+  elevatorMode?: 1 | 2
 }
 
 export interface UpdateSlCommunityInput extends AddSlCommunityInput {
@@ -480,6 +486,8 @@ export interface SlCommunityOutput {
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
   petPolicy?: 1 | 2 | 3 | null
+  /** 楼盘电梯属性，1=电梯，2=楼梯；未设置视为电梯 */
+  elevatorMode?: 1 | 2 | null
   announcement?: string | null
   waterFee?: number | null
   electricityFee?: number | null
@@ -1192,6 +1200,8 @@ export interface SlSourceContactCommunityOutput {
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
   petPolicy?: 1 | 2 | 3 | null
+  /** 楼盘电梯属性，1=电梯，2=楼梯；未设置视为电梯 */
+  elevatorMode?: 1 | 2 | null
   announcement?: string | null
   waterFee?: number | null
   electricityFee?: number | null
@@ -1221,6 +1231,8 @@ export interface SlCommunityOperationConfigOutput {
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
   petPolicy?: 1 | 2 | 3 | null
+  /** 电梯属性，1=电梯，2=楼梯；未设置视为电梯 */
+  elevatorMode?: 1 | 2
   hideRentToGuest?: boolean | null
   hideCommissionToGuest?: boolean | null
   hideAnnouncementToGuest?: boolean | null
@@ -1243,6 +1255,8 @@ export interface SaveSlCommunityOperationConfigInput {
   managementPackageMode?: 1 | 2 | null
   networkPackageMode?: 1 | 2 | 3 | 4 | null
   petPolicy?: 1 | 2 | 3 | null
+  /** 电梯属性，1=电梯，2=楼梯；必填，默认电梯 */
+  elevatorMode?: 1 | 2
   hideRentToGuest?: boolean | null
   hideCommissionToGuest?: boolean | null
   hideAnnouncementToGuest?: boolean | null

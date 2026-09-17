@@ -43,7 +43,6 @@ const entryFilter = ref<{
   orientations?: string[]
   decorations?: string[]
   rentalTypes?: string[]
-  depositRules?: string[]
   minPrice?: number
   maxPrice?: number
   minArea?: number
@@ -153,7 +152,6 @@ function buildQuery(): PageSlPropertyInput {
     orientations: entryFilter.value?.orientations,
     decorations: entryFilter.value?.decorations,
     rentalTypes: entryFilter.value?.rentalTypes,
-    depositRules: entryFilter.value?.depositRules,
     minPrice: entryFilter.value?.minPrice,
     maxPrice: entryFilter.value?.maxPrice,
     minArea: entryFilter.value?.minArea,

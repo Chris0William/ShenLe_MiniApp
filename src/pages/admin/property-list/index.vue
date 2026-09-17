@@ -126,8 +126,6 @@ async function load(reset = false) {
   finally {
     loading.value = false
     uni.stopPullDownRefresh()
-    if (reset)
-      setTimeout(() => uni.showToast({ title: '已刷新', icon: 'none', duration: 600 }), 200)
   }
 }
 
