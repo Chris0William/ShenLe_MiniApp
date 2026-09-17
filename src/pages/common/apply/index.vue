@@ -6,6 +6,8 @@ import { applyAccess, deleteAccessApplicationMaterial, downloadAccessApplication
 import { useShenleAuthStore } from '@/store/auth'
 import { modeStore } from '@/store/mode'
 import { tabbarStore } from '@/tabbar/store'
+import { ACCESS_ENTRY_BLOCKED_FALLBACK, APPLY_ACCESS_PATH, accessEntryBlockedText, accessEntryDestination } from '@/utils/access-scenes'
+import { requestLogin } from '@/utils/login-flow'
 
 definePage({
   style: {
@@ -14,6 +16,9 @@ definePage({
 })
 
 const auth = useShenleAuthStore()
+// 身份闸门：login=未登录先登录；apply=放行（游客/管理员/超管）；blocked=身份不符拦截
+const gate = ref<'login' | 'apply' | 'blocked'>('login')
+const blockedText = ref('')
 const applyStatus = ref(0)
 const applicationId = ref<ShenLeId | null>(null)
 const application = ref<MyAccessApplicationOutput | null>(null)
@@ -25,13 +30,41 @@ const loading = ref(false)
 const submitting = ref(false)
 const uploading = ref(false)
 
-const canEdit = computed(() => applyStatus.value !== 1 && applyStatus.value !== 2)
+const canEdit = computed(() => gate.value === 'apply' && applyStatus.value !== 1 && applyStatus.value !== 2)
 const materialCountText = computed(() => `${materials.value.length}/9`)
 
 function enterApp() {
   modeStore.setMode('user')
   tabbarStore.setCurIdx(0)
   uni.reLaunch({ url: '/pages/user/map/index' })
+}
+
+function login() {
+  return requestLogin({ reason: '登录后申请成为业务员', redirect: APPLY_ACCESS_PATH })
+}
+
+function goHome() {
+  uni.reLaunch({ url: '/pages/user/map/index' })
+}
+
+/** 身份闸门：未登录→登录；游客/888/999→放行；777已通过/房东/维护人→拦截 */
+async function checkGate() {
+  if (!auth.isLogin) {
+    gate.value = 'login'
+    return
+  }
+  const decision = accessEntryDestination(auth.user)
+  if (decision === 'login') {
+    gate.value = 'login'
+    return
+  }
+  if (decision === 'blocked') {
+    blockedText.value = accessEntryBlockedText(auth.user) || ACCESS_ENTRY_BLOCKED_FALLBACK
+    gate.value = 'blocked'
+    return
+  }
+  gate.value = 'apply'
+  await refresh()
 }
 
 function applySnapshot(next?: MyAccessApplicationOutput | null) {
@@ -51,7 +84,8 @@ async function refresh() {
     const res = await getMyAccess()
     applyStatus.value = res.applyStatus
     applySnapshot(res.application)
-    if (res.accountType >= 777) {
+    if (res.accountType >= 777 && res.accountType < 888) {
+      // 已是业务员的账号不应停留在此页（闸门正常会拦截；这里是双保险）
       await auth.refreshUser(true).catch(() => {})
       enterApp()
     }
@@ -183,93 +217,117 @@ async function signOut() {
 }
 
 onShow(() => {
-  if (auth.canUseApp) {
-    enterApp()
-    return
-  }
-  if (auth.isLogin)
-    void refresh()
+  void checkGate()
 })
 </script>
 
 <template>
   <view class="sl-page apply-page">
-    <view class="hero">
-      <view class="hero__icon">
+    <!-- 身份闸门：未登录 -->
+    <view v-if="gate === 'login'" class="gate sl-card">
+      <view class="gate__icon">
         <wd-icon name="lock-on" size="46px" color="#126b4f" />
       </view>
-      <text class="hero__title">深租宝典</text>
-      <text class="hero__sub">提交资料后等待管理员审核</text>
+      <text class="gate__title">申请成为业务员</text>
+      <text class="gate__desc">本页仅限通过管理员二维码进入\n登录后将自动核验身份</text>
+      <wd-button block type="success" @click="login">
+        微信登录
+      </wd-button>
+      <view class="gate__back" @tap="goHome">
+        <text>先去逛逛</text>
+      </view>
     </view>
 
-    <view class="card sl-card">
-      <view class="profile">
-        <image class="avatar" :src="auth.user?.avatar || '/static/images/default-avatar.png'" mode="aspectFill" />
-        <view class="profile__main">
-          <text class="name">{{ auth.displayName }}</text>
-          <text class="meta">游客 · {{ applyStatus === 1 ? '待审核' : applyStatus === 3 ? '可重新申请' : '待提交' }}</text>
+    <!-- 身份闸门：身份不符拦截 -->
+    <view v-else-if="gate === 'blocked'" class="gate sl-card">
+      <view class="gate__icon">
+        <wd-icon name="warning" size="46px" color="#b46d08" />
+      </view>
+      <text class="gate__title">无法进入申请</text>
+      <text class="gate__desc">{{ blockedText }}</text>
+      <wd-button block plain type="success" @click="goHome">
+        返回首页
+      </wd-button>
+    </view>
+
+    <template v-else>
+      <view class="hero">
+        <view class="hero__icon">
+          <wd-icon name="lock-on" size="46px" color="#126b4f" />
         </view>
+        <text class="hero__title">深租宝典</text>
+        <text class="hero__sub">提交资料后等待管理员审核</text>
       </view>
 
-      <view v-if="applyStatus !== 1 && applyStatus !== 2" class="form">
-        <wd-input v-model="enterpriseName" label="企业名称" placeholder="请输入企业名称" clearable :disabled="!canEdit" />
-        <wd-input v-model="realName" label="真实姓名" placeholder="请输入真实姓名" clearable :disabled="!canEdit" />
-
-        <view class="material-head">
-          <view>
-            <text class="section-title">证明材料</text>
-            <text class="section-desc">营业执照等图片，最多9张</text>
+      <view class="card sl-card">
+        <view class="profile">
+          <image class="avatar" :src="auth.user?.avatar || '/static/images/default-avatar.png'" mode="aspectFill" />
+          <view class="profile__main">
+            <text class="name">{{ auth.displayName }}</text>
+            <text class="meta">游客 · {{ applyStatus === 1 ? '待审核' : applyStatus === 3 ? '可重新申请' : '待提交' }}</text>
           </view>
-          <text class="material-count">{{ materialCountText }}</text>
         </view>
-        <view class="materials">
-          <view v-for="item in materials" :key="String(item.fileId)" class="material" @tap="previewMaterial(item)">
-            <image v-if="materialPaths[String(item.fileId)]" class="material__image" :src="materialPaths[String(item.fileId)]" mode="aspectFill" />
-            <view v-else class="material__loading">
-              <wd-icon name="image" size="24px" color="#839088" />
+
+        <view v-if="applyStatus !== 1 && applyStatus !== 2" class="form">
+          <wd-input v-model="enterpriseName" label="企业名称" placeholder="请输入企业名称" clearable :disabled="!canEdit" />
+          <wd-input v-model="realName" label="真实姓名" placeholder="请输入真实姓名" clearable :disabled="!canEdit" />
+
+          <view class="material-head">
+            <view>
+              <text class="section-title">证明材料</text>
+              <text class="section-desc">营业执照等图片，最多9张</text>
             </view>
-            <view class="material__remove" @tap.stop="removeMaterial(item)">
-              <wd-icon name="close" size="13px" color="#fff" />
+            <text class="material-count">{{ materialCountText }}</text>
+          </view>
+          <view class="materials">
+            <view v-for="item in materials" :key="String(item.fileId)" class="material" @tap="previewMaterial(item)">
+              <image v-if="materialPaths[String(item.fileId)]" class="material__image" :src="materialPaths[String(item.fileId)]" mode="aspectFill" />
+              <view v-else class="material__loading">
+                <wd-icon name="image" size="24px" color="#839088" />
+              </view>
+              <view class="material__remove" @tap.stop="removeMaterial(item)">
+                <wd-icon name="close" size="13px" color="#fff" />
+              </view>
+            </view>
+            <view v-if="materials.length < 9" class="material material--add" @tap="addMaterials">
+              <wd-loading v-if="uploading" color="#126b4f" />
+              <wd-icon v-else name="add" size="28px" color="#126b4f" />
+              <text>{{ uploading ? '上传中' : '上传' }}</text>
             </view>
           </view>
-          <view v-if="materials.length < 9" class="material material--add" @tap="addMaterials">
-            <wd-loading v-if="uploading" color="#126b4f" />
-            <wd-icon v-else name="add" size="28px" color="#126b4f" />
-            <text>{{ uploading ? '上传中' : '上传' }}</text>
+
+          <wd-button block type="success" :loading="submitting" @click="submitApply">
+            {{ applyStatus === 3 ? '重新提交申请' : '提交申请' }}
+          </wd-button>
+        </view>
+
+        <view v-else-if="applyStatus === 1" class="state state--pending">
+          <wd-icon name="time" size="40px" color="#b46d08" />
+          <text class="state__title">申请已提交</text>
+          <text class="state__desc">管理员审核通过后即可使用完整功能</text>
+          <view class="submitted-summary">
+            <text>企业名称：{{ application?.enterpriseName || '已提交' }}</text>
+            <text>真实姓名：{{ application?.realName || '已提交' }}</text>
+            <text>证明材料：{{ application?.materials.length || 0 }} 张</text>
           </view>
+          <wd-button plain block type="success" :loading="loading" @click="refresh">
+            刷新审核状态
+          </wd-button>
         </view>
 
-        <wd-button block type="success" :loading="submitting" @click="submitApply">
-          {{ applyStatus === 3 ? '重新提交申请' : '提交申请' }}
-        </wd-button>
-      </view>
-
-      <view v-else-if="applyStatus === 1" class="state state--pending">
-        <wd-icon name="time" size="40px" color="#b46d08" />
-        <text class="state__title">申请已提交</text>
-        <text class="state__desc">管理员审核通过后即可使用完整功能</text>
-        <view class="submitted-summary">
-          <text>企业名称：{{ application?.enterpriseName || '已提交' }}</text>
-          <text>真实姓名：{{ application?.realName || '已提交' }}</text>
-          <text>证明材料：{{ application?.materials.length || 0 }} 张</text>
+        <view v-else class="state state--pending">
+          <wd-icon name="check-circle" size="40px" color="#126b4f" />
+          <text class="state__title">申请已通过</text>
+          <wd-button block type="success" @click="enterApp">
+            进入业务员端
+          </wd-button>
         </view>
-        <wd-button plain block type="success" :loading="loading" @click="refresh">
-          刷新审核状态
-        </wd-button>
       </view>
 
-      <view v-else class="state state--pending">
-        <wd-icon name="check-circle" size="40px" color="#126b4f" />
-        <text class="state__title">申请已通过</text>
-        <wd-button block type="success" @click="enterApp">
-          进入业务员端
-        </wd-button>
+      <view class="foot" @tap="signOut">
+        <text>退出登录</text>
       </view>
-    </view>
-
-    <view class="foot" @tap="signOut">
-      <text>退出登录</text>
-    </view>
+    </template>
   </view>
 </template>
 
@@ -279,6 +337,41 @@ onShow(() => {
   min-height: 100vh;
   flex-direction: column;
   padding-top: 60rpx;
+}
+.gate {
+  display: flex;
+  margin-top: 120rpx;
+  flex-direction: column;
+  align-items: center;
+  gap: 18rpx;
+  padding: 56rpx 40rpx;
+}
+.gate__icon {
+  display: flex;
+  width: 132rpx;
+  height: 132rpx;
+  align-items: center;
+  justify-content: center;
+  border-radius: 38rpx;
+  background: rgb(18 107 79 / 10%);
+}
+.gate__title {
+  color: var(--sl-ink);
+  font-size: 36rpx;
+  font-weight: 850;
+}
+.gate__desc {
+  color: var(--sl-muted);
+  font-size: 24rpx;
+  line-height: 1.6;
+  text-align: center;
+  white-space: pre-line;
+}
+.gate__back {
+  margin-top: 6rpx;
+  color: var(--sl-brand);
+  font-size: 24rpx;
+  font-weight: 700;
 }
 .hero {
   display: flex;

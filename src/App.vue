@@ -4,7 +4,7 @@ import { navigateToInterceptor } from '@/router/interceptor'
 import { useLandlordShareStore } from '@/store/landlord-share'
 import { modeStore } from '@/store/mode'
 import { tabbarStore } from '@/tabbar/store'
-import { LANDLORD_ENROLLMENT_SCENE } from '@/utils/landlord-enrollment'
+import { APPLY_ACCESS_SCENE, LANDLORD_ENROLLMENT_SCENE } from '@/utils/access-scenes'
 
 const landlordShare = useLandlordShareStore()
 
@@ -13,11 +13,12 @@ interface ShareLaunchOptions {
 }
 
 function captureLandlordShare(options?: ShareLaunchOptions) {
-  if (options?.query?.scene === LANDLORD_ENROLLMENT_SCENE) {
+  const scene = options?.query?.scene as string | undefined
+  if (scene === LANDLORD_ENROLLMENT_SCENE || scene === APPLY_ACCESS_SCENE) {
     landlordShare.clear()
     return
   }
-  if (!landlordShare.capture(options?.query?.scene as string | undefined))
+  if (!landlordShare.capture(scene))
     return
   modeStore.setMode('user')
   tabbarStore.setCurIdx(0)

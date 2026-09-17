@@ -2,7 +2,7 @@
 import { onShow } from '@dcloudio/uni-app'
 import { computed, ref } from 'vue'
 import { setMyNickName } from '@/api/auth'
-import { getEnrollmentCode } from '@/api/landlord-enrollment'
+import { getApplyAccessCode, getEnrollmentCode } from '@/api/landlord-enrollment'
 import { getPendingUsers } from '@/api/user-manage'
 import { useShenleAuthStore } from '@/store/auth'
 import { useLandlordAnnouncementStore } from '@/store/landlord-announcement'
@@ -39,6 +39,23 @@ async function openEnrollmentCode() {
   }
   finally {
     enrollmentCodeLoading.value = false
+  }
+}
+
+const applyAccessCodeVisible = ref(false)
+const applyAccessCode = ref('')
+const applyAccessCodeLoading = ref(false)
+
+async function openApplyAccessCode() {
+  applyAccessCodeVisible.value = true
+  if (applyAccessCode.value || applyAccessCodeLoading.value)
+    return
+  applyAccessCodeLoading.value = true
+  try {
+    applyAccessCode.value = await getApplyAccessCode()
+  }
+  finally {
+    applyAccessCodeLoading.value = false
   }
 }
 const nicknameDraft = ref('')
@@ -204,6 +221,9 @@ async function signOut() {
       <button v-if="isAdminView && auth.isSuperAdmin" class="enrollment-code-trigger" aria-label="房东入驻二维码" @tap.stop="openEnrollmentCode">
         <view class="i-lucide-qr-code share-code-icon" />
       </button>
+      <button v-if="isAdminView && auth.isSuperAdmin" class="enrollment-code-trigger" aria-label="业务员申请二维码" @tap.stop="openApplyAccessCode">
+        <wd-icon name="user-add" size="24px" color="#126b4f" />
+      </button>
       <view v-if="isLandlordView && auth.user?.isLandlord" class="share-code-trigger" role="button" aria-label="打开楼盘分享二维码" @tap.stop="landlordShareCodeRef?.open()">
         <view class="i-carbon-qr-code share-code-icon" />
       </view>
@@ -363,6 +383,17 @@ async function signOut() {
         <wd-loading v-if="enrollmentCodeLoading" color="#126b4f" />
         <image v-else-if="enrollmentCode" :src="enrollmentCode" mode="aspectFit" show-menu-by-longpress style="width: 430rpx; height: 430rpx;" />
         <wd-button v-else plain @click="openEnrollmentCode">
+          重新加载
+        </wd-button>
+      </view>
+    </wd-popup>
+    <wd-popup v-model="applyAccessCodeVisible" position="center" closable custom-style="width: 620rpx; padding: 40rpx; box-sizing: border-box; border-radius: 8px;">
+      <view style="display: flex; flex-direction: column; align-items: center; gap: 24rpx;">
+        <text>业务员申请码</text>
+        <text style="color: #72817b; font-size: 23rpx; text-align: center;">扫码者需登录并核验身份后才能进入申请页</text>
+        <wd-loading v-if="applyAccessCodeLoading" color="#126b4f" />
+        <image v-else-if="applyAccessCode" :src="applyAccessCode" mode="aspectFit" show-menu-by-longpress style="width: 430rpx; height: 430rpx;" />
+        <wd-button v-else plain @click="openApplyAccessCode">
           重新加载
         </wd-button>
       </view>
